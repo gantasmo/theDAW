@@ -6,10 +6,12 @@ APP_NAME="theDAW"
 APP_DIR="${ROOT_DIR}/build/${APP_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
+LAUNCHER_SOURCE="${ROOT_DIR}/scripts/macos/TheDAWLauncher.swift"
 
-shell_quote() {
-  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
-}
+if ! command -v swiftc >/dev/null 2>&1; then
+  echo "Missing required command: swiftc. Install Xcode Command Line Tools with: xcode-select --install"
+  exit 1
+fi
 
 mkdir -p "$MACOS_DIR"
 
@@ -35,25 +37,25 @@ cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+    <key>NSAllowsArbitraryLoadsInWebContent</key>
+    <true/>
+  </dict>
 </dict>
 </plist>
 PLIST
 
-quoted_root="$(shell_quote "$ROOT_DIR")"
-cat > "${MACOS_DIR}/${APP_NAME}" <<APP
-#!/usr/bin/env bash
-set -euo pipefail
+/usr/libexec/PlistBuddy \
+  -c "Add :StableDAWRepositoryPath string ${ROOT_DIR}" \
+  "${CONTENTS_DIR}/Info.plist"
 
-REPO_DIR=${quoted_root}
-cd "\$REPO_DIR"
-
-osascript <<OSA
-tell application "Terminal"
-  activate
-  do script "cd ${quoted_root}; ./start-dev.command"
-end tell
-OSA
-APP
+swiftc "$LAUNCHER_SOURCE" \
+  -framework AppKit \
+  -framework WebKit \
+  -o "${MACOS_DIR}/${APP_NAME}"
 
 chmod +x "${MACOS_DIR}/${APP_NAME}"
 chmod +x "${ROOT_DIR}/start-dev.command"

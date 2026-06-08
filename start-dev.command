@@ -9,6 +9,7 @@ BACKEND_PORT="8600"
 FRONTEND_PORT="5173"
 VJ_PORT="5187"
 APP_URL="http://localhost:${FRONTEND_PORT}"
+OPEN_MODE="${SA3_OPEN_MODE:-browser}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -120,8 +121,19 @@ if [[ "${START_TUNNEL:-false}" == "true" ]]; then
   fi
 fi
 
-log "Opening ${APP_URL}"
-open "$APP_URL"
+case "$OPEN_MODE" in
+  browser)
+    log "Opening ${APP_URL}"
+    open "$APP_URL"
+    ;;
+  none)
+    log "Frontend is available at ${APP_URL}"
+    ;;
+  *)
+    log "Unknown SA3_OPEN_MODE=${OPEN_MODE}; expected browser or none."
+    exit 1
+    ;;
+esac
 
 log "Servers are running. Close this Terminal window or press Ctrl-C to stop them."
 wait
