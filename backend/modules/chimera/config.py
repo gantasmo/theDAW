@@ -84,8 +84,6 @@ def _detect_ffmpeg() -> tuple[bool, bool, Optional[str]]:
 
 def _build_hint(aubio_ok: bool, ffmpeg_ok: bool, rb_ok: bool) -> Optional[str]:
     parts: list[str] = []
-    if not aubio_ok:
-        parts.append("aubio (install via `pip install aubio` or your package manager)")
     if not ffmpeg_ok:
         parts.append("ffmpeg")
     elif not rb_ok:
@@ -93,6 +91,11 @@ def _build_hint(aubio_ok: bool, ffmpeg_ok: bool, rb_ok: bool) -> Optional[str]:
             "ffmpeg built with librubberband (default ffmpeg often lacks it; use "
             "gyan.dev ffmpeg-full on Windows, `brew install ffmpeg` on macOS, or "
             "a BtbN static build on Linux)"
+        )
+    if not aubio_ok:
+        parts.append(
+            "optional aubio (install via your package manager for faster tempo detection; "
+            "librosa fallback still works)"
         )
     if not parts:
         return None

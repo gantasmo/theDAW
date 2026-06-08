@@ -40,7 +40,11 @@ dependencies = [
     # `uv sync` never removes it. The wheel URL lives in [tool.uv.sources].
     # Update both when upgrading torch/CUDA.
     "flash-attn ; sys_platform == 'win32' and python_version < '3.11'",
-    "aubio>=0.4.9",
+    # aubio 0.4.9 does not currently build cleanly against NumPy 2 on macOS
+    # Apple Silicon. Chimera/analysis already fall back to librosa when the
+    # Python aubio module is unavailable, and macOS users can still install the
+    # optional aubio CLI via Homebrew if they want it.
+    "aubio>=0.4.9 ; sys_platform != 'darwin'",
     "mutagen>=1.47",
     # midi module (backend/modules/midi) — audio→MIDI transcription + export.
     # These were installed manually but undeclared, so `uv sync` pruned them and

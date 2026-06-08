@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 _WIN_S = 1024
 _HOP_S = 512
+_LIBROSA_HOP_S = 256
 _MIN_DURATION_SEC = 1.5
 _LIBROSA_SR = 22050  # beat tracking is accurate here and half the memory of 44.1k
 
@@ -73,15 +74,29 @@ def _detect_librosa(path: str | Path) -> DetectionResult:
     """Tempo + beats via librosa — decodes MP3/M4A/etc. that aubio can't open."""
     import librosa
     import numpy as np
+    import soundfile as sf
 
+    try:
+        source_sr = int(sf.info(str(path)).samplerate)
+    except Exception:
+        source_sr = 0
     y, sr = librosa.load(str(path), sr=_LIBROSA_SR, mono=True)
     sr = int(sr)
+    if source_sr <= 0:
+        source_sr = sr
     duration_sec = (len(y) / float(sr)) if sr else 0.0
     if y.size == 0 or duration_sec < _MIN_DURATION_SEC:
-        return _empty_result(sr, duration_sec)
+        return _empty_result(source_sr, duration_sec)
 
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-    beats = [float(t) for t in librosa.frames_to_time(beat_frames, sr=sr)]
+    tempo, beat_frames = librosa.beat.beat_track(
+        y=y,
+        sr=sr,
+        hop_length=_LIBROSA_HOP_S,
+    )
+    beats = [
+        float(t)
+        for t in librosa.frames_to_time(beat_frames, sr=sr, hop_length=_LIBROSA_HOP_S)
+    ]
     bpm_val = float(np.atleast_1d(tempo)[0]) if tempo is not None else 0.0
     bpm: Optional[float] = bpm_val if bpm_val > 0 and beats else None
 
@@ -107,7 +122,7 @@ def _detect_librosa(path: str | Path) -> DetectionResult:
         "bpm": bpm,
         "beats": beats,
         "confidence": confidence,
-        "samplerate": int(sr),
+        "samplerate": int(source_sr),
         "duration_sec": duration_sec,
     }
 

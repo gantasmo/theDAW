@@ -61,6 +61,14 @@ uv run uvicorn backend.server:app --host 0.0.0.0 --port 8600 --reload   # backen
 cd frontend && npm run dev                                              # frontend
 ```
 
+Experimental macOS launch:
+
+```bash
+./start-dev.command
+```
+
+The macOS launcher mirrors the development workflow: it checks for `uv`, Node, npm, and FFmpeg, syncs dependencies, starts the backend and frontend, then opens `http://localhost:5173`. `scripts/macos/create-app.sh` creates a local `build/theDAW.app` wrapper, and `scripts/macos/create-dmg.sh` packages that wrapper into a drag-to-Applications DMG. This is not yet a fully self-contained, signed, or notarized macOS distribution; the app wrapper launches the checked-out repository.
+
 Dependencies install with `uv sync` and `cd frontend && npm install`. On Windows, `uv sync` installs CUDA 12.8 torch and torchaudio plus the pre-built Flash Attention wheel automatically. On Linux, install the matching CUDA wheel index manually, for example `uv pip install torch==2.7.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu126`. [§3 of the User Guide](docs/USER_GUIDE.md#3-installation) has full installation details.
 
 ---

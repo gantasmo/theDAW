@@ -5342,7 +5342,7 @@ name = "stable-audio-3"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "aubio" },
+    { name = "aubio", marker = "sys_platform != 'darwin'" },
     { name = "basic-pitch" },
     { name = "chromadb" },
     { name = "einops" },
@@ -5411,7 +5411,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'ui'", specifier = ">=1.13.0" },
-    { name = "aubio", specifier = ">=0.4.9" },
+    { name = "aubio", marker = "sys_platform != 'darwin'", specifier = ">=0.4.9" },
     { name = "basic-pitch", specifier = ">=0.4.0" },
     { name = "chromadb", specifier = ">=1.0.0" },
     { name = "dill", marker = "extra == 'lora'", specifier = ">=0.4.1" },
