@@ -25,10 +25,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
-  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ,
+  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ, Plug, Wand2,
 } from 'lucide-react';
 import { subscribeToMidi } from '../state/midiBus';
-import { useDjControlMap, sigLabel, type MidiKind } from '../state/djControlMap';
+import { useDjControlMap, sigLabel, type MidiKind, type MidiSig } from '../state/djControlMap';
+import { enableMidi } from '../state/midiTriggerStore';
+import { useMidiDevicesStore } from '../state/midiDevicesStore';
 import { useDjSampler } from '../state/djSamplerStore';
 import { useDjSideList } from '../state/djSideListStore';
 import { useFeatureToggleStore } from '../state/featureToggleStore';
@@ -82,6 +84,7 @@ const deckMidiActions = (d: 'A' | 'B'): Array<{ id: string; label: string; group
     { id: `sync${d}`, label: 'Sync', kind: 'note' as MidiKind },
     { id: `headcue${d}`, label: 'Cue (HP)', kind: 'note' as MidiKind },
     { id: `vol${d}`, label: 'Volume', kind: 'cc' as MidiKind },
+    { id: `gain${d}`, label: 'Gain', kind: 'cc' as MidiKind },
     { id: `filter${d}`, label: 'Filter', kind: 'cc' as MidiKind },
     { id: `pitch${d}`, label: 'Pitch', kind: 'cc' as MidiKind },
     { id: `eq${d}.high`, label: 'EQ Hi', kind: 'cc' as MidiKind },
@@ -95,6 +98,60 @@ const MIDI_ACTIONS: Array<{ id: string; label: string; group: string; kind: Midi
   { id: 'xfader', label: 'Crossfader', group: 'Mixer', kind: 'cc' },
   ...deckMidiActions('A'),
   ...deckMidiActions('B'),
+];
+const MIDI_ACTION_BY_ID = new Map(MIDI_ACTIONS.map((a) => [a.id, a]));
+
+type DjMidiPreset = {
+  id: string;
+  label: string;
+  match: string[];
+  bindings: Record<string, MidiSig>;
+};
+
+const cc = (number: number, channel: number | null = null): MidiSig => ({ kind: 'cc', number, channel });
+const note = (number: number, channel: number | null = null): MidiSig => ({ kind: 'note', number, channel });
+
+const DJ_MIDI_PRESETS: DjMidiPreset[] = [
+  {
+    id: 'novation-launch-control-xl-user1',
+    label: 'Novation Launch Control XL',
+    match: ['launch control xl', 'lcxl'],
+    bindings: {
+      // Common User Template 1 layout. Channels are intentionally "any" because
+      // Launch Control XL templates can be edited or shifted per user template.
+      'eqA.high': cc(13),
+      'eqA.mid': cc(14),
+      'eqA.low': cc(15),
+      filterA: cc(16),
+      'eqB.high': cc(17),
+      'eqB.mid': cc(18),
+      'eqB.low': cc(19),
+      filterB: cc(20),
+      volA: cc(77),
+      pitchA: cc(78),
+      gainA: cc(79),
+      xfader: cc(80),
+      gainB: cc(82),
+      pitchB: cc(83),
+      volB: cc(84),
+      playA: note(41),
+      cueA: note(42),
+      syncA: note(43),
+      headcueA: note(44),
+      playB: note(45),
+      cueB: note(46),
+      syncB: note(47),
+      headcueB: note(48),
+      hotcueA1: note(57),
+      hotcueA2: note(58),
+      hotcueA3: note(59),
+      hotcueA4: note(60),
+      hotcueB1: note(61),
+      hotcueB2: note(62),
+      hotcueB3: note(63),
+      hotcueB4: note(64),
+    },
+  },
 ];
 
 /** Source feeding the center Track Browser. The non-set kinds are live filtered
@@ -568,6 +625,7 @@ export const DJView: React.FC = () => {
       h[`sync${d}`] = () => syncDeck(d);
       h[`headcue${d}`] = () => toggleCue(d);
       h[`vol${d}`] = (v) => onVol(d, v / 127);
+      h[`gain${d}`] = (v) => onGain(d, (v / 127) * 24 - 12);
       h[`filter${d}`] = (v) => onFilter(d, (v / 127) * 2 - 1);
       h[`pitch${d}`] = (v) => onPitch(d, (v / 127) * 100 - 50);
       h[`eq${d}.high`] = (v) => onEq(d, 'high', (v / 127) * 24 - 12);
@@ -599,10 +657,12 @@ export const DJView: React.FC = () => {
       if (store.learnAction) { store.bind(store.learnAction, { kind, number, channel }); return; }
       for (const actionId in store.bindings) {
         const sig = store.bindings[actionId];
-        if (sig.kind !== kind || sig.number !== number || sig.channel !== channel) continue;
+        if (sig.kind !== kind || sig.number !== number || (sig.channel !== null && sig.channel !== channel)) continue;
         const fn = midiHandlersRef.current[actionId];
         if (!fn) continue;
+        const action = MIDI_ACTION_BY_ID.get(actionId);
         if (kind === 'note') { if (status === 0x90 && value > 0) fn(value); }
+        else if (action?.kind === 'note') { if (value > 0) fn(value); }
         else fn(value);
       }
     });
@@ -1580,17 +1640,81 @@ const DjMidiMap: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const arm = useDjControlMap((s) => s.arm);
   const clear = useDjControlMap((s) => s.clear);
   const clearAll = useDjControlMap((s) => s.clearAll);
+  const replaceAll = useDjControlMap((s) => s.replaceAll);
+  const midiInputs = useMidiDevicesStore((s) => s.inputs);
+  const detectedPreset = useMemo(() => {
+    const names = midiInputs.map((n) => n.toLowerCase());
+    return DJ_MIDI_PRESETS.find((p) => p.match.some((m) => names.some((n) => n.includes(m)))) ?? null;
+  }, [midiInputs]);
+  const [selectedPresetId, setSelectedPresetId] = useState(() => detectedPreset?.id ?? DJ_MIDI_PRESETS[0]?.id ?? '');
+  const [lastSeen, setLastSeen] = useState<MidiSig | null>(null);
+  const selectedPreset = DJ_MIDI_PRESETS.find((p) => p.id === selectedPresetId) ?? null;
+
+  useEffect(() => {
+    enableMidi();
+  }, []);
+
+  useEffect(() => {
+    if (detectedPreset) setSelectedPresetId(detectedPreset.id);
+  }, [detectedPreset]);
+
+  useEffect(() => subscribeToMidi((msg) => {
+    const [rawStatus, data1] = msg.data;
+    if (typeof rawStatus !== 'number' || typeof data1 !== 'number') return;
+    const status = rawStatus & 0xf0;
+    const channel = rawStatus & 0x0f;
+    if (status === 0xb0) setLastSeen({ kind: 'cc', number: data1, channel });
+    else if (status === 0x90 || status === 0x80) setLastSeen({ kind: 'note', number: data1, channel });
+  }), []);
+
+  const applyPreset = () => {
+    if (!selectedPreset) return;
+    replaceAll(selectedPreset.bindings);
+  };
+
   return (
     <div className="fixed inset-0 z-200 grid place-items-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-115 max-h-[82%] overflow-y-auto rounded-lg border border-purple-500/30 bg-[#0c0a14] shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-white/5 sticky top-0 bg-[#0c0a14]">
           <Piano className="w-3.5 h-3.5 text-purple-300 shrink-0" />
           <span className="text-[10px] font-black uppercase tracking-widest text-purple-300 shrink-0">DJ MIDI Map</span>
-          <span className="text-[8px] font-mono text-zinc-500 truncate">Click Learn, then move a control (MIDI must be ON)</span>
+          <span className="text-[8px] font-mono text-zinc-500 truncate">Click Learn, then move a control</span>
           <button onClick={clearAll} className="ml-auto shrink-0 text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border border-white/10 text-zinc-400 hover:text-rose-300">Clear all</button>
           <button onClick={onClose} className="shrink-0 p-1 text-zinc-500 hover:text-white rounded hover:bg-white/5"><X className="w-3.5 h-3.5" /></button>
         </div>
         <div className="p-3 flex flex-col gap-2">
+          <div className="rounded border border-white/8 bg-black/30 p-2 flex flex-col gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Plug className={`w-3.5 h-3.5 shrink-0 ${midiInputs.length ? 'text-emerald-300' : 'text-zinc-600'}`} />
+              <span className="flex-1 min-w-0 text-[8px] font-mono text-zinc-500 truncate">
+                {midiInputs.length ? midiInputs.join(', ') : 'Waiting for a MIDI input'}
+              </span>
+              {lastSeen && (
+                <span className="shrink-0 text-[8px] font-mono text-emerald-300">
+                  {sigLabel(lastSeen)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="dj-midi-preset" className="sr-only">MIDI preset</label>
+              <select
+                id="dj-midi-preset"
+                value={selectedPresetId}
+                onChange={(e) => setSelectedPresetId(e.target.value)}
+                className="min-w-0 flex-1 bg-black/50 border border-white/10 rounded px-2 py-1 text-[9px] font-mono text-zinc-200 focus:outline-none focus:border-purple-400"
+              >
+                {DJ_MIDI_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+              <button
+                onClick={applyPreset}
+                disabled={!selectedPreset}
+                className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded border border-purple-500/30 bg-purple-500/10 text-[8px] font-black uppercase tracking-wider text-purple-200 hover:bg-purple-500/20 disabled:opacity-40"
+                title="Load the selected preset mappings"
+              >
+                <Wand2 className="w-3 h-3" /> Apply
+              </button>
+            </div>
+          </div>
           {DJ_MIDI_GROUPS.map((g) => (
             <div key={g}>
               <div className="text-[8px] font-black uppercase tracking-widest text-zinc-500 mb-1">{g}</div>

@@ -13,11 +13,11 @@ export type MidiKind = 'cc' | 'note';
 export interface MidiSig {
   kind: MidiKind;
   number: number;
-  channel: number; // 0-15
+  channel: number | null; // 0-15; null = any channel (useful for reusable presets)
 }
 
 export const sigLabel = (s?: MidiSig | null): string =>
-  s ? `${s.kind.toUpperCase()} ${s.number}${s.channel ? ` ·${s.channel + 1}` : ''}` : '—';
+  s ? `${s.kind.toUpperCase()} ${s.number}${s.channel !== null ? ` ·${s.channel + 1}` : ''}` : '—';
 
 interface DjControlMapState {
   bindings: Record<string, MidiSig>; // actionId → signature
@@ -26,6 +26,7 @@ interface DjControlMapState {
   setMapMode: (on: boolean) => void;
   arm: (actionId: string | null) => void;
   bind: (actionId: string, sig: MidiSig) => void;
+  replaceAll: (bindings: Record<string, MidiSig>) => void;
   clear: (actionId: string) => void;
   clearAll: () => void;
 }
@@ -39,6 +40,7 @@ export const useDjControlMap = create<DjControlMapState>()(
       setMapMode: (on) => set(on ? { mapMode: true } : { mapMode: false, learnAction: null }),
       arm: (actionId) => set({ learnAction: actionId }),
       bind: (actionId, sig) => set((s) => ({ bindings: { ...s.bindings, [actionId]: sig }, learnAction: null })),
+      replaceAll: (bindings) => set({ bindings, learnAction: null }),
       clear: (actionId) => set((s) => {
         const b = { ...s.bindings };
         delete b[actionId];
