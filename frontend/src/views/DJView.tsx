@@ -296,6 +296,91 @@ function useDeck(deckId: djEngine.DeckId, entryId: string | null, hasTrack: bool
 
 type DeckCtl = ReturnType<typeof useDeck>;
 
+function EditableBpmField({
+  deck,
+  sourceBpm,
+  pitchPct,
+  analyzing,
+  color,
+  onCommit,
+}: {
+  deck: 'A' | 'B';
+  sourceBpm: number | null;
+  pitchPct: number;
+  analyzing: boolean;
+  color: RGB;
+  onCommit: (bpm: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const effectiveBpm = sourceBpm != null && sourceBpm > 0 ? sourceBpm * (1 + pitchPct / 100) : null;
+
+  const beginEdit = () => {
+    if (sourceBpm == null || sourceBpm <= 0 || editing) return;
+    setDraft((effectiveBpm ?? sourceBpm).toFixed(1));
+    setEditing(true);
+  };
+
+  useEffect(() => {
+    if (!editing) return;
+    const input = inputRef.current;
+    input?.focus();
+    input?.select();
+  }, [editing]);
+
+  const commit = () => {
+    const bpm = Number.parseFloat(draft.trim());
+    if (Number.isFinite(bpm) && bpm > 0) onCommit(bpm);
+    setEditing(false);
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      setEditing(false);
+    }
+  };
+
+  return (
+    <div className="h-full w-full grid place-items-center px-1 overflow-hidden">
+      <div
+        className="flex items-baseline gap-1.5 px-2.5 py-1 rounded-md border tabular-nums"
+        style={{
+          borderColor: rgba(color, editing ? 0.85 : 0.5),
+          background: `linear-gradient(180deg, ${rgba(color, editing ? 0.28 : 0.18)}, ${rgba(color, 0.04)})`,
+          boxShadow: `0 0 12px ${rgba(color, editing ? 0.45 : 0.3)}, inset 0 0 6px ${rgba(color, 0.12)}`,
+        }}
+        title={sourceBpm != null ? 'Hover and type target BPM, then press Enter' : 'Detected tempo'}
+        onMouseEnter={beginEdit}
+        onClick={beginEdit}
+      >
+        <span className="text-[7px] font-black uppercase tracking-[0.22em]" style={{ color: rgba(color, 0.85) }}>BPM</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            aria-label={`Deck ${deck} target BPM`}
+            className="w-[5.5ch] bg-transparent text-right text-[15px] font-black leading-none text-white outline-none"
+            inputMode="decimal"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={() => setEditing(false)}
+            style={{ textShadow: `0 0 8px ${rgba(color, 0.6)}` }}
+          />
+        ) : (
+          <span className="w-[5.5ch] text-right text-[15px] font-black leading-none text-white" style={{ textShadow: `0 0 8px ${rgba(color, 0.6)}` }}>
+            {effectiveBpm != null ? effectiveBpm.toFixed(1) : analyzing ? '...' : '-'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══ Control-surface default layout ═════════════════════════════════════════
  * Reproduces the console arrangement as a structured rows/columns tree. Pinned
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
@@ -619,6 +704,19 @@ export const DJView: React.FC = () => {
     if (which === 'A') setDeckAPitch(v); else setDeckBPitch(v);
     djEngine.setDeckPitch(which, v);
   };
+  const onTargetBpm = (which: djEngine.DeckId, bpm: number) => {
+    const sourceBpm = (which === 'A' ? ctlA.bpm : ctlB.bpm) ?? null;
+    if (!sourceBpm || sourceBpm <= 0) return;
+    const rawPitch = (bpm / sourceBpm - 1) * 100;
+    const pitch = Math.max(-50, Math.min(50, rawPitch));
+    onPitch(which, pitch);
+    const effectiveBpm = sourceBpm * (1 + pitch / 100);
+    if (Math.abs(effectiveBpm - bpm) > 0.05) {
+      setFlash(`Deck ${which}: ${bpm.toFixed(1)} BPM is outside pitch range; set ${effectiveBpm.toFixed(1)} BPM`);
+    } else {
+      setFlash(`Deck ${which}: ${effectiveBpm.toFixed(1)} BPM`);
+    }
+  };
   const onEq = (which: djEngine.DeckId, band: 'low' | 'mid' | 'high', v: number) => {
     if (which === 'A') setEqA((p) => ({ ...p, [band]: v })); else setEqB((p) => ({ ...p, [band]: v }));
     djEngine.setDeckEq(which, band, v);
@@ -779,7 +877,7 @@ export const DJView: React.FC = () => {
     source, setSource, libCount: entries.length, loadDeck,
     gainA, gainB, eqA, eqB, filterA, filterB, volA, volB,
     pitchA: deckAPitch, pitchB: deckBPitch, bpmA: ctlA.bpm ?? null, bpmB: ctlB.bpm ?? null,
-    onGain, onEq, onFilter, onVol, onPitch,
+    onGain, onEq, onFilter, onVol, onPitch, onTargetBpm,
     crossfader, onCrossfade: applyCrossfade,
     quantize, setQuantize, autoGain, setAutoGain,
     limiterOn, setLimiterOn, cueSupported, cueDevices, cueDev, setCueDev,
@@ -1957,6 +2055,7 @@ interface DjRegArgs {
   onEq: (which: djEngine.DeckId, band: 'low' | 'mid' | 'high', v: number) => void;
   onFilter: (which: djEngine.DeckId, v: number) => void; onVol: (which: djEngine.DeckId, v: number) => void;
   onPitch: (which: djEngine.DeckId, v: number) => void;
+  onTargetBpm: (which: djEngine.DeckId, bpm: number) => void;
   crossfader: number; onCrossfade: (v: number) => void;
   quantize: boolean; setQuantize: (v: boolean) => void; autoGain: boolean; setAutoGain: (v: boolean) => void;
   limiterOn: boolean; setLimiterOn: (v: boolean) => void;
@@ -2031,6 +2130,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const entryId = d === 'A' ? p.deckATrack : p.deckBTrack;
     const cam = d === 'A' ? p.camA : p.camB;
     const headCued = d === 'A' ? p.cueA : p.cueB;
+    const pitch = d === 'A' ? p.pitchA : p.pitchB;
     const onPlay = d === 'A' ? p.onPlayA : p.onPlayB;
     const onCue = d === 'A' ? p.onCueA : p.onCueB;
     const stopTitle = sortedCuePoints(ctl.cues).length > 0 ? 'Stop and jump to next hotcue' : 'Stop and return to start';
@@ -2054,22 +2154,14 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     ) };
 
     reg[`bpm${d}`] = { id: `bpm${d}`, label: `BPM ${d}`, group: grp, kind: 'fixed', source: 'builtin', render: () => (
-      <div className="h-full w-full grid place-items-center px-1 overflow-hidden">
-        <div
-          className="flex items-baseline gap-1.5 px-2.5 py-1 rounded-md border tabular-nums"
-          style={{
-            borderColor: rgba(rgbc, 0.5),
-            background: `linear-gradient(180deg, ${rgba(rgbc, 0.18)}, ${rgba(rgbc, 0.04)})`,
-            boxShadow: `0 0 12px ${rgba(rgbc, 0.3)}, inset 0 0 6px ${rgba(rgbc, 0.12)}`,
-          }}
-          title="Detected tempo"
-        >
-          <span className="text-[7px] font-black uppercase tracking-[0.22em]" style={{ color: rgba(rgbc, 0.85) }}>BPM</span>
-          <span className="text-[15px] font-black leading-none text-white" style={{ textShadow: `0 0 8px ${rgba(rgbc, 0.6)}` }}>
-            {ctl.bpm != null ? ctl.bpm.toFixed(1) : ctl.analyzing ? '…' : '—'}
-          </span>
-        </div>
-      </div>
+      <EditableBpmField
+        deck={d}
+        sourceBpm={ctl.bpm}
+        pitchPct={pitch}
+        analyzing={ctl.analyzing}
+        color={rgbc}
+        onCommit={(bpm) => p.onTargetBpm(d, bpm)}
+      />
     ) };
 
     reg[`key${d}`] = { id: `key${d}`, label: `Key ${d}`, group: grp, kind: 'fixed', source: 'builtin', render: () => (
