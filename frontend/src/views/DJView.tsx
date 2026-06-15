@@ -47,7 +47,7 @@ import { useDjCuesStore, HOTCUE_SLOTS } from '../state/djCuesStore';
 import { toCamelot, keyLabel } from '../lib/camelot';
 import { buildBeatgrid } from '../lib/beatgrid';
 import { rgb, rgba, type RGB } from '../lib/trackColor';
-import { WaveformPreview } from '../components/audio/WaveformPreview';
+import { DJSemanticWaveform } from '../components/audio/DJSemanticWaveform';
 import { SlideKnob } from '../components/audio/SlideKnob';
 import { SlideFader } from '../components/audio/SlideFader';
 import { SlidePad } from '../components/audio/SlidePad';
@@ -713,6 +713,55 @@ const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl,
       </span>
       {audioUrl ? <DeckWaveform deckId={deckId} audioUrl={audioUrl} beats={ctl.gridBeats} cues={ctl.cues ?? null} accent={accent} height={62} />
         : <div className="h-full grid place-items-center text-[10px] font-mono text-zinc-700">{hasTrack ? '…' : 'drag a track here from the browser →'}</div>}
+    </div>
+  );
+};
+
+const PlatterDropTarget: React.FC<{
+  deckId: djEngine.DeckId;
+  color: RGB;
+  hasTrack: boolean;
+  onLoadId: (id: string) => void;
+}> = ({ deckId, color, hasTrack, onLoadId }) => {
+  const [dropHover, setDropHover] = useState(false);
+  const onDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(DJ_TRACK_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropHover(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropHover(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData(DJ_TRACK_MIME);
+    setDropHover(false);
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onLoadId(id);
+  };
+
+  return (
+    <div
+      className={`relative h-full w-full grid place-items-center rounded transition-colors ${dropHover ? 'bg-white/6 ring-2 ring-inset' : ''}`}
+      style={{ '--deck-ring': rgba(color, 0.9), '--deck-glow': rgba(color, 0.28) } as React.CSSProperties}
+      onDragEnter={onDragOver}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      title={`Drop a track on Deck ${deckId} platter`}
+    >
+      <div className={`absolute inset-1 rounded-full pointer-events-none transition-opacity ${dropHover ? 'opacity-100' : 'opacity-0'}`} style={{ border: `1px solid ${rgba(color, 0.75)}`, boxShadow: `0 0 22px ${rgba(color, 0.45)}, inset 0 0 18px ${rgba(color, 0.16)}` }} />
+      <JogWheel deckId={deckId} color={color} disabled={!hasTrack} fill />
+      {dropHover && (
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <div className="rounded bg-black/75 border px-2 py-1 text-[8px] font-black uppercase tracking-wider" style={{ borderColor: rgba(color, 0.7), color: rgb(color), boxShadow: `0 0 14px ${rgba(color, 0.35)}` }}>
+            Drop on {deckId}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1485,6 +1534,7 @@ const DjMidiMap: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 /* ------------------------------- helpers ----------------------------------- */
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const clamp = (x: number, min: number, max: number) => Math.max(min, Math.min(max, x));
 
 function snapToBeat(t: number, beats: number[] | null): number {
   if (!beats || beats.length === 0) return t;
@@ -1529,23 +1579,47 @@ const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats:
   const playheadRef = useRef<HTMLDivElement>(null);
   const [dur, setDur] = useState(0);
   const [loop, setLoop] = useState<{ in: number; out: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [viewStart, setViewStart] = useState(0);
+  const visibleFrac = 1 / zoom;
+  const viewEnd = Math.min(1, viewStart + visibleFrac);
 
   useEffect(() => djEngine.subscribe((sa, sb) => {
     const st = deckId === 'A' ? sa : sb;
     const d = st.duration || 0;
     setDur((p) => (p === d ? p : d));
-    if (playheadRef.current) playheadRef.current.style.left = d > 0 ? `${(st.currentTime / d) * 100}%` : '0%';
+    if (playheadRef.current) {
+      const pos = d > 0 ? (st.currentTime / d - viewStart) / visibleFrac : 0;
+      playheadRef.current.style.left = `${clamp01(pos) * 100}%`;
+      playheadRef.current.style.opacity = pos >= 0 && pos <= 1 ? '1' : '0';
+    }
     const nl = st.loopActive && st.loopIn != null && st.loopOut != null ? { in: st.loopIn, out: st.loopOut } : null;
     setLoop((p) => (sameLoop(p, nl) ? p : nl));
-  }), [deckId]);
+  }), [deckId, viewStart, visibleFrac]);
+
+  useEffect(() => { setZoom(1); setViewStart(0); }, [audioUrl]);
 
   const beatMarks = useMemo(() => {
     if (!beats || beats.length === 0 || dur <= 0) return null;
     const dense = beats.length <= 400;
     const out: Array<{ left: number; down: boolean }> = [];
-    for (let i = 0; i < beats.length; i++) { const down = i % 4 === 0; if (!dense && !down) continue; out.push({ left: (beats[i] / dur) * 100, down }); }
+    for (let i = 0; i < beats.length; i++) {
+      const pos = beats[i] / dur;
+      if (pos < viewStart || pos > viewEnd) continue;
+      const down = i % 4 === 0;
+      if (!dense && !down) continue;
+      out.push({ left: ((pos - viewStart) / visibleFrac) * 100, down });
+    }
     return out;
-  }, [beats, dur]);
+  }, [beats, dur, viewEnd, viewStart, visibleFrac]);
+
+  const loopView = useMemo(() => {
+    if (!loop || dur <= 0) return null;
+    const start = Math.max(loop.in / dur, viewStart);
+    const end = Math.min(loop.out / dur, viewEnd);
+    if (end <= start) return null;
+    return { left: ((start - viewStart) / visibleFrac) * 100, width: ((end - start) / visibleFrac) * 100 };
+  }, [dur, loop, viewEnd, viewStart, visibleFrac]);
 
   const accentColor = accent === 'purple' ? '#a855f7' : '#22d3ee';
   const scrubbing = useRef(false);
@@ -1555,7 +1629,26 @@ const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats:
     const el = containerRef.current; if (!el) return;
     const d = djEngine.getStatus(deckId).duration; if (d <= 0) return;
     const rect = el.getBoundingClientRect();
-    djEngine.seekDeck(deckId, clamp01((clientX - rect.left) / rect.width) * d);
+    djEngine.seekDeck(deckId, clamp01(viewStart + clamp01((clientX - rect.left) / rect.width) * visibleFrac) * d);
+  };
+  const onWheelZoom = (e: React.WheelEvent) => {
+    const el = containerRef.current; if (!el || dur <= 0) return;
+    e.preventDefault();
+    const maxZoom = 24;
+    const rect = el.getBoundingClientRect();
+    const pointer = clamp01((e.clientX - rect.left) / rect.width);
+    const panIntent = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    if (panIntent && zoom > 1) {
+      const delta = (e.deltaX || e.deltaY) / Math.max(160, rect.width);
+      setViewStart((s) => clamp(s + delta * visibleFrac, 0, Math.max(0, 1 - visibleFrac)));
+      return;
+    }
+    const nextZoom = clamp(zoom * Math.exp(-e.deltaY * 0.002), 1, maxZoom);
+    const snappedZoom = nextZoom < 1.04 ? 1 : nextZoom;
+    const underPointer = viewStart + pointer * visibleFrac;
+    const nextVisible = 1 / snappedZoom;
+    setZoom(snappedZoom);
+    setViewStart(clamp(underPointer - pointer * nextVisible, 0, Math.max(0, 1 - nextVisible)));
   };
   const applyScrub = () => { scrubRaf.current = 0; const x = pendingX.current; pendingX.current = null; if (x != null) seekToClientX(x); };
   const queueScrub = (clientX: number) => { pendingX.current = clientX; if (!scrubRaf.current) scrubRaf.current = requestAnimationFrame(applyScrub); };
@@ -1565,12 +1658,18 @@ const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats:
   useEffect(() => () => { if (scrubRaf.current) cancelAnimationFrame(scrubRaf.current); }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full" style={{ minHeight: height }}>
-      <WaveformPreview audioUrl={audioUrl} height={height} interact={false} />
-      <div className="absolute inset-0 z-10 cursor-ew-resize touch-none" onPointerDown={onScrubDown} onPointerMove={onScrubMove} onPointerUp={onScrubUp} onPointerCancel={onScrubUp} title="Drag to scrub · click to seek" />
+    <div ref={containerRef} className="relative h-full" style={{ minHeight: height }} onWheel={onWheelZoom}>
+      <DJSemanticWaveform audioUrl={audioUrl} height={height} viewportStart={viewStart} viewportEnd={viewEnd} />
+      <div className="absolute inset-0 z-10 cursor-ew-resize touch-none" onPointerDown={onScrubDown} onPointerMove={onScrubMove} onPointerUp={onScrubUp} onPointerCancel={onScrubUp} title="Scroll to zoom · Shift-scroll to pan · drag to scrub" />
       {beatMarks && (<div className="absolute inset-0 z-20 pointer-events-none">{beatMarks.map((m, i) => (<div key={i} className="absolute top-0 bottom-0" style={{ left: `${m.left}%`, width: '1px', background: m.down ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.10)' }} />))}</div>)}
-      {loop && dur > 0 && (<div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: `${(loop.in / dur) * 100}%`, width: `${((loop.out - loop.in) / dur) * 100}%`, background: 'rgba(245,200,66,0.18)', borderLeft: '1px solid rgba(245,200,66,0.7)', borderRight: '1px solid rgba(245,200,66,0.7)' }} />)}
-      {dur > 0 && cues && cues.map((c, i) => (c == null ? null : (<div key={i} className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: `${(c / dur) * 100}%`, width: '2px', background: accentColor }}><span className="absolute top-0 left-0 text-[6px] font-black text-black px-0.5 leading-tight" style={{ background: accentColor }}>{i + 1}</span></div>)))}
+      {loopView && (<div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: `${loopView.left}%`, width: `${loopView.width}%`, background: 'rgba(245,200,66,0.18)', borderLeft: '1px solid rgba(245,200,66,0.7)', borderRight: '1px solid rgba(245,200,66,0.7)' }} />)}
+      {dur > 0 && cues && cues.map((c, i) => {
+        if (c == null) return null;
+        const pos = c / dur;
+        if (pos < viewStart || pos > viewEnd) return null;
+        return (<div key={i} className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: `${((pos - viewStart) / visibleFrac) * 100}%`, width: '2px', background: accentColor }}><span className="absolute top-0 left-0 text-[6px] font-black text-black px-0.5 leading-tight" style={{ background: accentColor }}>{i + 1}</span></div>);
+      })}
+      {zoom > 1.04 && <div className="absolute bottom-1 right-1 z-30 rounded bg-black/70 px-1.5 py-0.5 text-[8px] font-mono text-white/70 pointer-events-none">{zoom.toFixed(1)}x</div>}
       <div ref={playheadRef} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: '0%', width: '2px', background: '#ffffff', boxShadow: '0 0 4px rgba(255,255,255,0.8)' }} />
     </div>
   );
@@ -1746,7 +1845,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     ) };
 
     reg[`jog${d}`] = { id: `jog${d}`, label: `Jog ${d}`, group: grp, kind: 'jog', source: 'builtin', render: () => (
-      <div className="h-full w-full grid place-items-center"><JogWheel deckId={d} color={rgbc} disabled={!hasTrack} fill /></div>
+      <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} onLoadId={(id) => p.loadDeck(id, d)} />
     ) };
 
     // Each pad is its own relocatable widget (atomized transport / hotcues / loop / perf).
