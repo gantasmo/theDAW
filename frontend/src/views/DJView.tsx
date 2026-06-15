@@ -230,13 +230,13 @@ type DeckCtl = ReturnType<typeof useDeck>;
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 12;
+const DJ_LAYOUT_VERSION = 15;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
   root: 'root',
   nodes: {
-    root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 3.2, heroP: 1.75, browserDock: 4.1 } },
+    root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 5.25, heroP: 1.45, browserDock: 3.45 } },
     topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.25, mixer: 2.75, deckBcont: 4.25 }, framed: true, frameTitle: 'Decks' },
     heroP: { id: 'heroP', type: 'panel', title: 'Waveforms', flow: 'row', widgets: [], pinned: 'hero' },
     browserDock: { id: 'browserDock', type: 'container', axis: 'row', children: ['browserLeft', 'libraryP'], fr: { browserLeft: 2.45, libraryP: 9.6 }, framed: true, frameTitle: 'Browser' },
@@ -247,9 +247,9 @@ const defaultDjLayout: SurfaceLayout = {
     center: { id: 'center', type: 'container', axis: 'column', children: ['deckmix', 'fxrow'], fr: { deckmix: 5, fxrow: 2 } },
     deckmix: { id: 'deckmix', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.17953863997903, mixer: 5.180662235484642, deckBcont: 4.439799124536327 } },
     // ── Deck A (pad-rows wrapped with spacer panels in cont-* containers) ──
-    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'cont-13-90c67ecb', 'cont-16-c9fc3a59', 'cont-18-cd01de17'], fr: { 'cont-10-e11250c4': 2.55, 'cont-A-transport': 0.82, 'cont-A-stems': 1.15, 'cont-13-90c67ecb': 0.7, 'cont-16-c9fc3a59': 0.7, 'cont-18-cd01de17': 0.86, 'pdA-head': 1 }, framed: true },
+    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'cont-13-90c67ecb', 'cont-16-c9fc3a59', 'cont-18-cd01de17'], fr: { 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, 'cont-13-90c67ecb': 0.82, 'cont-16-c9fc3a59': 0.82, 'cont-18-cd01de17': 0.86, 'pdA-head': 1.12 }, framed: true },
     'pdA-head': { id: 'pdA-head', type: 'panel', title: 'Deck A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
-    'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], mirror: true },
+    'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], widgetMargins: { jogA: { t: 2, r: 4, b: 8, l: 4 } }, mirror: true },
     'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
     'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'syncA'], uniform: true, mirror: true },
     'pdA-stems': { id: 'pdA-stems', type: 'panel', title: 'A · Stems', flow: 'row', widgets: ['stemBankA'], mirror: true },
@@ -257,9 +257,9 @@ const defaultDjLayout: SurfaceLayout = {
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
     'pdA-perf': { id: 'pdA-perf', type: 'panel', title: 'A · Perf', flow: 'row', widgets: ['rollA_0', 'rollA_1', 'rollA_2', 'slipA', 'jumpA_0', 'jumpA_1', 'jumpA_2', 'jumpA_3'], uniform: true, mirror: true },
     // ── Deck B ──
-    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'cont-4-4f4c96d2', 'cont-6-29de8ab7', 'cont-9-aebcd780'], fr: { 'pdB-head': 1, 'cont-2-a0e79010': 2.55, 'cont-B-transport': 0.82, 'cont-B-stems': 1.15, 'cont-4-4f4c96d2': 0.7, 'cont-6-29de8ab7': 0.7, 'cont-9-aebcd780': 0.86 }, framed: true },
+    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'cont-4-4f4c96d2', 'cont-6-29de8ab7', 'cont-9-aebcd780'], fr: { 'pdB-head': 1.12, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, 'cont-4-4f4c96d2': 0.82, 'cont-6-29de8ab7': 0.82, 'cont-9-aebcd780': 0.86 }, framed: true },
     'pdB-head': { id: 'pdB-head', type: 'panel', title: 'Deck B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
-    'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'] },
+    'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'], widgetMargins: { jogB: { t: 2, r: 4, b: 8, l: 4 } } },
     'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
     'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['cueB', 'playB', 'syncB'], uniform: true },
     'pdB-stems': { id: 'pdB-stems', type: 'panel', title: 'B · Stems', flow: 'row', widgets: ['stemBankB'] },
@@ -769,7 +769,7 @@ const PlatterDropTarget: React.FC<{
 
   return (
     <div
-      className={`relative h-full w-full grid place-items-center rounded transition-colors ${dropHover ? 'bg-white/6 ring-2 ring-inset' : ''}`}
+      className={`relative h-full w-full grid place-items-center rounded overflow-hidden transition-colors ${dropHover ? 'bg-white/6 ring-2 ring-inset' : ''}`}
       style={{ '--deck-ring': rgba(color, 0.9), '--deck-glow': rgba(color, 0.28) } as React.CSSProperties}
       onDragEnter={onDragOver}
       onDragOver={onDragOver}
@@ -778,7 +778,7 @@ const PlatterDropTarget: React.FC<{
       title={`Drop a track on Deck ${deckId} platter`}
     >
       <div className={`absolute inset-1 rounded-full pointer-events-none transition-opacity ${dropHover ? 'opacity-100' : 'opacity-0'}`} style={{ border: `1px solid ${rgba(color, 0.75)}`, boxShadow: `0 0 22px ${rgba(color, 0.45)}, inset 0 0 18px ${rgba(color, 0.16)}` }} />
-      <JogWheel deckId={deckId} color={color} disabled={!hasTrack} fill />
+      <JogWheel deckId={deckId} color={color} disabled={!hasTrack} fill fillScale={0.88} />
       {dropHover && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
           <div className="rounded bg-black/75 border px-2 py-1 text-[8px] font-black uppercase tracking-wider" style={{ borderColor: rgba(color, 0.7), color: rgb(color), boxShadow: `0 0 14px ${rgba(color, 0.35)}` }}>
@@ -1738,7 +1738,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   // the button stays wider than tall, centred vertically in its cell.
   const padBox = (s: { w: number; h: number }, node: React.ReactNode) => (
     <div className="h-full w-full grid place-items-center overflow-hidden">
-      <div className="w-full grid" style={{ height: Math.max(16, Math.min(s.h, s.w * 0.6)) }}>{node}</div>
+      <div className="w-full grid" style={{ height: Math.max(22, Math.min(s.h, s.w * 0.6)) }}>{node}</div>
     </div>
   );
   const faderWrap = (node: React.ReactNode) => <div className="h-full w-full min-h-0 flex justify-center">{node}</div>;

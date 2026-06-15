@@ -13,6 +13,7 @@ import { AssistantPanel } from './orb-kit/AssistantPanel';
 import { logInfo, logWarn } from './state/logStore';
 import { handletheDAWAction } from './orb-kit/actionHandlers';
 import { useStatusBarStore } from './state/statusBarStore';
+import { useAppUiStore } from './state/appUiStore';
 import { useLibraryStore } from './state/libraryStore';
 import { useModuleStore } from './state/moduleStore';
 import { useLayoutPrefs } from './state/layoutPrefsStore';
@@ -53,6 +54,8 @@ export default function App() {
 
   const isBackendReady = useStatusBarStore((s) => s.isBackendReady);
   const refreshHealth  = useStatusBarStore((s) => s.refreshHealth);
+  const centerTab = useAppUiStore((s) => s.centerTab);
+  const isDjWorkspace = centerTab === 'dj';
 
   // Health polling lives here so it runs during the loading screen.
   // Exponential backoff: 1s → 2s → 4s → 8s → 16s until ready, then 30s steady.
@@ -230,22 +233,26 @@ export default function App() {
     <>
       {/* Main app always mounts so state initializes, but polls are gated on isBackendReady */}
       <Shell />
-      <PlayerFooter />
-      <GantasmoOrb
-        isActive={isAssistantOpen}
-        onToggle={() => setIsAssistantOpen(prev => !prev)}
-        onPositionChange={setOrbPosition}
-        // Bottom-left corner, pulled DOWN to overlap the footer (where the
-        // music-note icon used to be). v3 key so it resets there once.
-        defaultPosition={{ x: 12, y: typeof window !== 'undefined' ? window.innerHeight - 92 : 500 }}
-        persistenceKey="thedaw-orb-pos-v3"
-      />
-      <AssistantPanel
-        isOpen={isAssistantOpen}
-        onClose={() => setIsAssistantOpen(false)}
-        onExecuteAction={handleAssistantAction}
-        orbPosition={orbPosition}
-      />
+      {!isDjWorkspace && (
+        <>
+          <PlayerFooter />
+          <GantasmoOrb
+            isActive={isAssistantOpen}
+            onToggle={() => setIsAssistantOpen(prev => !prev)}
+            onPositionChange={setOrbPosition}
+            // Bottom-left corner, pulled DOWN to overlap the footer (where the
+            // music-note icon used to be). v3 key so it resets there once.
+            defaultPosition={{ x: 12, y: typeof window !== 'undefined' ? window.innerHeight - 92 : 500 }}
+            persistenceKey="thedaw-orb-pos-v3"
+          />
+          <AssistantPanel
+            isOpen={isAssistantOpen}
+            onClose={() => setIsAssistantOpen(false)}
+            onExecuteAction={handleAssistantAction}
+            orbPosition={orbPosition}
+          />
+        </>
+      )}
 
       {/* Loading screen overlays everything until backend is ready */}
       <AnimatePresence>
@@ -264,5 +271,3 @@ export default function App() {
     </>
   );
 }
-
-

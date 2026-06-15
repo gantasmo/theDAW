@@ -17,13 +17,15 @@ const SEC_PER_REV = 1.8;      // 33⅓-rpm feel
 const SCRUB_TURNS = 4;        // seconds of travel per full drag-turn
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-export function JogWheel({ deckId, color, size = 132, disabled, fill }: {
+export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale = 1 }: {
   deckId: djEngine.DeckId;
   color: RGB;
   size?: number;
   disabled?: boolean;
   /** Auto-size the platter to fill its container (min of its width/height). */
   fill?: boolean;
+  /** Multiplier for fill mode; use < 1 when neighboring controls need air. */
+  fillScale?: number;
 }) {
   const measureRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -43,11 +45,11 @@ export function JogWheel({ deckId, color, size = 132, disabled, fill }: {
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
-      setDim(Math.max(48, Math.floor(Math.min(r.width, r.height))));
+      setDim(Math.max(44, Math.floor(Math.min(r.width, r.height) * fillScale)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [fill, size]);
+  }, [fill, fillScale, size]);
 
   const D = dim;
   const R = D / 2;
