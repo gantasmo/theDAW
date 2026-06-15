@@ -25,24 +25,22 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
-  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, FolderPlus, Shield, Headphones, Piano, X,
+  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors,
 } from 'lucide-react';
 import { subscribeToMidi } from '../state/midiBus';
 import { useDjControlMap, sigLabel, type MidiKind } from '../state/djControlMap';
 import { useDjSampler } from '../state/djSamplerStore';
 import { useDjSideList } from '../state/djSideListStore';
+import { useFeatureToggleStore } from '../state/featureToggleStore';
 import { ControlSurface } from '../components/surface/ControlSurface';
 import { DJ_TARGETS } from '../state/bindableTargets';
 import type { WidgetRegistry } from '../components/surface/widgetTypes';
 import type { SurfaceLayout } from '../state/surfaceLayoutStore';
 import { useAppUiStore } from '../state/appUiStore';
 import { useSetlistStore, type SetlistEntry } from '../state/setlistStore';
-import { useDjAutomix } from '../state/djAutomixStore';
 import { useLibraryStore } from '../state/libraryStore';
-import { importFolder } from '../lib/mediaLibrary';
 import type { LibraryEntry } from '../state/libraryStore';
 import { useDjAnalysisStore } from '../state/djAnalysisStore';
-import { useDjBrowser, type DjColKey, DJ_COL_MIN_WIDTH } from '../state/djBrowserStore';
 import { useDjCuesStore, HOTCUE_SLOTS } from '../state/djCuesStore';
 import { toCamelot, keyLabel } from '../lib/camelot';
 import { buildBeatgrid } from '../lib/beatgrid';
@@ -149,18 +147,6 @@ function useDeck(deckId: djEngine.DeckId, entryId: string | null, hasTrack: bool
   }), [deckId]);
   useEffect(() => { if (!loopActive) setActiveLoopBeats(null); }, [loopActive]);
 
-  // Key-lock (master tempo) defaults ON the first time a deck gets a track, so
-  // tempo changes and SYNC keep the original pitch out of the box (the
-  // Signalsmith time-stretch corrects the playbackRate pitch shift). Applied
-  // once per deck; an explicit user toggle afterwards wins.
-  const keylockDefaultedRef = useRef(false);
-  useEffect(() => {
-    if (entryId && !keylockDefaultedRef.current) {
-      keylockDefaultedRef.current = true;
-      void djEngine.setDeckKeylock(deckId, true);
-    }
-  }, [entryId, deckId]);
-
   const autoCuedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!entryId || autoCuedRef.current === entryId) return;
@@ -230,7 +216,7 @@ type DeckCtl = ReturnType<typeof useDeck>;
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 6;
+const DJ_LAYOUT_VERSION = 7;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -262,13 +248,13 @@ const defaultDjLayout: SurfaceLayout = {
     // ── Mixer ──
     mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 1, mixChans: 6, mixXfade: 1.6 }, framed: true },
     mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['spacer:s-24-02c5d864', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap', 'spacer:s-23-936b468e'], uniform: true },
-    mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['pchAP', 'eqAP', 'chAP', 'chBP', 'eqBP', 'pchBP'], fr: { pchAP: 1.9619631901840493, eqAP: 1.6633325420748168, chAP: 1.5103255906150865, chBP: 1.4272893076328357, eqBP: 1.3476793102143942, pchBP: 1.8894100592788177 } },
-    pchAP: { id: 'pchAP', type: 'panel', title: 'Pitch A', flow: 'column', widgets: ['pitchA'], widgetMargins: { pitchA: { t: 8, r: 8, b: 0, l: 64 } }, mirror: true },
+    mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['eqAP', 'chAP', 'chBP', 'eqBP'], fr: { eqAP: 1.35, chAP: 1.15, chBP: 1.15, eqBP: 1.35 } },
+    pchAP: { id: 'pchAP', type: 'panel', title: 'Pitch A', flow: 'column', widgets: ['pitchA'], widgetMargins: { pitchA: { t: 8, r: 4, b: 8, l: 4 } }, mirror: true },
     eqAP: { id: 'eqAP', type: 'panel', title: 'EQ A', flow: 'column', widgets: ['eqA.hi', 'eqA.mid', 'eqA.lo', 'fltA'], mirror: true },
     chAP: { id: 'chAP', type: 'panel', title: 'Ch A', flow: 'column', widgets: ['volA', 'gainA'], widgetFr: { gainA: 1, volA: 3 }, widgetMargins: { volA: { t: 8, r: 0, b: 8, l: 24 } }, mirror: true },
     chBP: { id: 'chBP', type: 'panel', title: 'Ch B', flow: 'column', widgets: ['gainB', 'volB'], widgetFr: { gainB: 1, volB: 3 }, widgetMargins: { volB: { t: 8, r: 24, b: 8, l: 0 } } },
     eqBP: { id: 'eqBP', type: 'panel', title: 'EQ B', flow: 'column', widgets: ['eqB.hi', 'eqB.mid', 'eqB.lo', 'fltB'] },
-    pchBP: { id: 'pchBP', type: 'panel', title: 'Pitch B', flow: 'column', widgets: ['pitchB'], widgetMargins: { pitchB: { t: 8, r: 64, b: 0, l: 8 } }, uniform: false },
+    pchBP: { id: 'pchBP', type: 'panel', title: 'Pitch B', flow: 'column', widgets: ['pitchB'], widgetMargins: { pitchB: { t: 8, r: 4, b: 8, l: 4 } }, uniform: false },
     mixXfade: { id: 'mixXfade', type: 'panel', title: 'Crossfade', flow: 'row', widgets: ['spacer:s-22-ffca8259', 'crossfader', 'spacer:s-21-cb584c7d'], widgetFr: { 'spacer:s-22-ffca8259': 0.4556701030927834, crossfader: 2.039175257731959, 'spacer:s-21-cb584c7d': 0.5051546391752577 }, widgetMargins: { crossfader: { t: 16, r: 0, b: 0, l: 0 } }, uniform: false },
     // ── FX row + rails ──
     fxrow: { id: 'fxrow', type: 'container', axis: 'row', children: ['fxAP', 'nextP', 'fxBP'], fr: { fxAP: 0.7703206562266971, nextP: 1.9175988068605512, fxBP: 0.812080536912752 } },
@@ -280,7 +266,7 @@ const defaultDjLayout: SurfaceLayout = {
     libraryP: { id: 'libraryP', type: 'panel', title: 'Library', flow: 'row', widgets: [], pinned: 'library', uniform: true },
     // ── Deck B pad-row wrappers (pad row + spacer panel) ──
     'panel-1-eff655d2': { id: 'panel-1-eff655d2', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-25-e6518f32'] },
-    'cont-2-a0e79010': { id: 'cont-2-a0e79010', type: 'container', axis: 'row', children: ['pdB-trans', 'pdB-jog', 'panel-1-eff655d2'], fr: { 'pdB-jog': 1.4609863820390143, 'panel-1-eff655d2': 1.05576002944424, 'pdB-trans': 0.48325358851674666 } },
+    'cont-2-a0e79010': { id: 'cont-2-a0e79010', type: 'container', axis: 'row', children: ['pdB-trans', 'pdB-jog', 'pchBP', 'panel-1-eff655d2'], fr: { 'pdB-trans': 0.48, 'pdB-jog': 1.46, pchBP: 0.45, 'panel-1-eff655d2': 0.6 } },
     'panel-3-e0911657': { id: 'panel-3-e0911657', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-32-4c52fb39'] },
     'cont-4-4f4c96d2': { id: 'cont-4-4f4c96d2', type: 'container', axis: 'row', children: ['pdB-hc', 'panel-3-e0911657'], fr: { 'pdB-hc': 1, 'panel-3-e0911657': 1 } },
     'panel-5-e8707245': { id: 'panel-5-e8707245', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-31-c7e28dbf'] },
@@ -288,7 +274,7 @@ const defaultDjLayout: SurfaceLayout = {
     'panel-8-81228019': { id: 'panel-8-81228019', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-30-3282c3a3'] },
     'cont-9-aebcd780': { id: 'cont-9-aebcd780', type: 'container', axis: 'row', children: ['pdB-perf', 'panel-8-81228019'], fr: { 'pdB-perf': 1.5358851674641145, 'panel-8-81228019': 0.46411483253588537 } },
     // ── Deck A pad-row wrappers ──
-    'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pdA-jog', 'pdA-trans'], fr: { 'pdA-trans': 0.6151578454149662, 'pdA-jog': 1.7458919844074359, 'panel-11-95a4a261': 1.1682122566915911 } },
+    'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pchAP', 'pdA-jog', 'pdA-trans'], fr: { 'panel-11-95a4a261': 0.7, pchAP: 0.45, 'pdA-jog': 1.75, 'pdA-trans': 0.62 } },
     'panel-11-95a4a261': { id: 'panel-11-95a4a261', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-26-79f129b0'] },
     'panel-12-8772ebc6': { id: 'panel-12-8772ebc6', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-29-e3c2d4fe'] },
     'cont-13-90c67ecb': { id: 'cont-13-90c67ecb', type: 'container', axis: 'row', children: ['panel-12-8772ebc6', 'pdA-hc'], fr: { 'pdA-hc': 1.0814249363867683, 'panel-12-8772ebc6': 0.9185750636132315 } },
@@ -352,7 +338,9 @@ export const DJView: React.FC = () => {
   const setlists = useSetlistStore((s) => s.setlists);
   const activeId = useSetlistStore((s) => s.activeId);
   const appendToSet = useSetlistStore((s) => s.append);
+  const importBundledSetlists = useSetlistStore((s) => s.importBundled);
   const activeSet = activeId ? setlists[activeId] : null;
+  useEffect(() => { void importBundledSetlists(); }, [importBundledSetlists]);
 
   const trackById = (id: string | null): LibraryEntry | null => (id ? entries.find((e) => e.id === id) ?? null : null);
   const deckATitle = trackById(deckATrack)?.title ?? null;
@@ -445,39 +433,48 @@ export const DJView: React.FC = () => {
     setFlash(isVjSetTargetActive() ? `Sent "${track.title}" to VJ` : `Queued "${track.title}" — opens with VJ tab`);
   };
 
-  const syncDeck = (which: djEngine.DeckId) => {
-    const thisCtl = which === 'A' ? ctlA : ctlB;
-    const otherCtl = which === 'A' ? ctlB : ctlA;
-    const otherId: djEngine.DeckId = which === 'A' ? 'B' : 'A';
-    const thisBpm = thisCtl.a?.bpm ?? null;
-    const otherBpm = otherCtl.a?.bpm ?? null;
-    if (!thisBpm || !otherBpm) return;
-    const otherPitch = which === 'A' ? deckBPitch : deckAPitch;
-    const otherEffBpm = otherBpm * (1 + otherPitch / 100);
-    let rate = otherEffBpm / thisBpm;
+  const syncDeck = (which: djEngine.DeckId): djEngine.DeckId | null => {
+    const aStatus = djEngine.getStatus('A');
+    const bStatus = djEngine.getStatus('B');
+    const oneDeckPlaying = aStatus.playing !== bStatus.playing;
+    const follower: djEngine.DeckId = oneDeckPlaying
+      ? (aStatus.playing ? 'B' : 'A')
+      : which;
+    const master: djEngine.DeckId = follower === 'A' ? 'B' : 'A';
+
+    const followerCtl = follower === 'A' ? ctlA : ctlB;
+    const masterCtl = master === 'A' ? ctlA : ctlB;
+    const followerBpm = followerCtl.a?.bpm ?? null;
+    const masterBpm = masterCtl.a?.bpm ?? null;
+    if (!followerBpm || !masterBpm) return null;
+    const masterPitch = master === 'A' ? deckAPitch : deckBPitch;
+    const masterEffBpm = masterBpm * (1 + masterPitch / 100);
+    let rate = masterEffBpm / followerBpm;
     while (rate > Math.SQRT2) rate /= 2;
     while (rate < Math.SQRT1_2) rate *= 2;
     const pct = (rate - 1) * 100;
-    if (which === 'A') setDeckAPitch(pct); else setDeckBPitch(pct);
-    djEngine.setDeckPitch(which, pct);
-    const thisBeats = thisCtl.a?.beats ?? null;
-    const otherBeats = otherCtl.a?.beats ?? null;
-    const otherStatus = djEngine.getStatus(otherId);
-    const thisStatus = djEngine.getStatus(which);
-    if (thisBeats && otherBeats && otherStatus.playing) {
-      const interval = 60 / (thisBpm * rate);
-      let delta = (beatPhase(otherStatus.currentTime, otherBeats) - beatPhase(thisStatus.currentTime, thisBeats)) * interval;
+    if (follower === 'A') setDeckAPitch(pct); else setDeckBPitch(pct);
+    djEngine.setDeckPitch(follower, pct);
+    const followerBeats = followerCtl.a?.beats ?? null;
+    const masterBeats = masterCtl.a?.beats ?? null;
+    const masterStatus = master === 'A' ? aStatus : bStatus;
+    const followerStatus = follower === 'A' ? aStatus : bStatus;
+    if (followerBeats && masterBeats && masterStatus.playing && followerStatus.playing) {
+      const interval = 60 / (followerBpm * rate);
+      let delta = (beatPhase(masterStatus.currentTime, masterBeats) - beatPhase(followerStatus.currentTime, followerBeats)) * interval;
       if (delta > interval / 2) delta -= interval;
       if (delta < -interval / 2) delta += interval;
-      djEngine.seekDeck(which, thisStatus.currentTime + delta);
+      djEngine.seekDeck(follower, followerStatus.currentTime + delta);
     }
-    setFlash(`Synced Deck ${which} → ${otherEffBpm.toFixed(1)} BPM`);
+    setFlash(`BPM Sync: Deck ${follower} follows Deck ${master} at ${masterEffBpm.toFixed(1)} BPM`);
+    return follower;
   };
   const toggleSyncLock = (which: djEngine.DeckId) => {
-    if (syncLock === which) { setSyncLock(null); return; }
-    syncDeck(which);
-    setSyncLock(which);
-    setFlash(`Sync-Lock: Deck ${which} follows Deck ${which === 'A' ? 'B' : 'A'}`);
+    const synced = syncDeck(which);
+    if (!synced) return;
+    if (syncLock === synced) { setSyncLock(null); return; }
+    setSyncLock(synced);
+    setFlash(`Sync-Lock: Deck ${synced} follows Deck ${synced === 'A' ? 'B' : 'A'}`);
   };
 
   const aData = ctlA.a;
@@ -573,16 +570,6 @@ export const DJView: React.FC = () => {
       }
     });
   }, []);
-
-  // A send-to-DJ (suggester, etc.) populates the active set + switches here, then
-  // trips a one-shot start flag: consume it and flip automix on so the set below
-  // begins beatmatch-crossfading without a manual Automix press.
-  const pendingAutomixStart = useDjAutomix((s) => s.pendingStart);
-  useEffect(() => {
-    if (!pendingAutomixStart) return;
-    useDjAutomix.getState().consumeStart();
-    setAutomixOn(true);
-  }, [pendingAutomixStart]);
 
   // Automix (D7): auto-sequence the active set across the 2 decks — beatmatch
   // the next track and crossfade at each tail, then advance. Pure orchestration
@@ -776,25 +763,10 @@ const SAMPLER_SLOTS = 10;
 const SamplerRail: React.FC = () => {
   const pads = useDjSampler((s) => s.pads);
   const setPad = useDjSampler((s) => s.setPad);
-  const setPadOpts = useDjSampler((s) => s.setPadOpts);
   const clearPad = useDjSampler((s) => s.clearPad);
   const entries = useLibraryStore((s) => s.entries);
   const [over, setOver] = useState<number | null>(null);
-  // Which loop pads are currently sounding, for a lit state (loops toggle).
-  const [looping, setLooping] = useState<Record<number, boolean>>({});
   const loadedRef = useRef<Set<string>>(new Set());
-
-  const fire = (i: number) => {
-    const pad = pads[i];
-    if (!pad) return;
-    djEngine.triggerSample(`sampler:${i}`, { gain: pad.gain ?? 1, loop: pad.loop, choke: pad.choke });
-    if (pad.loop) setLooping((l) => ({ ...l, [i]: !l[i] }));
-  };
-  const clear = (i: number) => {
-    djEngine.clearSample(`sampler:${i}`);
-    clearPad(i);
-    setLooping((l) => { const n = { ...l }; delete n[i]; return n; });
-  };
 
   // Decode each persisted pad's sample into the engine once (after a reload).
   useEffect(() => {
@@ -833,50 +805,26 @@ const SamplerRail: React.FC = () => {
       <div className="flex-1 min-h-0 grid grid-cols-2 gap-1 p-1.5 content-start">
         {Array.from({ length: SAMPLER_SLOTS }, (_, i) => {
           const pad = pads[i];
-          const isLooping = pad?.loop && looping[i];
           return (
-            <div key={i}
+            <button key={i} type="button"
+              onClick={() => { if (pad) djEngine.triggerSample(`sampler:${i}`); }}
+              onContextMenu={(e) => { e.preventDefault(); if (pad) { djEngine.clearSample(`sampler:${i}`); clearPad(i); } }}
               onDragOver={(e) => { if (e.dataTransfer.types.includes(DJ_TRACK_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setOver(i); } }}
               onDragLeave={() => setOver((o) => (o === i ? null : o))}
               onDrop={(e) => void drop(i, e)}
-              className={`relative flex flex-col rounded-md border overflow-hidden transition-colors ${
+              title={pad ? `${pad.name} — click to fire, right-click to clear` : 'Drop a library track here to load a one-shot'}
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-md border py-1.5 transition-colors active:scale-95 ${
                 over === i ? 'border-amber-400/70 bg-amber-500/15'
-                  : isLooping ? 'border-emerald-400/70 bg-emerald-500/15'
-                    : pad ? 'border-amber-500/40 bg-amber-500/8' : 'border-white/10 bg-black/40'
+                  : pad ? 'border-amber-500/40 bg-amber-500/8 text-amber-200 hover:bg-amber-500/15'
+                    : 'border-white/10 bg-black/40 text-zinc-600 hover:border-white/20'
               }`}>
-              <button type="button"
-                onClick={() => fire(i)}
-                onContextMenu={(e) => { e.preventDefault(); if (pad) clear(i); }}
-                title={pad ? `${pad.name} — click to ${pad.loop ? 'start/stop the loop' : 'fire'}, right-click to clear` : 'Drop a library track here to load a pad'}
-                className={`flex flex-col items-center justify-center gap-0.5 py-1.5 active:scale-95 transition-transform ${
-                  pad ? (isLooping ? 'text-emerald-100' : 'text-amber-200') : 'text-zinc-600'
-                }`}>
-                <span className="text-[11px] font-black leading-none">{i === 9 ? 0 : i + 1}</span>
-                <span className="text-[7px] font-mono uppercase tracking-wide leading-none truncate max-w-full px-0.5">{pad ? pad.name : '—'}</span>
-              </button>
-              {pad && (
-                <div className="flex border-t border-white/10 divide-x divide-white/10">
-                  <button type="button"
-                    onClick={() => setPadOpts(i, { loop: !pad.loop })}
-                    aria-pressed={!!pad.loop}
-                    title={pad.loop ? 'Loop ON — pad holds the sample until pressed again' : 'One-shot — click to make this pad loop'}
-                    className={`flex-1 text-[7px] font-black leading-none py-0.5 transition-colors ${pad.loop ? 'bg-emerald-500/25 text-emerald-200' : 'text-zinc-500 hover:text-zinc-200'}`}>
-                    LOOP
-                  </button>
-                  <button type="button"
-                    onClick={() => setPadOpts(i, { choke: !pad.choke })}
-                    aria-pressed={!!pad.choke}
-                    title={pad.choke ? 'Choke ON — firing this pad cuts the other choke pads' : 'Click to add this pad to the choke group (mutually exclusive)'}
-                    className={`flex-1 text-[7px] font-black leading-none py-0.5 transition-colors ${pad.choke ? 'bg-rose-500/25 text-rose-200' : 'text-zinc-500 hover:text-zinc-200'}`}>
-                    CHOKE
-                  </button>
-                </div>
-              )}
-            </div>
+              <span className="text-[11px] font-black leading-none">{i === 9 ? 0 : i + 1}</span>
+              <span className="text-[7px] font-mono uppercase tracking-wide leading-none truncate max-w-full px-0.5">{pad ? pad.name : '—'}</span>
+            </button>
           );
         })}
       </div>
-      <div className="shrink-0 px-1.5 pb-1.5 text-[7px] font-mono text-zinc-600 text-center">click fires · loop / choke per pad · right-click clears</div>
+      <div className="shrink-0 px-1.5 pb-1.5 text-[7px] font-mono text-zinc-600 text-center">click fires · right-click clears</div>
     </div>
   );
 };
@@ -903,8 +851,18 @@ const DeckTimes: React.FC<{ deckId: djEngine.DeckId; mirror?: boolean }> = ({ de
 const DJ_FX: Array<{ key: djEngine.DjFx; label: string }> = [
   { key: 'flanger', label: 'Flng' }, { key: 'reverb', label: 'Verb' }, { key: 'wahwah', label: 'Wah' },
 ];
-const STEM_LABEL: Record<string, string> = { vocals: 'Voc', drums: 'Drm', bass: 'Bass', other: 'Oth', guitar: 'Gtr', piano: 'Pno' };
-const stemLabel = (n: string) => STEM_LABEL[n.toLowerCase()] ?? (n.charAt(0).toUpperCase() + n.slice(1, 4));
+const STEM_COUNT_OPTIONS = [2, 4, 6, 12] as const;
+type StemCount = typeof STEM_COUNT_OPTIONS[number];
+const toStemCount = (n: number | undefined): StemCount =>
+  STEM_COUNT_OPTIONS.includes(n as StemCount) ? (n as StemCount) : 4;
+const STEM_LABEL: Record<string, string> = {
+  vocals: 'Voc', drums: 'Drm', bass: 'Bass', other: 'Oth', guitar: 'Gtr', piano: 'Pno',
+  kick: 'Kick', snare: 'Snr', hihat: 'Hat', hats: 'Hat', cymbals: 'Cym', toms: 'Tom',
+};
+const stemLabel = (n: string) => {
+  const key = n.toLowerCase().replace(/^drums?[_-]/, '');
+  return STEM_LABEL[key] ?? (n.charAt(0).toUpperCase() + n.slice(1, 4));
+};
 
 const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null }> = ({ deck, accent, entryId }) => {
   const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
@@ -916,58 +874,45 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
   const [fx, setFx] = useState<Record<string, number>>({ flanger: 0, reverb: 0, wahwah: 0 });
   const onFx = (k: djEngine.DjFx, v: number) => { setFx((p) => ({ ...p, [k]: v })); djEngine.setDeckFx(deck, k, v); };
 
-  // Live stems (E): one-touch STEMS toggle → 4 mute/solo pads + fine faders.
-  // Cached stems load instantly; an uncached track separates on first toggle.
+  // Live stems (D4): load (separate if needed) cached stems, then per-stem faders.
+  const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
   const [stemNames, setStemNames] = useState<string[]>(() => djEngine.getDeckStemNames(deck));
   const [stemLevels, setStemLevels] = useState<Record<string, number>>({});
-  const [stemMuted, setStemMuted] = useState<Record<string, boolean>>({});
-  const [soloStem, setSoloStem] = useState<string | null>(null);
+  const [stemCount, setStemCount] = useState<StemCount>(() => toStemCount(stemSettings.default_count));
   const [stemBusy, setStemBusy] = useState(false);
   const [stemMsg, setStemMsg] = useState<string | null>(null);
-  const stemsOn = stemNames.length > 0;
+  useEffect(() => { setStemCount(toStemCount(stemSettings.default_count)); }, [stemSettings.default_count]);
   // The engine clears stems on track change (loadDeck) — mirror that here.
-  useEffect(() => {
-    setStemNames(djEngine.getDeckStemNames(deck));
-    setStemMuted({}); setSoloStem(null); setStemMsg(null);
-  }, [entryId, deck]);
-  // Apply effective gains whenever a level / mute / solo changes: a stem is
-  // silent when explicitly muted, or when a different stem is solo'd.
-  useEffect(() => {
-    if (!stemsOn) return;
-    for (const name of stemNames) {
-      const silenced = !!stemMuted[name] || (soloStem !== null && soloStem !== name);
-      djEngine.setStemGain(deck, name, silenced ? 0 : (stemLevels[name] ?? 1));
-    }
-  }, [stemsOn, stemNames, stemLevels, stemMuted, soloStem, deck]);
-
-  const toggleStems = async () => {
-    if (stemBusy) return;
-    if (stemsOn) {
-      setStemBusy(true); setStemMsg('…');
-      try { await djEngine.unloadDeckStems(deck); setStemNames([]); setSoloStem(null); setStemMsg(null); }
-      catch (e) { setStemMsg(e instanceof Error ? e.message.slice(0, 20) : 'failed'); }
-      finally { setStemBusy(false); }
-      return;
-    }
-    if (!entryId) return;
-    setStemBusy(true); setStemMsg('checking…');
+  useEffect(() => { setStemNames(djEngine.getDeckStemNames(deck)); setStemMsg(null); }, [entryId, deck]);
+  const loadStems = async () => {
+    if (!entryId || stemBusy) return;
+    setStemBusy(true); setStemMsg('checking cached stems');
     try {
-      // 6 stems (drums/bass/other/vocals/guitar/piano) so every part is
-      // toggleable; 'balanced' adds the fine-tuned shifts for cleaner splits.
-      const refs = await ensureStems(entryId, { stems: 6, quality: 'balanced' }, (pct, phase) => setStemMsg(`${phase} ${pct}%`));
+      const device = stemSettings.device || 'auto';
+      const quality = stemSettings.quality || 'balanced';
+      const refs = await ensureStems(
+        entryId,
+        { stems: stemCount, device, quality },
+        (pct, phase) => setStemMsg(`${phase.replace(/_/g, ' ')}${pct > 0 ? ` ${pct}%` : ''}`),
+      );
       if (!refs.length) { setStemMsg('no stems'); return; }
-      setStemMsg('loading…');
+      setStemMsg('loading stems');
       const names = await djEngine.loadDeckStems(deck, refs);
       setStemNames(names);
       setStemLevels(Object.fromEntries(names.map((n) => [n, 1])));
-      setStemMuted({}); setSoloStem(null); setStemMsg(null);
+      setStemMsg(null);
     } catch (e) {
-      setStemMsg(e instanceof Error ? e.message.slice(0, 24) : 'failed');
+      setStemMsg(e instanceof Error ? e.message.slice(0, 36) : 'failed');
     } finally { setStemBusy(false); }
   };
-  const toggleStemMute = (name: string) => setStemMuted((m) => ({ ...m, [name]: !m[name] }));
-  const toggleStemSolo = (name: string) => setSoloStem((s) => (s === name ? null : name));
-  const onStemLevel = (name: string, v: number) => setStemLevels((p) => ({ ...p, [name]: v }));
+  const abortStems = async () => {
+    if (!entryId || !stemBusy) return;
+    setStemMsg('aborting');
+    try { await fetch(`/api/stems/${encodeURIComponent(entryId)}/abort`, { method: 'POST' }); }
+    catch { /* the running request will surface the final state */ }
+  };
+  const onStem = (name: string, v: number) => { setStemLevels((p) => ({ ...p, [name]: v })); djEngine.setStemGain(deck, name, v); };
+  const stemActionLabel = stemBusy ? 'Running' : stemNames.length >= stemCount ? 'Reload' : 'Separate';
 
   return (
     <div className="hardware-card flex flex-col min-h-0 overflow-hidden">
@@ -982,66 +927,57 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
             <SlideKnob key={key} label={label} value={fx[key]} onChange={(v) => onFx(key, v)} min={0} max={1} step={0.01} size={30} centerReadout />
           ))}
         </div>
-        {/* Live stems (E) — one-touch toggle, then mute/solo pads + fine faders */}
-        <div className="mt-auto w-fit">
-          <div className={`flex items-center gap-1 mb-1 ${toCenter ? 'flex-row-reverse' : ''}`}>
-            <button
-              type="button"
-              onClick={() => void toggleStems()}
-              disabled={(!entryId && !stemsOn) || stemBusy}
-              aria-pressed={stemsOn}
-              title={stemsOn
-                ? 'Stems ON — click to return to the full track (keeps the playhead)'
-                : entryId ? 'Play this track as live stems (cached if already separated)' : 'Load a track first'}
-              className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border transition-colors disabled:opacity-30 disabled:pointer-events-none ${
-                stemsOn
-                  ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
-                  : 'border-white/10 text-zinc-400 hover:text-zinc-100 hover:border-white/20'
-              }`}>
-              {stemBusy ? (stemMsg ?? '…') : (stemsOn ? 'Stems ●' : 'Stems')}
+        {/* Live stems (D4) — per-stem gain faders, or a load/separate button */}
+        <div className="mt-auto w-full min-h-0">
+          <div className={`flex flex-wrap items-center gap-1 mb-1 min-w-0 ${toCenter ? 'flex-row-reverse' : ''}`}>
+            <span className="text-[7px] font-black uppercase tracking-widest text-zinc-500">Stems</span>
+            <div className={`flex items-center gap-0.5 ${toCenter ? 'flex-row-reverse' : ''}`}>
+              {STEM_COUNT_OPTIONS.map((count) => (
+                <button
+                  key={count}
+                  onClick={() => setStemCount(count)}
+                  disabled={stemBusy}
+                  className={`h-5 min-w-5 rounded border px-1 text-[7px] font-black tabular-nums leading-none ${
+                    stemCount === count
+                      ? `${accentText} border-current bg-white/10`
+                      : 'border-white/10 text-zinc-500 hover:text-zinc-200 hover:border-white/25'
+                  } disabled:opacity-40`}
+                  title={`${count} stem separation`}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => void loadStems()} disabled={!entryId || stemBusy}
+              className="text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-white/10 text-zinc-400 hover:text-zinc-100 hover:border-white/20 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+              title={entryId ? `Separate or load cached ${stemCount}-stem split using ${stemSettings.device || 'auto'} / ${stemSettings.quality || 'balanced'}` : 'Load a track first'}>
+              <Scissors className="w-2.5 h-2.5" />
+              {stemActionLabel}
             </button>
-            {!stemBusy && stemMsg && !stemsOn && (
-              <span className="text-[7px] font-mono text-rose-300 truncate max-w-20" title={stemMsg}>{stemMsg}</span>
-            )}
+            {stemBusy ? (
+              <button
+                onClick={() => void abortStems()}
+                className="h-5 w-5 grid place-items-center rounded border border-rose-400/30 text-rose-300 hover:bg-rose-500/15"
+                title="Abort stem separation"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            ) : null}
           </div>
-          {stemsOn && (() => {
-            // Show every separated stem (4 or 6: drums/bass/other/vocals/
-            // guitar/piano). Use 3 columns past 4 stems so 6 reads as 3×2.
-            const shown = stemNames.slice(0, 6);
-            const cols = shown.length <= 4 ? shown.length : 3;
-            return (
-            <>
-              {/* Mute / solo pads — tap to mute, right-click to solo */}
-              <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
-                {shown.map((name) => {
-                  const isSolo = soloStem === name;
-                  const active = !stemMuted[name] && (soloStem === null || isSolo);
-                  return (
-                    <button key={name} type="button"
-                      onClick={() => toggleStemMute(name)}
-                      onContextMenu={(e) => { e.preventDefault(); toggleStemSolo(name); }}
-                      aria-pressed={active}
-                      title={`${stemLabel(name)} — click to ${active ? 'mute' : 'unmute'}, right-click to ${isSolo ? 'clear solo' : 'solo'}`}
-                      className={`px-1 py-1 rounded border text-[8px] font-black uppercase tracking-wide transition-colors active:scale-95 ${
-                        isSolo ? 'border-amber-400/70 bg-amber-500/20 text-amber-100'
-                          : active
-                            ? (accent === 'purple' ? 'border-purple-500/50 bg-purple-500/15 text-purple-100' : 'border-cyan-500/50 bg-cyan-500/15 text-cyan-100')
-                            : 'border-white/10 bg-black/40 text-zinc-600'
-                      }`}>
-                      {stemLabel(name)}
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Fine faders */}
-              <div className="grid gap-1 place-items-center" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
-                {shown.map((name) => (
-                  <SlideKnob key={name} label={stemLabel(name)} value={stemLevels[name] ?? 1} onChange={(v) => onStemLevel(name, v)} min={0} max={1} step={0.01} size={26} centerReadout defaultValue={1} />
+          {stemMsg && (
+            <div className={`mb-1 text-[8px] font-mono truncate ${stemBusy ? 'text-zinc-500' : 'text-rose-300'} ${toCenter ? 'text-right' : ''}`} title={stemMsg}>
+              {stemMsg}
+            </div>
+          )}
+          {stemNames.length > 0 ? (
+            <div className="max-h-[88px] min-h-0 overflow-y-auto pr-0.5">
+              <div className="grid gap-1 place-items-center" style={{ gridTemplateColumns: `repeat(${Math.min(stemNames.length, 4)}, minmax(0,1fr))` }}>
+                {stemNames.map((name) => (
+                  <SlideKnob key={name} label={stemLabel(name)} value={stemLevels[name] ?? 1} onChange={(v) => onStem(name, v)} min={0} max={1} step={0.01} size={28} centerReadout />
                 ))}
               </div>
-            </>
-            );
-          })()}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1165,91 +1101,6 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   const sourceLabel = isSet ? set!.name : (LIB_SOURCE_LABEL[source.kind as LibSourceKind] ?? 'Library');
   const rows = q.trim() ? baseRows.filter((r) => r.title.toLowerCase().includes(q.trim().toLowerCase())) : baseRows;
 
-  // ── Column layout: persisted order / widths / sort (resize · reorder · sort) ──
-  const colOrder = useDjBrowser((s) => s.order);
-  const colWidths = useDjBrowser((s) => s.widths);
-  const sortKey = useDjBrowser((s) => s.sortKey);
-  const sortDir = useDjBrowser((s) => s.sortDir);
-  const setColWidth = useDjBrowser((s) => s.setWidth);
-  const moveColumn = useDjBrowser((s) => s.moveColumn);
-  const toggleSort = useDjBrowser((s) => s.toggleSort);
-
-  const COL_META: Record<DjColKey, { label: string; align: 'left' | 'right' }> = {
-    index: { label: '#', align: 'right' },
-    title: { label: 'Title', align: 'left' },
-    bpm: { label: 'BPM', align: 'right' },
-    key: { label: 'Key', align: 'left' },
-    len: { label: 'Len', align: 'right' },
-  };
-  const gridTemplate =
-    colOrder.map((k) => (k === 'title' ? `minmax(${DJ_COL_MIN_WIDTH.title}px,1fr)` : `${colWidths[k]}px`)).join(' ') + ' 4.2rem';
-
-  // Sort rows by the active column; nulls/unknowns always sort last.
-  const sortedRows = (() => {
-    if (sortKey === 'index') return sortDir === 'asc' ? rows : [...rows].reverse();
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const val = (r: Row): number | string =>
-      sortKey === 'title' ? r.title.toLowerCase()
-        : sortKey === 'bpm' ? (r.bpm ?? NaN)
-          : sortKey === 'key' ? (r.key ?? '')
-            : (r.dur ?? NaN);
-    return [...rows].map((r, i) => ({ r, i })).sort((a, b) => {
-      const va = val(a.r), vb = val(b.r);
-      const na = typeof va === 'number' ? Number.isNaN(va) : va === '';
-      const nb = typeof vb === 'number' ? Number.isNaN(vb) : vb === '';
-      if (na && nb) return a.i - b.i;
-      if (na) return 1;
-      if (nb) return -1;
-      if (va < vb) return -dir;
-      if (va > vb) return dir;
-      return a.i - b.i;
-    }).map((x) => x.r);
-  })();
-
-  // Resize (drag the header edge) + auto-fit (double-click it).
-  const resizeRef = useRef<{ key: DjColKey; startX: number; startW: number } | null>(null);
-  const measureCv = useRef<HTMLCanvasElement | null>(null);
-  const onResizeDown = (k: DjColKey, e: React.PointerEvent) => {
-    if (k === 'title') return;
-    e.stopPropagation(); e.preventDefault();
-    resizeRef.current = { key: k, startX: e.clientX, startW: colWidths[k] };
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const onResizeMove = (e: React.PointerEvent) => {
-    const rs = resizeRef.current;
-    if (rs) setColWidth(rs.key, rs.startW + (e.clientX - rs.startX));
-  };
-  const onResizeUp = (e: React.PointerEvent) => {
-    if (resizeRef.current) { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); resizeRef.current = null; }
-  };
-  const autofit = (k: DjColKey) => {
-    if (k === 'title') return;
-    const cv = measureCv.current ?? (measureCv.current = document.createElement('canvas'));
-    const ctx = cv.getContext('2d');
-    if (!ctx) return;
-    ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
-    const cellText = (r: Row): string =>
-      k === 'bpm' ? (r.bpm != null ? r.bpm.toFixed(0) : '—')
-        : k === 'key' ? (r.key ?? '—')
-          : k === 'len' ? (r.dur != null ? fmtTime(r.dur) : '—')
-            : '00';
-    let w = ctx.measureText(COL_META[k].label).width;
-    for (const r of sortedRows) w = Math.max(w, ctx.measureText(cellText(r)).width);
-    setColWidth(k, Math.ceil(w) + 14); // text + cell padding, clamped to the column min in the store
-  };
-  const [dragCol, setDragCol] = useState<DjColKey | null>(null);
-
-  const renderCell = (k: DjColKey, r: Row, displayIdx: number): React.ReactNode => {
-    switch (k) {
-      case 'index': return <span key={k} className="text-right text-zinc-600">{String(displayIdx + 1).padStart(2, '0')}</span>;
-      case 'title': return <span key={k} className="truncate text-zinc-300" title={r.title}>{r.title}</span>;
-      case 'bpm': return <span key={k} className="text-right tabular-nums text-zinc-500">{r.bpm != null ? r.bpm.toFixed(0) : '—'}</span>;
-      case 'key': return <span key={k} className="text-zinc-500">{r.key ?? '—'}</span>;
-      case 'len': return <span key={k} className="text-right tabular-nums text-zinc-600">{r.dur != null ? fmtTime(r.dur) : '—'}</span>;
-      default: return null;
-    }
-  };
-
   const commitRename = () => { if (set && editName.trim()) renameSetlist(set.id, editName.trim()); setEditing(false); };
   const reorder = (from: number, to: number) => {
     if (!set || to < 0 || to >= set.entries.length) return;
@@ -1272,14 +1123,14 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
       <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-white/5">
         {isSet ? <ListMusic className="w-3.5 h-3.5 text-purple-400 shrink-0" /> : <LibraryIcon className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
         {editing && set ? (
-          <input autoFocus name="dj-set-rename" value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }} onBlur={commitRename} className="bg-black/50 border border-purple-400/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-100 focus:outline-none w-36" />
+          <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }} onBlur={commitRename} className="bg-black/50 border border-purple-400/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-100 focus:outline-none w-36" />
         ) : (
           <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 truncate max-w-40" title={sourceLabel}>{sourceLabel}</span>
         )}
         <span className="text-[8px] font-mono text-zinc-600">{rows.length} {isSet ? 'tracks' : 'files'}</span>
-        <div className="flex items-center gap-1 ml-auto bg-black/40 border border-white/10 rounded px-1.5 w-36 max-w-2/5">
+        <div className="flex items-center gap-1 ml-auto bg-black/40 border border-white/10 rounded px-1.5 w-36 max-w-[40%]">
           <Search className="w-3 h-3 text-zinc-600 shrink-0" />
-          <input name="dj-source-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="search…" className="flex-1 min-w-0 bg-transparent text-[10px] font-mono text-zinc-200 py-1 focus:outline-none placeholder:text-zinc-600" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search…" className="flex-1 min-w-0 bg-transparent text-[10px] font-mono text-zinc-200 py-1 focus:outline-none placeholder:text-zinc-600" />
         </div>
         {isSet && set && (
           <div className="flex items-center gap-0.5 shrink-0">
@@ -1290,39 +1141,9 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
         )}
       </div>
 
-      {/* column header — click to sort (re-click inverts), drag to reorder,
-          drag the right edge to resize, double-click the edge to auto-fit */}
-      <div className="shrink-0 grid items-center gap-1 px-2 py-0.5 border-b border-white/5 text-[7px] font-black uppercase tracking-wider text-zinc-600" style={{ gridTemplateColumns: gridTemplate }}>
-        {colOrder.map((k) => {
-          const meta = COL_META[k];
-          const sorted = sortKey === k;
-          return (
-            <div key={k}
-              draggable
-              onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-dj-col', k); setDragCol(k); }}
-              onDragEnd={() => setDragCol(null)}
-              onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-dj-col')) e.preventDefault(); }}
-              onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('application/x-dj-col') as DjColKey; if (from && from !== k) moveColumn(from, k); setDragCol(null); }}
-              className={`relative flex items-center gap-0.5 select-none ${meta.align === 'right' ? 'justify-end' : ''} ${dragCol === k ? 'opacity-40' : ''}`}
-              title="Click to sort · drag to reorder · drag edge to resize · double-click edge to auto-fit"
-            >
-              <button type="button" onClick={() => toggleSort(k)} className="truncate uppercase hover:text-zinc-300 cursor-pointer">{meta.label}</button>
-              {sorted && <span className="text-purple-300 leading-none">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-              {k !== 'title' && (
-                <span
-                  onPointerDown={(e) => onResizeDown(k, e)}
-                  onPointerMove={onResizeMove}
-                  onPointerUp={onResizeUp}
-                  onPointerCancel={onResizeUp}
-                  onDoubleClick={(e) => { e.stopPropagation(); autofit(k); }}
-                  onDragStart={(e) => e.preventDefault()}
-                  className="absolute -right-1 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-purple-400/40 rounded"
-                />
-              )}
-            </div>
-          );
-        })}
-        <span className="text-right pr-1">Load</span>
+      {/* column header */}
+      <div className="shrink-0 grid items-center gap-1 px-2 py-0.5 border-b border-white/5 text-[7px] font-black uppercase tracking-wider text-zinc-600" style={{ gridTemplateColumns: '1.6rem minmax(0,1fr) 2.6rem 2.4rem 2.6rem 4.2rem' }}>
+        <span className="text-right">#</span><span>Title</span><span className="text-right">BPM</span><span>Key</span><span className="text-right">Len</span><span className="text-right pr-1">Load</span>
       </div>
 
       {/* rows */}
@@ -1331,12 +1152,16 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
           <div className="h-full grid place-items-center text-[9px] font-mono text-zinc-600 px-3 text-center">
             {isSet ? 'Empty set — drag tracks here, or Save a loaded deck.' : (entries.length === 0 ? 'Library empty — generate or import audio.' : 'No matches.')}
           </div>
-        ) : sortedRows.map((r, i) => (
-          <div key={(r.entryId ?? 'x') + '-' + i} draggable={!!r.entryId}
+        ) : rows.map((r, i) => (
+          <div key={(r.entryId ?? 'x') + i} draggable={!!r.entryId}
             onDragStart={(ev) => { if (!r.entryId) return; ev.dataTransfer.effectAllowed = 'copy'; ev.dataTransfer.setData(DJ_TRACK_MIME, r.entryId); ev.dataTransfer.setData('text/plain', r.title); }}
             className="grid items-center gap-1 px-2 py-0.5 text-[9px] font-mono text-zinc-400 hover:bg-white/5 border-b border-white/3 group/row cursor-grab active:cursor-grabbing"
-            style={{ gridTemplateColumns: gridTemplate }}>
-            {colOrder.map((k) => renderCell(k, r, i))}
+            style={{ gridTemplateColumns: '1.6rem minmax(0,1fr) 2.6rem 2.4rem 2.6rem 4.2rem' }}>
+            <span className="text-right text-zinc-600">{String(i + 1).padStart(2, '0')}</span>
+            <span className="truncate text-zinc-300" title={r.title}>{r.title}</span>
+            <span className="text-right tabular-nums text-zinc-500">{r.bpm != null ? r.bpm.toFixed(0) : '—'}</span>
+            <span className="text-zinc-500">{r.key ?? '—'}</span>
+            <span className="text-right tabular-nums text-zinc-600">{r.dur != null ? fmtTime(r.dur) : '—'}</span>
             <span className="flex items-center gap-0.5 justify-end pr-0.5">
               {isSet ? (
                 <span className="hidden group-hover/row:flex items-center gap-0.5">
@@ -1362,35 +1187,11 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
 /** Source tree — every entry is live: filtered views over the library
  *  (Library / Favorites / Generated / Imports), real Online Download, and the
  *  user's Sets. No placeholder/streaming stubs. */
-// Add a local folder as a reference-in-place playlist: register the audio files
-// (no copy), refresh the library so they resolve, then build + open a setlist.
-async function addFolderAsPlaylist(actions: {
-  createSetlist: (name: string) => string;
-  appendToSet: (id: string, entries: SetlistEntry[]) => void;
-  setActive: (id: string | null) => void;
-  setSource: (s: Source) => void;
-  refreshLibrary: () => Promise<void>;
-}): Promise<void> {
-  const res = await importFolder();
-  if (res.cancelled || res.entries.length === 0) return;
-  await actions.refreshLibrary();
-  const id = actions.createSetlist(res.name || 'Folder');
-  actions.appendToSet(
-    id,
-    res.entries.map((e) => ({ entryId: e.id, label: e.title, kind: 'audio' as const })),
-  );
-  actions.setActive(id);
-  actions.setSource({ kind: 'set', id });
-}
-
 const SourceTree: React.FC<{ source: Source; setSource: (s: Source) => void; libCount: number }> = ({ source, setSource, libCount }) => {
   const entries = useLibraryStore((s) => s.entries);
   const setlists = useSetlistStore((s) => s.setlists);
   const createSetlist = useSetlistStore((s) => s.create);
   const setActive = useSetlistStore((s) => s.setActive);
-  const appendToSet = useSetlistStore((s) => s.append);
-  const refreshLibrary = useLibraryStore((s) => s.refresh);
-  const [addingFolder, setAddingFolder] = useState(false);
   const sets = Object.values(setlists).sort((a, b) => b.updatedAt - a.updatedAt);
   const favCount = entries.filter((e) => e.favorite).length;
   const genCount = entries.filter((e) => e.source === 'generate').length;
@@ -1450,7 +1251,7 @@ const SourceTree: React.FC<{ source: Source; setSource: (s: Source) => void; lib
           <div className="px-2 py-1 flex flex-col gap-1">
             <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded px-1.5">
               <Link2 className="w-3 h-3 text-zinc-600 shrink-0" />
-              <input name="dj-import-url" value={dlUrl} onChange={(e) => setDlUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runImport(); }}
+              <input value={dlUrl} onChange={(e) => setDlUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runImport(); }}
                 placeholder="paste URL…" disabled={dlBusy} aria-label="Online import URL"
                 className="flex-1 min-w-0 bg-transparent text-[9px] font-mono text-zinc-200 py-1 focus:outline-none placeholder:text-zinc-600 disabled:opacity-50" />
               <button onClick={() => void runImport()} disabled={dlBusy || !dlUrl.trim()} className="shrink-0 text-purple-300 hover:text-purple-100 disabled:opacity-30" title="Download into library">
@@ -1462,17 +1263,7 @@ const SourceTree: React.FC<{ source: Source; setSource: (s: Source) => void; lib
           </div>
         )}
 
-        <Group label="Sets" right={
-          <span className="ml-auto flex items-center gap-0.5">
-            <button
-              onClick={() => { setAddingFolder(true); void addFolderAsPlaylist({ createSetlist, appendToSet, setActive, setSource, refreshLibrary }).finally(() => setAddingFolder(false)); }}
-              disabled={addingFolder}
-              className="p-0.5 text-purple-300 hover:text-purple-100 disabled:opacity-40"
-              title="Add a local folder as a playlist (referenced in place — no copy)"
-            >{addingFolder ? <Loader2 className="w-3 h-3 animate-spin" /> : <FolderPlus className="w-3 h-3" />}</button>
-            <button onClick={() => { const id = createSetlist(`Set ${new Date().toLocaleDateString()}`); setActive(id); setSource({ kind: 'set', id }); }} className="p-0.5 text-purple-300 hover:text-purple-100" title="New empty set"><Plus className="w-3 h-3" /></button>
-          </span>
-        } />
+        <Group label="Sets" right={<button onClick={() => { const id = createSetlist(`Set ${new Date().toLocaleDateString()}`); setActive(id); setSource({ kind: 'set', id }); }} className="ml-auto p-0.5 text-purple-300 hover:text-purple-100" title="New set"><Plus className="w-3 h-3" /></button>} />
         {sets.length === 0 ? (
           <div className="pl-4 pr-1.5 py-0.5 text-[9px] font-mono text-zinc-700">No sets — click +</div>
         ) : sets.map((s) => (
@@ -1866,7 +1657,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
 
     padW(`cue${d}`, `Cue ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onCue} className={PAD_SM} title="Cue to start">Cue</SlidePad>);
     padW(`play${d}`, `Play ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onPlay} className="px-3 py-1" title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}</SlidePad>);
-    padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'Beatmatch this deck to the other (tempo + phase)' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
+    padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
     padW(`headCue${d}`, `HP Cue ${d}`, <SlidePad color={[34, 211, 238]} on={headCued} disabled={!hasTrack} onClick={() => p.onHeadCue(d)} className="px-1.5 py-1" title="Cue — pre-listen in the headphone output"><Headphones className="w-3 h-3" /></SlidePad>);
 
@@ -1941,7 +1732,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
       {p.cueSupported ? (
         <div className="flex items-center gap-1 w-full" title="Headphone (cue) output device">
           <Headphones className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
-          <select name="dj-cue-device" value={p.cueDev} onChange={(e) => { p.setCueDev(e.target.value); void djEngine.setCueSinkId(e.target.value); }} className="flex-1 min-w-0 bg-[#0e0c18] border border-white/10 text-zinc-300 text-[8px] font-mono px-1 py-0.5 rounded focus:outline-none" style={{ colorScheme: 'dark' }} title="Cue output device">
+          <select value={p.cueDev} onChange={(e) => { p.setCueDev(e.target.value); void djEngine.setCueSinkId(e.target.value); }} className="flex-1 min-w-0 bg-[#0e0c18] border border-white/10 text-zinc-300 text-[8px] font-mono px-1 py-0.5 rounded focus:outline-none" style={{ colorScheme: 'dark' }} title="Cue output device">
             <option value="">Default out</option>
             {p.cueDevices.map((dv) => <option key={dv.id} value={dv.id}>{dv.label}</option>)}
           </select>

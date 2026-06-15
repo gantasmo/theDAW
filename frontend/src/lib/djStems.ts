@@ -34,12 +34,17 @@ export async function ensureStems(
   opts: SeparateOpts = {},
   onProgress?: (pct: number, phase: string) => void,
 ): Promise<StemRef[]> {
-  const existing = await listStems(entryId);
-  if (existing.length) return existing;
-
   const stems = opts.stems ?? 4;
   const device = opts.device ?? 'auto';
   const quality = opts.quality ?? 'fast';
+  const existing = await listStems(entryId);
+  if (existing.length >= stems) {
+    onProgress?.(100, 'cached');
+    return existing;
+  }
+  if (existing.length) {
+    logInfo('dj-stems', `Upgrading ${entryId} from ${existing.length} cached stem(s) to ${stems} stem(s)…`);
+  }
   logInfo('dj-stems', `Separating ${entryId} (${stems} stems, ${quality})…`);
 
   let polling = true;
