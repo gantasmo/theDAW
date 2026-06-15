@@ -68,6 +68,7 @@ const BEAT_SIZES: Array<{ beats: number; label: string }> = [
 const ROLL_SIZES: Array<{ beats: number; label: string }> = [
   { beats: 0.25, label: '¼' }, { beats: 0.5, label: '½' }, { beats: 1, label: '1' },
 ];
+const STEM_PAD_SLOTS = 6;
 const AUTO_GAIN_TARGET_DB = -12;
 const AUTOMIX_TAIL = 18;   // s before a track ends to begin the blend
 const AUTOMIX_XFADE = 10;  // s the auto-crossfade takes
@@ -86,6 +87,7 @@ const deckMidiActions = (d: 'A' | 'B'): Array<{ id: string; label: string; group
     { id: `eq${d}.high`, label: 'EQ Hi', kind: 'cc' as MidiKind },
     { id: `eq${d}.mid`, label: 'EQ Mid', kind: 'cc' as MidiKind },
     { id: `eq${d}.low`, label: 'EQ Lo', kind: 'cc' as MidiKind },
+    ...Array.from({ length: STEM_PAD_SLOTS }, (_, i) => ({ id: `stem${d}${i}`, label: `Stem ${i + 1}`, kind: 'note' as MidiKind })),
     ...[1, 2, 3, 4].map((n) => ({ id: `hotcue${d}${n}`, label: `Hotcue ${n}`, kind: 'note' as MidiKind })),
   ]).map((a) => ({ ...a, group: `Deck ${d}` }));
 
@@ -110,6 +112,14 @@ const libSourceFilter = (entries: LibraryEntry[], kind: LibSourceKind): LibraryE
     case 'import': return entries.filter((e) => e.source === 'import');
     default: return entries;
   }
+};
+
+const sameStringArray = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+const sameNumberRecord = (a: Record<string, number>, b: Record<string, number>) => {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  return ak.length === bk.length && ak.every((k) => Math.abs((a[k] ?? 0) - (b[k] ?? 0)) < 0.0001);
 };
 
 /* ═══════════════════════════ per-deck controller ═══════════════════════════ */
@@ -138,12 +148,16 @@ function useDeck(deckId: djEngine.DeckId, entryId: string | null, hasTrack: bool
   const [slip, setSlipSt] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const [keylock, setKeylockSt] = useState(false);
+  const [stemNames, setStemNames] = useState<string[]>(() => djEngine.getDeckStemNames(deckId));
+  const [stemLevels, setStemLevels] = useState<Record<string, number>>({});
   useEffect(() => djEngine.subscribe((sa, sb) => {
     const st = deckId === 'A' ? sa : sb;
     setLoopActiveSt((p) => (p === st.loopActive ? p : st.loopActive));
     setSlipSt((p) => (p === st.slip ? p : st.slip));
     setDecoding((p) => (p === st.decoding ? p : st.decoding));
     setKeylockSt((p) => (p === st.keylock ? p : st.keylock));
+    setStemNames((p) => (sameStringArray(p, st.stems) ? p : st.stems));
+    setStemLevels((p) => (sameNumberRecord(p, st.stemLevels) ? p : st.stemLevels));
   }), [deckId]);
   useEffect(() => { if (!loopActive) setActiveLoopBeats(null); }, [loopActive]);
 
@@ -200,7 +214,7 @@ function useDeck(deckId: djEngine.DeckId, entryId: string | null, hasTrack: bool
   };
 
   return {
-    a, analyzing, cam, bpm, beats, beatLen, gridBeats, firstBeat, cues, trimDb,
+    a, analyzing, cam, bpm, beats, beatLen, gridBeats, firstBeat, cues, trimDb, stemNames, stemLevels,
     loopActive, activeLoopBeats, slip, decoding, keylock,
     setHotcue, dropHotcue, toggleBeatLoop, rollDown, rollUp, beatJump,
     exitLoop: () => djEngine.exitLoop(deckId),
@@ -216,7 +230,7 @@ type DeckCtl = ReturnType<typeof useDeck>;
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 7;
+const DJ_LAYOUT_VERSION = 10;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -230,18 +244,22 @@ const defaultDjLayout: SurfaceLayout = {
     center: { id: 'center', type: 'container', axis: 'column', children: ['deckmix', 'fxrow'], fr: { deckmix: 5, fxrow: 2 } },
     deckmix: { id: 'deckmix', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.17953863997903, mixer: 5.180662235484642, deckBcont: 4.439799124536327 } },
     // ── Deck A (pad-rows wrapped with spacer panels in cont-* containers) ──
-    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-13-90c67ecb', 'cont-16-c9fc3a59', 'cont-18-cd01de17'], fr: { 'cont-10-e11250c4': 3.4, 'cont-13-90c67ecb': 0.9, 'cont-16-c9fc3a59': 0.9, 'cont-18-cd01de17': 1.1, 'pdA-head': 1 }, framed: true },
+    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'cont-13-90c67ecb', 'cont-16-c9fc3a59', 'cont-18-cd01de17'], fr: { 'cont-10-e11250c4': 2.55, 'cont-A-transport': 0.82, 'cont-A-stems': 1.15, 'cont-13-90c67ecb': 0.7, 'cont-16-c9fc3a59': 0.7, 'cont-18-cd01de17': 0.86, 'pdA-head': 1 }, framed: true },
     'pdA-head': { id: 'pdA-head', type: 'panel', title: 'Deck A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
     'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], mirror: true },
-    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'column', widgets: ['cueA', 'playA', 'syncA', 'syncLockA', 'headCueA'], mirror: true },
+    'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
+    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'syncA'], uniform: true, mirror: true },
+    'pdA-stems': { id: 'pdA-stems', type: 'panel', title: 'A · Stems', flow: 'row', widgets: ['stemBankA'], mirror: true },
     'pdA-hc': { id: 'pdA-hc', type: 'panel', title: 'A · Hotcues', flow: 'row', widgets: ['hcA1', 'hcA2', 'hcA3', 'hcA4'], uniform: true, mirror: true },
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
     'pdA-perf': { id: 'pdA-perf', type: 'panel', title: 'A · Perf', flow: 'row', widgets: ['rollA_0', 'rollA_1', 'rollA_2', 'slipA', 'jumpA_0', 'jumpA_1', 'jumpA_2', 'jumpA_3'], uniform: true, mirror: true },
     // ── Deck B ──
-    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-4-4f4c96d2', 'cont-6-29de8ab7', 'cont-9-aebcd780'], fr: { 'pdB-head': 1, 'cont-2-a0e79010': 3.4, 'cont-4-4f4c96d2': 0.9, 'cont-6-29de8ab7': 0.9, 'cont-9-aebcd780': 1.1 }, framed: true },
+    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'cont-4-4f4c96d2', 'cont-6-29de8ab7', 'cont-9-aebcd780'], fr: { 'pdB-head': 1, 'cont-2-a0e79010': 2.55, 'cont-B-transport': 0.82, 'cont-B-stems': 1.15, 'cont-4-4f4c96d2': 0.7, 'cont-6-29de8ab7': 0.7, 'cont-9-aebcd780': 0.86 }, framed: true },
     'pdB-head': { id: 'pdB-head', type: 'panel', title: 'Deck B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
     'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'] },
-    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'column', widgets: ['cueB', 'playB', 'syncB', 'syncLockB', 'headCueB'] },
+    'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
+    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['cueB', 'playB', 'syncB'], uniform: true },
+    'pdB-stems': { id: 'pdB-stems', type: 'panel', title: 'B · Stems', flow: 'row', widgets: ['stemBankB'] },
     'pdB-hc': { id: 'pdB-hc', type: 'panel', title: 'B · Hotcues', flow: 'row', widgets: ['hcB1', 'hcB2', 'hcB3', 'hcB4'], uniform: true },
     'pdB-loop': { id: 'pdB-loop', type: 'panel', title: 'B · Loop', flow: 'row', widgets: ['loopB_0', 'loopB_1', 'loopB_2', 'loopB_3', 'loopB_4', 'loopOutB'], uniform: true },
     'pdB-perf': { id: 'pdB-perf', type: 'panel', title: 'B · Perf', flow: 'row', widgets: ['rollB_0', 'rollB_1', 'rollB_2', 'slipB', 'jumpB_0', 'jumpB_1', 'jumpB_2', 'jumpB_3'], uniform: true },
@@ -266,7 +284,11 @@ const defaultDjLayout: SurfaceLayout = {
     libraryP: { id: 'libraryP', type: 'panel', title: 'Library', flow: 'row', widgets: [], pinned: 'library', uniform: true },
     // ── Deck B pad-row wrappers (pad row + spacer panel) ──
     'panel-1-eff655d2': { id: 'panel-1-eff655d2', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-25-e6518f32'] },
-    'cont-2-a0e79010': { id: 'cont-2-a0e79010', type: 'container', axis: 'row', children: ['pdB-trans', 'pdB-jog', 'pchBP', 'panel-1-eff655d2'], fr: { 'pdB-trans': 0.48, 'pdB-jog': 1.46, pchBP: 0.45, 'panel-1-eff655d2': 0.6 } },
+    'cont-2-a0e79010': { id: 'cont-2-a0e79010', type: 'container', axis: 'row', children: ['pdB-mode', 'pdB-jog', 'pchBP', 'panel-1-eff655d2'], fr: { 'pdB-mode': 0.38, 'pdB-jog': 1.56, pchBP: 0.45, 'panel-1-eff655d2': 0.6 } },
+    'panel-B-transport-tail': { id: 'panel-B-transport-tail', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-B-transport-tail'] },
+    'cont-B-transport': { id: 'cont-B-transport', type: 'container', axis: 'row', children: ['panel-B-transport-tail', 'pdB-trans'], fr: { 'panel-B-transport-tail': 0.48, 'pdB-trans': 2.51 } },
+    'panel-B-stems-tail': { id: 'panel-B-stems-tail', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-B-stems-tail'] },
+    'cont-B-stems': { id: 'cont-B-stems', type: 'container', axis: 'row', children: ['panel-B-stems-tail', 'pdB-stems'], fr: { 'panel-B-stems-tail': 0.48, 'pdB-stems': 2.51 } },
     'panel-3-e0911657': { id: 'panel-3-e0911657', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-32-4c52fb39'] },
     'cont-4-4f4c96d2': { id: 'cont-4-4f4c96d2', type: 'container', axis: 'row', children: ['pdB-hc', 'panel-3-e0911657'], fr: { 'pdB-hc': 1, 'panel-3-e0911657': 1 } },
     'panel-5-e8707245': { id: 'panel-5-e8707245', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-31-c7e28dbf'] },
@@ -274,8 +296,12 @@ const defaultDjLayout: SurfaceLayout = {
     'panel-8-81228019': { id: 'panel-8-81228019', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-30-3282c3a3'] },
     'cont-9-aebcd780': { id: 'cont-9-aebcd780', type: 'container', axis: 'row', children: ['pdB-perf', 'panel-8-81228019'], fr: { 'pdB-perf': 1.5358851674641145, 'panel-8-81228019': 0.46411483253588537 } },
     // ── Deck A pad-row wrappers ──
-    'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pchAP', 'pdA-jog', 'pdA-trans'], fr: { 'panel-11-95a4a261': 0.7, pchAP: 0.45, 'pdA-jog': 1.75, 'pdA-trans': 0.62 } },
+    'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pchAP', 'pdA-jog', 'pdA-mode'], fr: { 'panel-11-95a4a261': 0.7, pchAP: 0.45, 'pdA-jog': 1.87, 'pdA-mode': 0.5 } },
     'panel-11-95a4a261': { id: 'panel-11-95a4a261', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-26-79f129b0'] },
+    'panel-A-transport-head': { id: 'panel-A-transport-head', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-A-transport-head'] },
+    'cont-A-transport': { id: 'cont-A-transport', type: 'container', axis: 'row', children: ['panel-A-transport-head', 'pdA-trans'], fr: { 'panel-A-transport-head': 1.15, 'pdA-trans': 2.37 } },
+    'panel-A-stems-head': { id: 'panel-A-stems-head', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-A-stems-head'] },
+    'cont-A-stems': { id: 'cont-A-stems', type: 'container', axis: 'row', children: ['panel-A-stems-head', 'pdA-stems'], fr: { 'panel-A-stems-head': 1.15, 'pdA-stems': 2.37 } },
     'panel-12-8772ebc6': { id: 'panel-12-8772ebc6', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-29-e3c2d4fe'] },
     'cont-13-90c67ecb': { id: 'cont-13-90c67ecb', type: 'container', axis: 'row', children: ['panel-12-8772ebc6', 'pdA-hc'], fr: { 'pdA-hc': 1.0814249363867683, 'panel-12-8772ebc6': 0.9185750636132315 } },
     'panel-15-4eb1b108': { id: 'panel-15-4eb1b108', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-28-3698f484'] },
@@ -544,6 +570,14 @@ export const DJView: React.FC = () => {
       h[`eq${d}.high`] = (v) => onEq(d, 'high', (v / 127) * 24 - 12);
       h[`eq${d}.mid`] = (v) => onEq(d, 'mid', (v / 127) * 24 - 12);
       h[`eq${d}.low`] = (v) => onEq(d, 'low', (v / 127) * 24 - 12);
+      for (let i = 0; i < STEM_PAD_SLOTS; i++) {
+        h[`stem${d}${i}`] = () => {
+          const name = ctl.stemNames[i];
+          if (!name) return;
+          const cur = ctl.stemLevels[name] ?? djEngine.getStemGain(d, name);
+          djEngine.setStemGain(d, name, cur > 0.001 ? 0 : 1);
+        };
+      }
       for (const n of [1, 2, 3, 4]) h[`hotcue${d}${n}`] = () => ctl.setHotcue(n - 1);
     }
     return h;
@@ -857,11 +891,108 @@ const toStemCount = (n: number | undefined): StemCount =>
   STEM_COUNT_OPTIONS.includes(n as StemCount) ? (n as StemCount) : 4;
 const STEM_LABEL: Record<string, string> = {
   vocals: 'Voc', drums: 'Drm', bass: 'Bass', other: 'Oth', guitar: 'Gtr', piano: 'Pno',
+  accompaniment: 'Instr', instrumental: 'Instr', instrument: 'Instr', instr: 'Instr',
   kick: 'Kick', snare: 'Snr', hihat: 'Hat', hats: 'Hat', cymbals: 'Cym', toms: 'Tom',
 };
 const stemLabel = (n: string) => {
   const key = n.toLowerCase().replace(/^drums?[_-]/, '');
   return STEM_LABEL[key] ?? (n.charAt(0).toUpperCase() + n.slice(1, 4));
+};
+const STEM_PAD_FALLBACKS = ['vocals', 'drums', 'bass', 'other', 'kick', 'hihat'];
+const STEM_PAD_COLORS: RGB[] = [
+  [34, 197, 94],
+  [245, 158, 11],
+  [239, 68, 68],
+  [168, 85, 247],
+  [244, 114, 182],
+  [45, 212, 191],
+];
+
+const StemLoadPad: React.FC<{ deck: djEngine.DeckId; entryId: string | null; color: RGB; shape?: React.ComponentProps<typeof SlidePad>['shape'] }> = ({ deck, entryId, color, shape }) => {
+  const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const stemCount = toStemCount(stemSettings.default_count);
+  const load = async () => {
+    if (!entryId || busy) return;
+    setBusy(true);
+    setMsg('checking');
+    try {
+      const refs = await ensureStems(
+        entryId,
+        {
+          stems: stemCount,
+          device: stemSettings.device || 'auto',
+          quality: stemSettings.quality || 'balanced',
+        },
+        (pct, phase) => setMsg(pct > 0 ? `${pct}%` : phase.replace(/_/g, ' ')),
+      );
+      setMsg('loading');
+      await djEngine.loadDeckStems(deck, refs);
+      setMsg(null);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message.slice(0, 18) : 'failed');
+      window.setTimeout(() => setMsg(null), 2600);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SlidePad
+      color={color}
+      on={busy}
+      disabled={!entryId || busy}
+      onClick={() => void load()}
+      className="w-full h-full px-1 py-1 text-[7px] min-w-0"
+      shape={shape}
+      title={entryId ? `Load or separate ${stemCount} stems for Deck ${deck}` : 'Load a track first'}
+    >
+      {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />}
+      <span className="truncate">{busy ? (msg ?? 'Run') : 'Stems'}</span>
+    </SlidePad>
+  );
+};
+
+const StemTogglePad: React.FC<{
+  deck: djEngine.DeckId;
+  name: string | null;
+  label: string;
+  level: number;
+  color: RGB;
+}> = ({ deck, name, label, level, color }) => {
+  const on = !!name && level > 0.001;
+  return (
+    <SlidePad
+      color={color}
+      on={on}
+      disabled={!name}
+      onClick={() => { if (name) djEngine.setStemGain(deck, name, on ? 0 : 1); }}
+      className="w-full h-full px-1 py-1 text-[7px] min-w-0"
+      title={name ? `Deck ${deck} ${name}: ${on ? 'click to mute' : 'click to restore'}` : 'Load stems first'}
+    >
+      <span className="truncate">{label}</span>
+    </SlidePad>
+  );
+};
+
+const StemPadBank: React.FC<{ deck: djEngine.DeckId; entryId: string | null; color: RGB; ctl: DeckCtl; mirror?: boolean }> = ({ deck, entryId, color, ctl, mirror }) => {
+  const cells: React.ReactNode[] = [
+    <StemLoadPad key="load" deck={deck} entryId={entryId} color={color} />,
+    ...Array.from({ length: STEM_PAD_SLOTS }, (_, i) => {
+      const name = ctl.stemNames[i] ?? null;
+      const label = stemLabel(name ?? STEM_PAD_FALLBACKS[i] ?? `Stem ${i + 1}`);
+      const level = name ? (ctl.stemLevels[name] ?? djEngine.getStemGain(deck, name)) : 0;
+      return <StemTogglePad key={i} deck={deck} name={name} label={label} level={level} color={STEM_PAD_COLORS[i] ?? color} />;
+    }),
+    <SlidePad key="fx" disabled className="w-full h-full px-1 py-1 text-[7px] min-w-0" title="Open slot for the next stem layer">
+      FX
+    </SlidePad>,
+  ];
+  return (
+    <div className="h-full w-full min-w-0 min-h-0 grid grid-cols-4 grid-rows-2 gap-1 p-0.5">
+      {(mirror ? [...cells].reverse() : cells).map((cell) => cell)}
+    </div>
+  );
 };
 
 const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null }> = ({ deck, accent, entryId }) => {
@@ -882,8 +1013,14 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
   const [stemBusy, setStemBusy] = useState(false);
   const [stemMsg, setStemMsg] = useState<string | null>(null);
   useEffect(() => { setStemCount(toStemCount(stemSettings.default_count)); }, [stemSettings.default_count]);
-  // The engine clears stems on track change (loadDeck) — mirror that here.
-  useEffect(() => { setStemNames(djEngine.getDeckStemNames(deck)); setStemMsg(null); }, [entryId, deck]);
+  // The engine clears stems on track change (loadDeck) and pad toggles can change
+  // levels outside this rack, so mirror the live engine stem state here.
+  useEffect(() => djEngine.subscribe((sa, sb) => {
+    const st = deck === 'A' ? sa : sb;
+    setStemNames((p) => (sameStringArray(p, st.stems) ? p : st.stems));
+    setStemLevels((p) => (sameNumberRecord(p, st.stemLevels) ? p : st.stemLevels));
+  }), [deck]);
+  useEffect(() => { setStemMsg(null); }, [entryId]);
   const loadStems = async () => {
     if (!entryId || stemBusy) return;
     setStemBusy(true); setStemMsg('checking cached stems');
@@ -1567,6 +1704,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const hasTrack = d === 'A' ? p.hasA : p.hasB;
     const isPlaying = d === 'A' ? p.playingA : p.playingB;
     const title = d === 'A' ? p.deckATitle : p.deckBTitle;
+    const entryId = d === 'A' ? p.deckATrack : p.deckBTrack;
     const cam = d === 'A' ? p.camA : p.camB;
     const headCued = d === 'A' ? p.cueA : p.cueB;
     const onPlay = d === 'A' ? p.onPlayA : p.onPlayB;
@@ -1638,6 +1776,9 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     reg[`jog${d}`] = { id: `jog${d}`, label: `Jog ${d}`, group: grp, kind: 'jog', source: 'builtin', render: () => (
       <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} onLoadId={(id) => p.loadDeck(id, d)} />
     ) };
+    reg[`stemBank${d}`] = { id: `stemBank${d}`, label: `Stem Pads ${d}`, group: grp, kind: 'fixed', source: 'builtin', render: (_s, opts) => (
+      <StemPadBank deck={d} entryId={entryId} color={rgbc} ctl={ctl} mirror={opts?.mirror} />
+    ) };
 
     // Each pad is its own relocatable widget (atomized transport / hotcues / loop / perf).
     const padW = (id: string, label: string, node: React.ReactElement) => {
@@ -1660,6 +1801,26 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
     padW(`headCue${d}`, `HP Cue ${d}`, <SlidePad color={[34, 211, 238]} on={headCued} disabled={!hasTrack} onClick={() => p.onHeadCue(d)} className="px-1.5 py-1" title="Cue — pre-listen in the headphone output"><Headphones className="w-3 h-3" /></SlidePad>);
+    padW(`stemLoad${d}`, `Load Stems ${d}`, <StemLoadPad deck={d} entryId={entryId} color={rgbc} />);
+    for (let i = 0; i < STEM_PAD_SLOTS; i++) {
+      const name = ctl.stemNames[i] ?? null;
+      const label = stemLabel(name ?? STEM_PAD_FALLBACKS[i] ?? `Stem ${i + 1}`);
+      const level = name ? (ctl.stemLevels[name] ?? djEngine.getStemGain(d, name)) : 0;
+      const on = !!name && level > 0.001;
+      const color = STEM_PAD_COLORS[i] ?? rgbc;
+      padW(`stem${d}${i}`, `${label} ${d}`, (
+        <SlidePad
+          color={color}
+          on={on}
+          disabled={!name}
+          onClick={() => { if (name) djEngine.setStemGain(d, name, on ? 0 : 1); }}
+          className="px-1 py-1 text-[7px] min-w-0"
+          title={name ? `Deck ${d} ${name}: ${on ? 'click to mute' : 'click to restore'}` : 'Load stems first'}
+        >
+          <span className="truncate">{label}</span>
+        </SlidePad>
+      ));
+    }
 
     for (let i = 0; i < HOTCUE_SLOTS; i++) {
       const c = ctl.cues?.[i] ?? null; const set = c != null;

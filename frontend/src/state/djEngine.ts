@@ -49,6 +49,7 @@ export interface DeckStatus {
   pitchPct: number;
   keylock: boolean;
   stems: string[]; // loaded stem names (D4); empty = full-track mode
+  stemLevels: Record<string, number>; // per-stem live gains, 0 = muted, 1 = full
 }
 
 export type DjFx = 'flanger' | 'reverb' | 'wahwah';
@@ -359,7 +360,7 @@ function statusOf(id: DeckId): DeckStatus {
     return {
       loadedUrl: null, label: null, playing: false, decoding: false, hasBuffer: false,
       currentTime: 0, duration: 0, loopActive: false, loopIn: null, loopOut: null,
-      slip: false, pitchPct: 0, keylock: false, stems: [],
+      slip: false, pitchPct: 0, keylock: false, stems: [], stemLevels: {},
     };
   }
   return {
@@ -379,6 +380,7 @@ function statusOf(id: DeckId): DeckStatus {
     pitchPct: d.pitchPct,
     keylock: d.keylock,
     stems: d.stems?.map((s) => s.name) ?? [],
+    stemLevels: Object.fromEntries((d.stems ?? []).map((s) => [s.name, s.level])),
   };
 }
 
@@ -973,8 +975,15 @@ export async function unloadDeckStems(id: DeckId): Promise<void> {
 export function setStemGain(id: DeckId, name: string, level: number): void {
   const st = decks[id]?.stems?.find((s) => s.name === name);
   if (!st) return;
-  st.level = clamp(level, 0, 1);
+  const next = clamp(level, 0, 1);
+  if (Math.abs(st.level - next) < 0.0001) return;
+  st.level = next;
   st.gain.gain.setTargetAtTime(st.level, ctxNow(), RAMP_TC);
+  emit();
+}
+
+export function getStemGain(id: DeckId, name: string): number {
+  return decks[id]?.stems?.find((s) => s.name === name)?.level ?? 0;
 }
 
 export function getDeckStemNames(id: DeckId): string[] {
