@@ -57,6 +57,8 @@ interface SetlistState {
   setActive: (id: string | null) => void;
   /** Update freeform notes. */
   setNotes: (id: string, notes: string) => void;
+  /** Merge starter sets shipped by the local backend into browser storage. */
+  importBundled: () => Promise<void>;
 }
 
 const STORAGE_KEY = 'thedaw.setlists.v1';
@@ -129,8 +131,40 @@ export const useSetlistStore = create<SetlistState>()(
           },
         };
       }),
+      importBundled: async () => {
+        try {
+          const res = await fetch('/api/library/setlists');
+          if (!res.ok) return;
+          const body = (await res.json()) as { setlists?: Setlist[] };
+          const incoming = Array.isArray(body.setlists) ? body.setlists : [];
+          if (incoming.length === 0) return;
+          set((s) => {
+            const next = { ...s.setlists };
+            let added = false;
+            for (const raw of incoming) {
+              if (!raw?.id || next[raw.id]) continue;
+              next[raw.id] = {
+                id: raw.id,
+                name: raw.name || 'Imported Set',
+                entries: Array.isArray(raw.entries) ? raw.entries : [],
+                createdAt: Number(raw.createdAt) || Date.now(),
+                updatedAt: Number(raw.updatedAt) || Date.now(),
+                notes: raw.notes || '',
+              };
+              added = true;
+            }
+            if (!added) return s;
+            const preferred = incoming.find((item) => item.id === 'set-infinite-glitch-performance')?.id;
+            return {
+              setlists: next,
+              activeId: s.activeId ?? preferred ?? incoming[0]?.id ?? null,
+            };
+          });
+        } catch {
+          /* Starter sets are optional; ignore failures while the backend warms. */
+        }
+      },
     }),
     { name: STORAGE_KEY },
   ),
 );
-

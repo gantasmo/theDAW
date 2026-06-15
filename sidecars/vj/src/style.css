@@ -1,0 +1,61 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #020106;
+  color: #f7eaff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+#vj-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+#camera {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud,
+.set {
+  position: fixed;
+  left: 22px;
+  z-index: 2;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 18px rgba(216, 95, 255, 0.55);
+}
+
+.hud {
+  top: 18px;
+}
+
+.brand {
+  color: rgba(226, 188, 255, 0.72);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+#track {
+  max-width: min(760px, calc(100vw - 44px));
+  margin-top: 7px;
+  color: white;
+  font-size: clamp(18px, 3.1vw, 54px);
+  font-weight: 950;
+  line-height: 0.98;
+  overflow-wrap: anywhere;
+}
+
+.set {
+  bottom: 20px;
+  color: rgba(154, 238, 255, 0.78);
+  font-size: 11px;
+}

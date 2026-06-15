@@ -1,0 +1,364 @@
+{
+  "id": "set-infinite-glitch-performance",
+  "name": "Infinite Glitch - Performance DJ Set",
+  "album": "Infinite Glitch The Album",
+  "createdAt": 1780898247944,
+  "updatedAt": 1780898247944,
+  "notes": "Performance order built from theDAW analysis: 103-105 BPM warmup, tempo-jump bridge, 139.7 BPM fast section, long closer available near the end.",
+  "entries": [
+    {
+      "entryId": "infinite-glitch-16-release-your-mind",
+      "label": "16. Release Your Mind",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-14-indian-yodel",
+      "label": "14. Indian Yodel",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-11-freedom-glitch",
+      "label": "11. Freedom glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-12-fuwooooop",
+      "label": "12. Fuwooooop",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-05-so-damn-rouser",
+      "label": "05. So Damn Rouser",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+      "label": "13. Floofenloof Supreme Album Version",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-17-re-ot",
+      "label": "17. Re-Ot ♾️👁️",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-15-new-glitch",
+      "label": "15. New Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-18-chain-busy-glitch",
+      "label": "18. Chain Busy Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+      "label": "20. Freedom - I don't belong",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-07-far-east-sunrise",
+      "label": "07. Far East Sunrise",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+      "label": "06. She so Pretty and Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+      "label": "03. We Are Siamese Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+      "label": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-23-glitchrock-lobster",
+      "label": "23. GlitchRock Lobster",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-21-first-comp-glitch",
+      "label": "21. First Comp Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-08-i-see-the-drift",
+      "label": "08. I See The Drift",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-22-track",
+      "label": "22. 🦷😬",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-09-gallop-in-the-stars",
+      "label": "09. Gallop in the Stars",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-10-new-p-superstar",
+      "label": "10. New P Superstar",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-02-nice-at-140",
+      "label": "02. Nice at 140",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-04-i-walk-this-road",
+      "label": "04. I Walk This Road",
+      "kind": "audio"
+    }
+  ],
+  "tracks": [
+    {
+      "entryId": "infinite-glitch-16-release-your-mind",
+      "label": "16. Release Your Mind",
+      "kind": "audio",
+      "position": 1,
+      "bpm": 103.359375,
+      "key": "D",
+      "scale": "major",
+      "durationSec": 152.24,
+      "transitionNote": "Low-key 103 BPM opener; set quantize on and establish the grid."
+    },
+    {
+      "entryId": "infinite-glitch-14-indian-yodel",
+      "label": "14. Indian Yodel",
+      "kind": "audio",
+      "position": 2,
+      "bpm": 103.359375,
+      "key": "D",
+      "scale": "minor",
+      "durationSec": 219.319979,
+      "transitionNote": "Stay near 103 BPM; D major/minor contrast gives a clean tension shift."
+    },
+    {
+      "entryId": "infinite-glitch-11-freedom-glitch",
+      "label": "11. Freedom glitch",
+      "kind": "audio",
+      "position": 3,
+      "bpm": 103.359375,
+      "key": "F",
+      "scale": "minor",
+      "durationSec": 120.0,
+      "transitionNote": "Same 103 BPM cluster; use filter or loop roll to tighten before 12."
+    },
+    {
+      "entryId": "infinite-glitch-12-fuwooooop",
+      "label": "12. Fuwooooop",
+      "kind": "audio",
+      "position": 4,
+      "bpm": 103.359375,
+      "key": "E",
+      "scale": "major",
+      "durationSec": 159.52,
+      "transitionNote": "E major lift; prepare tempo creep toward 105."
+    },
+    {
+      "entryId": "infinite-glitch-05-so-damn-rouser",
+      "label": "05. So Damn Rouser",
+      "kind": "audio",
+      "position": 5,
+      "bpm": 105.46875,
+      "key": "E",
+      "scale": "major",
+      "durationSec": 253.24,
+      "transitionNote": "Move into 105 BPM with a stronger groove."
+    },
+    {
+      "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+      "label": "13. Floofenloof Supreme Album Version",
+      "kind": "audio",
+      "position": 6,
+      "bpm": 105.46875,
+      "key": "D#",
+      "scale": "minor",
+      "durationSec": 219.428583,
+      "transitionNote": "D# minor gives darker color before the next lift."
+    },
+    {
+      "entryId": "infinite-glitch-17-re-ot",
+      "label": "17. Re-Ot ♾️👁️",
+      "kind": "audio",
+      "position": 7,
+      "bpm": 105.46875,
+      "key": "D",
+      "scale": "minor",
+      "durationSec": 198.84,
+      "transitionNote": "D minor reset at 105; good place for a short loop or vocal cut."
+    },
+    {
+      "entryId": "infinite-glitch-15-new-glitch",
+      "label": "15. New Glitch",
+      "kind": "audio",
+      "position": 8,
+      "bpm": 105.46875,
+      "key": "G",
+      "scale": "major",
+      "durationSec": 192.0,
+      "transitionNote": "G major peak inside the slower section."
+    },
+    {
+      "entryId": "infinite-glitch-18-chain-busy-glitch",
+      "label": "18. Chain Busy Glitch",
+      "kind": "audio",
+      "position": 9,
+      "bpm": 105.46875,
+      "key": "D#",
+      "scale": "major",
+      "durationSec": 164.84,
+      "transitionNote": "Bright 105 BPM bridge; use echo/filter out for the tempo jump."
+    },
+    {
+      "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+      "label": "20. Freedom - I don't belong",
+      "kind": "audio",
+      "position": 10,
+      "bpm": 139.6748310810811,
+      "key": "D",
+      "scale": "minor",
+      "durationSec": 168.12,
+      "transitionNote": "Jump to 139.7 BPM; start fast section with a hard cut or breakdown."
+    },
+    {
+      "entryId": "infinite-glitch-07-far-east-sunrise",
+      "label": "07. Far East Sunrise",
+      "kind": "audio",
+      "position": 11,
+      "bpm": 139.6748310810811,
+      "key": "F",
+      "scale": "major",
+      "durationSec": 180.56,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+      "label": "06. She so Pretty and Glitch",
+      "kind": "audio",
+      "position": 12,
+      "bpm": 139.6748310810811,
+      "key": "F",
+      "scale": "major",
+      "durationSec": 171.32,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+      "label": "03. We Are Siamese Glitch",
+      "kind": "audio",
+      "position": 13,
+      "bpm": 139.6748310810811,
+      "key": "F",
+      "scale": "minor",
+      "durationSec": 197.0,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+      "label": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+      "kind": "audio",
+      "position": 14,
+      "bpm": 139.6748310810811,
+      "key": "C#",
+      "scale": "minor",
+      "durationSec": 183.16,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-23-glitchrock-lobster",
+      "label": "23. GlitchRock Lobster",
+      "kind": "audio",
+      "position": 15,
+      "bpm": 139.6748310810811,
+      "key": "C",
+      "scale": "minor",
+      "durationSec": 479.36,
+      "transitionNote": "Long 7:59 centerpiece/closer candidate; keep it late for payoff."
+    },
+    {
+      "entryId": "infinite-glitch-21-first-comp-glitch",
+      "label": "21. First Comp Glitch",
+      "kind": "audio",
+      "position": 16,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "major",
+      "durationSec": 186.44,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-08-i-see-the-drift",
+      "label": "08. I See The Drift",
+      "kind": "audio",
+      "position": 17,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "major",
+      "durationSec": 193.6,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-22-track",
+      "label": "22. 🦷😬",
+      "kind": "audio",
+      "position": 18,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "major",
+      "durationSec": 188.32,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-09-gallop-in-the-stars",
+      "label": "09. Gallop in the Stars",
+      "kind": "audio",
+      "position": 19,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "minor",
+      "durationSec": 194.92,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-10-new-p-superstar",
+      "label": "10. New P Superstar",
+      "kind": "audio",
+      "position": 20,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "minor",
+      "durationSec": 235.44,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-02-nice-at-140",
+      "label": "02. Nice at 140",
+      "kind": "audio",
+      "position": 21,
+      "bpm": 139.6748310810811,
+      "key": "D#",
+      "scale": "minor",
+      "durationSec": 195.2,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    },
+    {
+      "entryId": "infinite-glitch-04-i-walk-this-road",
+      "label": "04. I Walk This Road",
+      "kind": "audio",
+      "position": 22,
+      "bpm": 103.359375,
+      "key": "G",
+      "scale": "minor",
+      "durationSec": 173.04,
+      "transitionNote": "Harmonic/energy continuation; use sync, EQ swap, or loop blend."
+    }
+  ]
+}

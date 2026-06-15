@@ -25,7 +25,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
-  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors,
+  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ,
 } from 'lucide-react';
 import { subscribeToMidi } from '../state/midiBus';
 import { useDjControlMap, sigLabel, type MidiKind } from '../state/djControlMap';
@@ -55,7 +55,7 @@ import { JogWheel } from '../components/audio/JogWheel';
 import { sendSetToVj, sendTrackToVj, isVjSetTargetActive, type VjSetItem } from '../state/vjSetBus';
 import { registerDjMasterHandler, reportDjMasterState } from '../state/djMasterBus';
 import { importUrlToLibrary } from '../lib/onlineImport';
-import { ensureStems } from '../lib/djStems';
+import { prepareStems } from '../lib/djStems';
 import * as djEngine from '../state/djEngine';
 
 const DJ_TRACK_MIME = 'application/x-thedaw-djtrack';
@@ -921,7 +921,7 @@ const StemLoadPad: React.FC<{ deck: djEngine.DeckId; entryId: string | null; col
     setBusy(true);
     setMsg('checking');
     try {
-      const refs = await ensureStems(
+      const refs = await prepareStems(
         entryId,
         {
           stems: stemCount,
@@ -962,30 +962,65 @@ const StemTogglePad: React.FC<{
   label: string;
   level: number;
   color: RGB;
-}> = ({ deck, name, label, level, color }) => {
+  preparing?: boolean;
+  onPrepare?: () => void;
+}> = ({ deck, name, label, level, color, preparing = false, onPrepare }) => {
   const on = !!name && level > 0.001;
+  const canPrepare = !name && !!onPrepare;
   return (
     <SlidePad
       color={color}
-      on={on}
-      disabled={!name}
-      onClick={() => { if (name) djEngine.setStemGain(deck, name, on ? 0 : 1); }}
+      on={on || preparing}
+      disabled={!name && !canPrepare}
+      onClick={() => {
+        if (name) djEngine.setStemGain(deck, name, on ? 0 : 1);
+        else onPrepare?.();
+      }}
       className="w-full h-full px-1 py-1 text-[7px] min-w-0"
-      title={name ? `Deck ${deck} ${name}: ${on ? 'click to mute' : 'click to restore'}` : 'Load stems first'}
+      title={name ? `Deck ${deck} ${name}: ${on ? 'click to mute' : 'click to restore'}` : canPrepare ? `Prepare stems for Deck ${deck}` : 'Load a track first'}
     >
-      <span className="truncate">{label}</span>
+      {preparing && !name ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+      <span className="truncate">{preparing && !name ? 'Prep' : label}</span>
     </SlidePad>
   );
 };
 
 const StemPadBank: React.FC<{ deck: djEngine.DeckId; entryId: string | null; color: RGB; ctl: DeckCtl; mirror?: boolean }> = ({ deck, entryId, color, ctl, mirror }) => {
+  const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
+  const [busy, setBusy] = useState(false);
+  const stemCount = toStemCount(stemSettings.default_count);
+  const prepare = async () => {
+    if (!entryId || busy) return;
+    setBusy(true);
+    try {
+      const refs = await prepareStems(entryId, {
+        stems: stemCount,
+        device: stemSettings.device || 'auto',
+        quality: stemSettings.quality || 'balanced',
+      });
+      await djEngine.loadDeckStems(deck, refs);
+    } finally {
+      setBusy(false);
+    }
+  };
   const cells: React.ReactNode[] = [
     <StemLoadPad key="load" deck={deck} entryId={entryId} color={color} />,
     ...Array.from({ length: STEM_PAD_SLOTS }, (_, i) => {
       const name = ctl.stemNames[i] ?? null;
       const label = stemLabel(name ?? STEM_PAD_FALLBACKS[i] ?? `Stem ${i + 1}`);
       const level = name ? (ctl.stemLevels[name] ?? djEngine.getStemGain(deck, name)) : 0;
-      return <StemTogglePad key={i} deck={deck} name={name} label={label} level={level} color={STEM_PAD_COLORS[i] ?? color} />;
+      return (
+        <StemTogglePad
+          key={i}
+          deck={deck}
+          name={name}
+          label={label}
+          level={level}
+          color={STEM_PAD_COLORS[i] ?? color}
+          preparing={busy}
+          onPrepare={entryId ? () => void prepare() : undefined}
+        />
+      );
     }),
     <SlidePad key="fx" disabled className="w-full h-full px-1 py-1 text-[7px] min-w-0" title="Open slot for the next stem layer">
       FX
@@ -1030,7 +1065,7 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
     try {
       const device = stemSettings.device || 'auto';
       const quality = stemSettings.quality || 'balanced';
-      const refs = await ensureStems(
+      const refs = await prepareStems(
         entryId,
         { stems: stemCount, device, quality },
         (pct, phase) => setStemMsg(`${phase.replace(/_/g, ' ')}${pct > 0 ? ` ${pct}%` : ''}`),
@@ -1135,6 +1170,7 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
 const SideListLane: React.FC<{ onLoadDeck: (entryId: string, deck: djEngine.DeckId) => void }> = ({ onLoadDeck }) => {
   const items = useDjSideList((s) => s.items);
   const add = useDjSideList((s) => s.add);
+  const setItems = useDjSideList((s) => s.setItems);
   const remove = useDjSideList((s) => s.remove);
   const reorder = useDjSideList((s) => s.reorder);
   const clear = useDjSideList((s) => s.clear);
@@ -1143,6 +1179,7 @@ const SideListLane: React.FC<{ onLoadDeck: (entryId: string, deck: djEngine.Deck
   const activeId = useSetlistStore((s) => s.activeId);
   const appendToSet = useSetlistStore((s) => s.append);
   const [over, setOver] = useState(false);
+  const [queueSort, setQueueSort] = useState<{ key: 'title' | 'bpm'; dir: 'asc' | 'desc' } | null>(null);
 
   const stage = (id: string) => { const lib = entries.find((e) => e.id === id); if (lib) add({ entryId: id, label: lib.title }); };
   const onDrop = (e: React.DragEvent) => {
@@ -1154,6 +1191,30 @@ const SideListLane: React.FC<{ onLoadDeck: (entryId: string, deck: djEngine.Deck
     if (!activeId || items.length === 0) return;
     appendToSet(activeId, items.map((it) => ({ entryId: it.entryId, label: it.label, kind: 'audio' as const })));
   };
+  const sortQueue = (key: 'title' | 'bpm') => {
+    if (items.length < 2) return;
+    const dir: 'asc' | 'desc' = queueSort?.key === key && queueSort.dir === 'asc' ? 'desc' : 'asc';
+    const signed = dir === 'asc' ? 1 : -1;
+    const sorted = [...items].sort((a, b) => {
+      if (key === 'title') {
+        const byTitle = a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+        return byTitle !== 0 ? byTitle * signed : a.entryId.localeCompare(b.entryId);
+      }
+      const abpm = analysisById[a.entryId]?.data?.bpm ?? null;
+      const bbpm = analysisById[b.entryId]?.data?.bpm ?? null;
+      if (abpm == null && bbpm == null) {
+        return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (abpm == null) return 1;
+      if (bbpm == null) return -1;
+      const byBpm = abpm - bbpm;
+      return byBpm !== 0 ? byBpm * signed : a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    setItems(sorted);
+    setQueueSort({ key, dir });
+  };
+  const sortIconClass = (key: 'title' | 'bpm') =>
+    `transition-transform ${queueSort?.key === key ? 'opacity-100 text-purple-200' : 'opacity-45'} ${queueSort?.key === key && queueSort.dir === 'desc' ? 'rotate-180' : ''}`;
 
   return (
     <div
@@ -1168,6 +1229,8 @@ const SideListLane: React.FC<{ onLoadDeck: (entryId: string, deck: djEngine.Deck
         <span className="text-[9px] font-black uppercase tracking-widest text-purple-300">Next</span>
         <span className="text-[8px] font-mono text-zinc-600 tabular-nums">{items.length}</span>
         <div className="flex items-center gap-0.5 ml-auto">
+          <button onClick={() => sortQueue('title')} disabled={items.length < 2} className="p-0.5 text-zinc-500 hover:text-purple-300 disabled:opacity-25" title="Sort queue by title"><ArrowDownAZ className={`w-3 h-3 ${sortIconClass('title')}`} /></button>
+          <button onClick={() => sortQueue('bpm')} disabled={items.length < 2} className="p-0.5 text-zinc-500 hover:text-purple-300 disabled:opacity-25" title="Sort queue by BPM"><Gauge className={`w-3 h-3 ${sortIconClass('bpm')}`} /></button>
           <button onClick={pushToSet} disabled={!activeId || items.length === 0} className="p-0.5 text-zinc-500 hover:text-purple-300 disabled:opacity-25" title={activeId ? 'Append the whole queue to the active set' : 'Open or create a set first (Source Tree ›)'}><Plus className="w-3 h-3" /></button>
           <button onClick={clear} disabled={items.length === 0} className="p-0.5 text-zinc-500 hover:text-rose-400 disabled:opacity-25" title="Clear the queue"><Trash2 className="w-3 h-3" /></button>
         </div>
@@ -1224,6 +1287,7 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   const [editName, setEditName] = useState('');
   type SortKey = 'order' | 'bpm' | 'title' | 'key' | 'dur' | 'date' | 'source';
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'order', dir: 'asc' });
+  const [appliedSetSort, setAppliedSetSort] = useState<{ key: 'title' | 'bpm'; dir: 'asc' | 'desc' } | null>(null);
 
   const set = source.kind === 'set' ? setlists[source.id] ?? null : null;
   const isSet = source.kind === 'set' && !!set;
@@ -1311,9 +1375,33 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
     const items: VjSetItem[] = set.entries.map((e) => { const lib = e.entryId ? entries.find((x) => x.id === e.entryId) ?? null : null; return { entryId: e.entryId, label: e.label, url: lib?.audioUrl ?? e.url, kind: e.kind ?? 'audio' }; });
     sendSetToVj({ setId: set.id, name: set.name, items });
   };
+  const sortSetEntries = (key: 'title' | 'bpm') => {
+    if (!set || set.entries.length < 2) return;
+    const dir: 'asc' | 'desc' = appliedSetSort?.key === key && appliedSetSort.dir === 'asc' ? 'desc' : 'asc';
+    const signed = dir === 'asc' ? 1 : -1;
+    const next = [...set.entries].sort((a, b) => {
+      if (key === 'title') {
+        return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }) * signed;
+      }
+      const abpm = a.entryId ? analysisById[a.entryId]?.data?.bpm ?? null : null;
+      const bbpm = b.entryId ? analysisById[b.entryId]?.data?.bpm ?? null : null;
+      if (abpm == null && bbpm == null) {
+        return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (abpm == null) return 1;
+      if (bbpm == null) return -1;
+      const byBpm = abpm - bbpm;
+      return byBpm !== 0 ? byBpm * signed : a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    setEntries(set.id, next);
+    setSort({ key: 'order', dir: 'asc' });
+    setAppliedSetSort({ key, dir });
+  };
+  const setSortIconClass = (key: 'title' | 'bpm') =>
+    `w-3 h-3 transition-transform ${appliedSetSort?.key === key ? 'opacity-100 text-purple-200' : 'opacity-55'} ${appliedSetSort?.key === key && appliedSetSort.dir === 'desc' ? 'rotate-180' : ''}`;
 
   return (
-    <div className="hardware-card flex-3 flex flex-col min-h-0 overflow-hidden">
+    <div className="hardware-card h-full w-full flex flex-col min-h-0 overflow-hidden">
       {/* header: source name + count + search + (set actions) */}
       <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-white/5">
         {isSet ? <ListMusic className="w-3.5 h-3.5 text-purple-400 shrink-0" /> : <LibraryIcon className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
@@ -1329,6 +1417,8 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
         </div>
         {isSet && set && (
           <div className="flex items-center gap-0.5 shrink-0">
+            <button onClick={() => sortSetEntries('title')} disabled={set.entries.length < 2} className="p-0.5 text-zinc-500 hover:text-purple-300 disabled:opacity-30" title="Reorder this playlist by title"><ArrowDownAZ className={setSortIconClass('title')} /></button>
+            <button onClick={() => sortSetEntries('bpm')} disabled={set.entries.length < 2} className="p-0.5 text-zinc-500 hover:text-purple-300 disabled:opacity-30" title="Reorder this playlist by BPM"><Gauge className={setSortIconClass('bpm')} /></button>
             <button onClick={() => { setEditName(set.name); setEditing(true); }} className="p-0.5 text-zinc-500 hover:text-zinc-200" title="Rename set"><Pencil className="w-3 h-3" /></button>
             <button onClick={sendWholeSet} disabled={set.entries.length === 0} className="p-0.5 text-zinc-500 hover:text-cyan-300 disabled:opacity-30" title="Send whole set to VJ"><Cast className="w-3.5 h-3.5" /></button>
             <button onClick={() => { removeSetlist(set.id); setSource({ kind: 'library' }); }} className="p-0.5 text-zinc-500 hover:text-rose-400" title="Delete set"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -1349,7 +1439,7 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
       </div>
 
       {/* rows */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {rows.length === 0 ? (
           <div className="h-full grid place-items-center text-[9px] font-mono text-zinc-600 px-3 text-center">
             {isSet ? 'Empty set — drag tracks here, or Save a loaded deck.' : (entries.length === 0 ? 'Library empty — generate or import audio.' : 'No matches.')}
@@ -1435,12 +1525,12 @@ const SourceTree: React.FC<{ source: Source; setSource: (s: Source) => void; lib
   );
 
   return (
-    <div className="hardware-card flex-2 flex flex-col min-h-0 overflow-hidden">
+    <div className="hardware-card h-full w-full flex flex-col min-h-0 overflow-hidden">
       <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-white/5">
         <LibraryIcon className="w-3.5 h-3.5 text-purple-400 shrink-0" />
         <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 leading-tight">Source Tree</span>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto py-1">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-1">
         <Group label="Library" />
         <Item active={source.kind === 'library'} onClick={() => setSource({ kind: 'library' })} right={<span className="text-[8px] text-zinc-600">{libCount}</span>} title="All of your generated + imported audio">Library</Item>
         <Item active={source.kind === 'favorites'} onClick={() => setSource({ kind: 'favorites' })} right={<span className="text-[8px] text-zinc-600">{favCount}</span>} title="Tracks you've starred">Favorites</Item>

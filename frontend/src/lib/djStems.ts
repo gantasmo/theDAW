@@ -1,4 +1,5 @@
 import { logError, logInfo } from '../state/logStore';
+import { useDjAnalysisStore } from '../state/djAnalysisStore';
 
 /* DJ live stems (D4) — list / separate / resolve URLs for the stems backend
  * (`backend/modules/stems`). Cached stems are served at
@@ -80,4 +81,21 @@ export async function ensureStems(
     polling = false;
   }
   return listStems(entryId);
+}
+
+export async function prepareStems(
+  entryId: string,
+  opts: SeparateOpts = {},
+  onProgress?: (pct: number, phase: string) => void,
+): Promise<StemRef[]> {
+  onProgress?.(0, 'analyzing');
+  await useDjAnalysisStore.getState().ensureAnalyzed(entryId);
+
+  const analysis = useDjAnalysisStore.getState().byId[entryId];
+  if (analysis?.status === 'error') {
+    throw new Error('analysis failed');
+  }
+
+  onProgress?.(0, 'checking_stems');
+  return ensureStems(entryId, opts, onProgress);
 }

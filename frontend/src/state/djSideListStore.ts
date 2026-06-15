@@ -18,6 +18,8 @@ interface DjSideListState {
   items: SideListItem[];
   /** Append a track to the end of the queue; no-ops if already staged. */
   add: (item: SideListItem) => void;
+  /** Replace the queue order atomically. */
+  setItems: (items: SideListItem[]) => void;
   /** Remove a staged track by entry id. */
   remove: (entryId: string) => void;
   /** Move the item at `from` to index `to` (clamped). */
@@ -35,6 +37,7 @@ export const useDjSideList = create<DjSideListState>()(
           ? s
           : { items: [...s.items, item] }
       )),
+      setItems: (items) => set({ items }),
       remove: (entryId) => set((s) => ({ items: s.items.filter((it) => it.entryId !== entryId) })),
       reorder: (from, to) => set((s) => {
         if (to < 0 || to >= s.items.length || from === to) return s;

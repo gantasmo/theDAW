@@ -1,0 +1,246 @@
+{
+  "state": {
+    "setlists": {
+      "set-infinite-glitch-the-album": {
+        "id": "set-infinite-glitch-the-album",
+        "name": "Infinite Glitch The Album - DJ Set",
+        "entries": [
+          {
+            "entryId": "infinite-glitch-02-nice-at-140",
+            "label": "02. Nice at 140",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+            "label": "03. We Are Siamese Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-04-i-walk-this-road",
+            "label": "04. I Walk This Road",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-05-so-damn-rouser",
+            "label": "05. So Damn Rouser",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+            "label": "06. She so Pretty and Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-07-far-east-sunrise",
+            "label": "07. Far East Sunrise",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-08-i-see-the-drift",
+            "label": "08. I See The Drift",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-09-gallop-in-the-stars",
+            "label": "09. Gallop in the Stars",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-10-new-p-superstar",
+            "label": "10. New P Superstar",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-11-freedom-glitch",
+            "label": "11. Freedom glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-12-fuwooooop",
+            "label": "12. Fuwooooop",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+            "label": "13. Floofenloof Supreme Album Version",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-14-indian-yodel",
+            "label": "14. Indian Yodel",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-15-new-glitch",
+            "label": "15. New Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-16-release-your-mind",
+            "label": "16. Release Your Mind",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-17-re-ot",
+            "label": "17. Re-Ot ♾️👁️",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-18-chain-busy-glitch",
+            "label": "18. Chain Busy Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+            "label": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+            "label": "20. Freedom - I don't belong",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-21-first-comp-glitch",
+            "label": "21. First Comp Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-22-track",
+            "label": "22. 🦷😬",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-23-glitchrock-lobster",
+            "label": "23. GlitchRock Lobster",
+            "kind": "audio"
+          }
+        ],
+        "createdAt": 1780897706182,
+        "updatedAt": 1780897706182,
+        "notes": "Album-order set seeded from the Desktop folder. Use Automix in the DJ tab or reorder by BPM/key after analysis."
+      },
+      "set-infinite-glitch-performance": {
+        "id": "set-infinite-glitch-performance",
+        "name": "Infinite Glitch - Performance DJ Set",
+        "entries": [
+          {
+            "entryId": "infinite-glitch-16-release-your-mind",
+            "label": "16. Release Your Mind",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-14-indian-yodel",
+            "label": "14. Indian Yodel",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-11-freedom-glitch",
+            "label": "11. Freedom glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-12-fuwooooop",
+            "label": "12. Fuwooooop",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-05-so-damn-rouser",
+            "label": "05. So Damn Rouser",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+            "label": "13. Floofenloof Supreme Album Version",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-17-re-ot",
+            "label": "17. Re-Ot ♾️👁️",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-15-new-glitch",
+            "label": "15. New Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-18-chain-busy-glitch",
+            "label": "18. Chain Busy Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+            "label": "20. Freedom - I don't belong",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-07-far-east-sunrise",
+            "label": "07. Far East Sunrise",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+            "label": "06. She so Pretty and Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+            "label": "03. We Are Siamese Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+            "label": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-23-glitchrock-lobster",
+            "label": "23. GlitchRock Lobster",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-21-first-comp-glitch",
+            "label": "21. First Comp Glitch",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-08-i-see-the-drift",
+            "label": "08. I See The Drift",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-22-track",
+            "label": "22. 🦷😬",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-09-gallop-in-the-stars",
+            "label": "09. Gallop in the Stars",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-10-new-p-superstar",
+            "label": "10. New P Superstar",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-02-nice-at-140",
+            "label": "02. Nice at 140",
+            "kind": "audio"
+          },
+          {
+            "entryId": "infinite-glitch-04-i-walk-this-road",
+            "label": "04. I Walk This Road",
+            "kind": "audio"
+          }
+        ],
+        "createdAt": 1780898247944,
+        "updatedAt": 1780898247944,
+        "notes": "Performance order built from theDAW analysis: 103-105 BPM warmup, tempo-jump bridge, 139.7 BPM fast section, long closer available near the end."
+      }
+    },
+    "activeId": "set-infinite-glitch-performance"
+  },
+  "version": 0
+}

@@ -1,18 +1,17 @@
-"""Manage the GANTASMO-LIVE-VJ Vite server as an SA3 sidecar.
+"""Manage the VJ Vite server as an SA3 sidecar.
 
-The VJ project lives in its own repo at
-``D:/StableAudio/GANTASMO-LIVE-VJ`` (overridable via
-``theDAW_VJ_PROJECT``). It's a vanilla Vite/React app — no Python,
-no heavy ML deps — so the spawn logic is much simpler than the stems
-sidecar: build (when stale) + ``npm run preview`` and poll the port
-until the server is listening.
+The VJ project can live in an external ``GANTASMO-LIVE-VJ`` checkout
+(overridable via ``theDAW_VJ_PROJECT``). If that checkout is not present,
+we fall back to the small built-in VJ app at ``sidecars/vj``. It's a
+vanilla Vite app — no Python, no heavy ML deps — so the spawn logic is
+much simpler than the stems sidecar.
 
-By default the sidecar serves a PRODUCTION build (``vite preview``
-over ``dist/``): no HMR websocket, no per-request transforms, no
-file watcher — measurably lighter than the dev server during
-performance use. ``dist/`` is rebuilt automatically when missing or
-older than the newest source file. Set ``theDAW_VJ_DEV=1`` to force
-the dev server (HMR) while working ON the VJ app itself.
+By default the sidecar serves a production build (``vite preview`` over
+``dist/``): no HMR websocket, no per-request transforms, no file watcher
+— measurably lighter than the dev server during performance use.
+``dist/`` is rebuilt automatically when missing or older than the newest
+source file. Set ``theDAW_VJ_DEV=1`` to force the dev server while working
+on the VJ app itself.
 
 We deliberately use a NON-default port (5187) because:
   * 3000 (React default) is the user's explicit "don't use this"
@@ -52,7 +51,9 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 
-DEFAULT_PROJECT_PATH = Path(r"D:/StableAudio/GANTASMO-LIVE-VJ")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+BUILTIN_PROJECT_PATH = REPO_ROOT / "sidecars" / "vj"
+LEGACY_PROJECT_PATH = Path(r"D:/StableAudio/GANTASMO-LIVE-VJ")
 DEFAULT_PORT = 5187
 PORT_READY_TIMEOUT_SEC = 60.0
 PORT_POLL_INTERVAL_SEC = 0.5
@@ -77,6 +78,7 @@ class VJConfig:
     port: int
     npm_path: str
     dev_mode: bool
+    project_source: str
 
 
 _state_lock = Lock()
@@ -84,10 +86,34 @@ _proc: Optional[subprocess.Popen[bytes]] = None
 _resolved_url: Optional[str] = None
 
 
+def _project_candidates() -> list[tuple[Path, str]]:
+    """Likely VJ project locations, ordered from portable to legacy."""
+    return [
+        (BUILTIN_PROJECT_PATH, "built-in sidecar"),
+        (REPO_ROOT.parent / "GANTASMO-LIVE-VJ", "adjacent checkout"),
+        (REPO_ROOT.parent.parent / "GANTASMO-LIVE-VJ", "Documents checkout"),
+        (Path.home() / "Documents" / "GANTASMO-LIVE-VJ", "Documents checkout"),
+        (LEGACY_PROJECT_PATH, "legacy Windows path"),
+    ]
+
+
+def _resolve_project_path() -> tuple[Path, str]:
+    env_path = os.getenv("theDAW_VJ_PROJECT")
+    if env_path:
+        return Path(env_path).expanduser().resolve(), "theDAW_VJ_PROJECT"
+
+    for candidate, source in _project_candidates():
+        if (candidate / "package.json").is_file():
+            return candidate.resolve(), source
+
+    # Return the portable built-in path even if it is incomplete so the
+    # frontend diagnostic points at the checkout-local project, not D:\.
+    return BUILTIN_PROJECT_PATH.resolve(), "built-in sidecar"
+
+
 def resolve_config() -> VJConfig:
     """Resolve project path + port + the npm binary to use."""
-    pkg = os.getenv("theDAW_VJ_PROJECT")
-    project_path = Path(pkg).expanduser().resolve() if pkg else DEFAULT_PROJECT_PATH
+    project_path, project_source = _resolve_project_path()
 
     port_env = os.getenv("theDAW_VJ_PORT")
     try:
@@ -104,7 +130,11 @@ def resolve_config() -> VJConfig:
     dev_mode = os.getenv("theDAW_VJ_DEV") == "1"
 
     return VJConfig(
-        project_path=project_path, port=port, npm_path=npm_path, dev_mode=dev_mode
+        project_path=project_path,
+        port=port,
+        npm_path=npm_path,
+        dev_mode=dev_mode,
+        project_source=project_source,
     )
 
 
@@ -222,6 +252,7 @@ def probe() -> dict:
     listening = _port_is_listening(cfg.port)
     return {
         "project_path": str(pkg),
+        "project_source": cfg.project_source,
         "port": cfg.port,
         # "preview" = production build via `vite preview` (default);
         # "dev" = HMR dev server (theDAW_VJ_DEV=1).
@@ -231,8 +262,8 @@ def probe() -> dict:
         "process_alive": _proc is not None and _proc.poll() is None,
         "url": _resolved_url or f"http://localhost:{cfg.port}",
         # LAN-reachable URL for phones/tablets (None if offline). The
-        # Vite server is bound to 0.0.0.0 with allowedHosts disabled so
-        # this address isn't rejected when a mobile device connects.
+        # Vite server is bound to 0.0.0.0 so mobile devices on the same
+        # network can reach it.
         "mobile_url": mobile_url_for(cfg.port),
         "lan_ip": detect_lan_ip(),
         "issues": issues,
@@ -264,7 +295,13 @@ def ensure_running(*, wait_for_ready: bool = True) -> str:
             if not cfg.project_path.is_dir():
                 raise RuntimeError(
                     f"VJ project not found at {cfg.project_path}. Set "
-                    "theDAW_VJ_PROJECT to override."
+                    "theDAW_VJ_PROJECT to override, or restore the built-in "
+                    "sidecars/vj project."
+                )
+            if not (cfg.project_path / "package.json").is_file():
+                raise RuntimeError(
+                    f"VJ project at {cfg.project_path} has no package.json. "
+                    "Set theDAW_VJ_PROJECT to a Vite app or restore sidecars/vj."
                 )
             # First-run bootstrap: if node_modules is missing, npm run
             # dev exits with rc=1 immediately ("vite: not found"). Do
@@ -295,7 +332,17 @@ def ensure_running(*, wait_for_ready: bool = True) -> str:
                     )
                 log.info("vj.sidecar: npm install complete")
             if cfg.dev_mode:
-                cmd = [cfg.npm_path, "run", "dev", "--", "--port", str(cfg.port)]
+                cmd = [
+                    cfg.npm_path,
+                    "run",
+                    "dev",
+                    "--",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    str(cfg.port),
+                    "--strictPort",
+                ]
             else:
                 # Production serve: build once (when stale), then `vite
                 # preview` over dist/ — same port contract and SPA

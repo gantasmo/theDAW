@@ -400,6 +400,41 @@ def delete_entry(entry_id: str) -> dict[str, Any]:
     return {"deleted": entry_id}
 
 
+@router.get("/setlists")
+def list_setlists() -> dict[str, Any]:
+    """Return local DJ setlist JSON files stored next to the library.
+
+    Setlists are still browser-local for editing, but this lets a checkout ship
+    curated starter sets that the frontend can merge into localStorage.
+    """
+    store = get_store()
+    setlists_dir = store.root.parent / "setlists"
+    out: list[dict[str, Any]] = []
+    if setlists_dir.is_dir():
+        for path in sorted(setlists_dir.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                log.warning("library.setlists: skipping %s: %s", path, e)
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if not payload.get("id") or not isinstance(payload.get("entries"), list):
+                continue
+            out.append(
+                {
+                    "id": str(payload.get("id")),
+                    "name": str(payload.get("name") or path.stem),
+                    "entries": payload.get("entries") or [],
+                    "createdAt": int(payload.get("createdAt") or 0),
+                    "updatedAt": int(payload.get("updatedAt") or 0),
+                    "notes": str(payload.get("notes") or ""),
+                    "source": str(path),
+                }
+            )
+    return {"setlists": out, "count": len(out), "root": str(setlists_dir)}
+
+
 @router.get("/{entry_id}/bundle")
 def download_bundle(entry_id: str) -> Response:
     store = get_store()

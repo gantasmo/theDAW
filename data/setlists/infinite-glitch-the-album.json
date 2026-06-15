@@ -1,0 +1,298 @@
+{
+  "id": "set-infinite-glitch-the-album",
+  "name": "Infinite Glitch The Album - DJ Set",
+  "album": "Infinite Glitch The Album",
+  "createdAt": 1780897706182,
+  "updatedAt": 1780897706182,
+  "notes": "Album-order set seeded from the Desktop folder. Use Automix in the DJ tab or reorder by BPM/key after analysis.",
+  "entries": [
+    {
+      "entryId": "infinite-glitch-02-nice-at-140",
+      "label": "02. Nice at 140",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+      "label": "03. We Are Siamese Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-04-i-walk-this-road",
+      "label": "04. I Walk This Road",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-05-so-damn-rouser",
+      "label": "05. So Damn Rouser",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+      "label": "06. She so Pretty and Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-07-far-east-sunrise",
+      "label": "07. Far East Sunrise",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-08-i-see-the-drift",
+      "label": "08. I See The Drift",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-09-gallop-in-the-stars",
+      "label": "09. Gallop in the Stars",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-10-new-p-superstar",
+      "label": "10. New P Superstar",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-11-freedom-glitch",
+      "label": "11. Freedom glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-12-fuwooooop",
+      "label": "12. Fuwooooop",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+      "label": "13. Floofenloof Supreme Album Version",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-14-indian-yodel",
+      "label": "14. Indian Yodel",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-15-new-glitch",
+      "label": "15. New Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-16-release-your-mind",
+      "label": "16. Release Your Mind",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-17-re-ot",
+      "label": "17. Re-Ot ♾️👁️",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-18-chain-busy-glitch",
+      "label": "18. Chain Busy Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+      "label": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+      "label": "20. Freedom - I don't belong",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-21-first-comp-glitch",
+      "label": "21. First Comp Glitch",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-22-track",
+      "label": "22. 🦷😬",
+      "kind": "audio"
+    },
+    {
+      "entryId": "infinite-glitch-23-glitchrock-lobster",
+      "label": "23. GlitchRock Lobster",
+      "kind": "audio"
+    }
+  ],
+  "tracks": [
+    {
+      "entryId": "infinite-glitch-02-nice-at-140",
+      "trackNumber": 2,
+      "title": "02. Nice at 140",
+      "duration": 195.2,
+      "audioUrl": "/api/library/audio/infinite-glitch-02-nice-at-140",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/2Nice at 140.wav"
+    },
+    {
+      "entryId": "infinite-glitch-03-we-are-siamese-glitch",
+      "trackNumber": 3,
+      "title": "03. We Are Siamese Glitch",
+      "duration": 197.0,
+      "audioUrl": "/api/library/audio/infinite-glitch-03-we-are-siamese-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/3. We Are Siamese Glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-04-i-walk-this-road",
+      "trackNumber": 4,
+      "title": "04. I Walk This Road",
+      "duration": 173.04,
+      "audioUrl": "/api/library/audio/infinite-glitch-04-i-walk-this-road",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/4 I Walk This Road.wav"
+    },
+    {
+      "entryId": "infinite-glitch-05-so-damn-rouser",
+      "trackNumber": 5,
+      "title": "05. So Damn Rouser",
+      "duration": 253.24,
+      "audioUrl": "/api/library/audio/infinite-glitch-05-so-damn-rouser",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/5 So Damn Rouser.wav"
+    },
+    {
+      "entryId": "infinite-glitch-06-she-so-pretty-and-glitch",
+      "trackNumber": 6,
+      "title": "06. She so Pretty and Glitch",
+      "duration": 171.32,
+      "audioUrl": "/api/library/audio/infinite-glitch-06-she-so-pretty-and-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/6 She so Pretty and Glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-07-far-east-sunrise",
+      "trackNumber": 7,
+      "title": "07. Far East Sunrise",
+      "duration": 180.56,
+      "audioUrl": "/api/library/audio/infinite-glitch-07-far-east-sunrise",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/7 Far East Sunrise.wav"
+    },
+    {
+      "entryId": "infinite-glitch-08-i-see-the-drift",
+      "trackNumber": 8,
+      "title": "08. I See The Drift",
+      "duration": 193.6,
+      "audioUrl": "/api/library/audio/infinite-glitch-08-i-see-the-drift",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/8 I See The Drift .wav"
+    },
+    {
+      "entryId": "infinite-glitch-09-gallop-in-the-stars",
+      "trackNumber": 9,
+      "title": "09. Gallop in the Stars",
+      "duration": 194.92,
+      "audioUrl": "/api/library/audio/infinite-glitch-09-gallop-in-the-stars",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/9 Gallop in the Stars.wav"
+    },
+    {
+      "entryId": "infinite-glitch-10-new-p-superstar",
+      "trackNumber": 10,
+      "title": "10. New P Superstar",
+      "duration": 235.44,
+      "audioUrl": "/api/library/audio/infinite-glitch-10-new-p-superstar",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/10 New P Superstar.wav"
+    },
+    {
+      "entryId": "infinite-glitch-11-freedom-glitch",
+      "trackNumber": 11,
+      "title": "11. Freedom glitch",
+      "duration": 120.0,
+      "audioUrl": "/api/library/audio/infinite-glitch-11-freedom-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/11 Freedom glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-12-fuwooooop",
+      "trackNumber": 12,
+      "title": "12. Fuwooooop",
+      "duration": 159.52,
+      "audioUrl": "/api/library/audio/infinite-glitch-12-fuwooooop",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/12 Fuwooooop.wav"
+    },
+    {
+      "entryId": "infinite-glitch-13-floofenloof-supreme-album-version",
+      "trackNumber": 13,
+      "title": "13. Floofenloof Supreme Album Version",
+      "duration": 219.428583,
+      "audioUrl": "/api/library/audio/infinite-glitch-13-floofenloof-supreme-album-version",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/13 Floofenloof Supreme Album Version.wav"
+    },
+    {
+      "entryId": "infinite-glitch-14-indian-yodel",
+      "trackNumber": 14,
+      "title": "14. Indian Yodel",
+      "duration": 219.319979,
+      "audioUrl": "/api/library/audio/infinite-glitch-14-indian-yodel",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/14 Indian Yodel.wav"
+    },
+    {
+      "entryId": "infinite-glitch-15-new-glitch",
+      "trackNumber": 15,
+      "title": "15. New Glitch",
+      "duration": 192.0,
+      "audioUrl": "/api/library/audio/infinite-glitch-15-new-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/15 New Glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-16-release-your-mind",
+      "trackNumber": 16,
+      "title": "16. Release Your Mind",
+      "duration": 152.24,
+      "audioUrl": "/api/library/audio/infinite-glitch-16-release-your-mind",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/16 Release Your Mind.wav"
+    },
+    {
+      "entryId": "infinite-glitch-17-re-ot",
+      "trackNumber": 17,
+      "title": "17. Re-Ot ♾️👁️",
+      "duration": 198.84,
+      "audioUrl": "/api/library/audio/infinite-glitch-17-re-ot",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/17 Re-Ot ♾️👁️.wav"
+    },
+    {
+      "entryId": "infinite-glitch-18-chain-busy-glitch",
+      "trackNumber": 18,
+      "title": "18. Chain Busy Glitch",
+      "duration": 164.84,
+      "audioUrl": "/api/library/audio/infinite-glitch-18-chain-busy-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/18 Chain Busy Glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+      "trackNumber": 19,
+      "title": "19. JAX and I, we runnin’ free 2026 return of the glitch",
+      "duration": 183.16,
+      "audioUrl": "/api/library/audio/infinite-glitch-19-jax-and-i-we-runnin-free-2026-return-of-the-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/19 JAX and I, we runnin’ free 2026 return of the glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-20-freedom-i-don-t-belong",
+      "trackNumber": 20,
+      "title": "20. Freedom - I don't belong",
+      "duration": 168.12,
+      "audioUrl": "/api/library/audio/infinite-glitch-20-freedom-i-don-t-belong",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/20 Freedom - I don't belong.wav"
+    },
+    {
+      "entryId": "infinite-glitch-21-first-comp-glitch",
+      "trackNumber": 21,
+      "title": "21. First Comp Glitch",
+      "duration": 186.44,
+      "audioUrl": "/api/library/audio/infinite-glitch-21-first-comp-glitch",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/21 First Comp Glitch.wav"
+    },
+    {
+      "entryId": "infinite-glitch-22-track",
+      "trackNumber": 22,
+      "title": "22. 🦷😬",
+      "duration": 188.32,
+      "audioUrl": "/api/library/audio/infinite-glitch-22-track",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/22 🦷😬.wav"
+    },
+    {
+      "entryId": "infinite-glitch-23-glitchrock-lobster",
+      "trackNumber": 23,
+      "title": "23. GlitchRock Lobster",
+      "duration": 479.36,
+      "audioUrl": "/api/library/audio/infinite-glitch-23-glitchrock-lobster",
+      "sourcePath": "/Users/morganlavery/Desktop/Infinite Glitch The Album/23 GlitchRock Lobster.wav"
+    }
+  ]
+}

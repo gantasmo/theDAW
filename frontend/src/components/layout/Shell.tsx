@@ -130,7 +130,7 @@ export const Shell: React.FC = () => {
   return (
     <div
       className="flex flex-col w-full bg-[#07050a] text-[#f5f3ff] overflow-hidden font-sans dense-layout"
-      style={{ height: 'calc((100vh - 5rem) / var(--layout-zoom))' }}
+      style={{ height: isDjWorkspace ? 'calc(100vh / var(--layout-zoom))' : 'calc((100vh - 5rem) / var(--layout-zoom))' }}
     >
       {/* Combined header + tab bar — logo (left), workspace tabs (center),
           Docs / Mobile / Settings icons (right). G-Search moved to the footer. */}
