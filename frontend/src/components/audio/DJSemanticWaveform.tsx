@@ -65,6 +65,28 @@ function pickColor(peak: number, rms: number, low: number, mid: number, bright: 
   return BODY;
 }
 
+function semanticRgb(color: string): [number, number, number] {
+  switch (color) {
+    case BEAT:
+      return [255, 89, 64];
+    case VOCAL:
+      return [76, 241, 112];
+    case BASS:
+      return [46, 169, 255];
+    case BRIGHT:
+      return [255, 182, 65];
+    case BODY:
+      return [188, 168, 255];
+    default:
+      return [72, 83, 100];
+  }
+}
+
+function semanticRgba(color: string, alpha: number): string {
+  const [r, g, b] = semanticRgb(color);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 async function decodeAudio(audioUrl: string, signal: AbortSignal): Promise<AudioBuffer> {
   const res = await fetch(audioUrl, { signal });
   if (!res.ok) throw new Error(`Unable to load audio waveform: ${res.status}`);
@@ -280,13 +302,18 @@ function drawWaveform(
       continue;
     }
 
-    const lowAlpha = clamp(0.1 + bin.low * 0.62 + amp * 0.2, 0.16, 0.88);
-    const midAlpha = clamp(0.05 + bin.mid * 0.58 + bin.rms * 0.45, 0.08, 0.74);
-    const brightAlpha = clamp(0.04 + bin.bright * 0.68 + bin.transient * 0.22, 0.05, 0.82);
-    const transientAlpha = clamp((bin.transient - 0.2) * 1.1 + amp * 0.12, 0, 0.92);
+    const semanticAlpha = clamp(0.26 + amp * 0.34 + bin.rms * 0.22, 0.28, 0.86);
+    const lowAlpha = clamp(0.04 + bin.low * 0.34 + amp * 0.08, 0.05, 0.48);
+    const midAlpha = clamp(0.04 + bin.mid * 0.44 + bin.rms * 0.28, 0.06, 0.6);
+    const brightAlpha = clamp(0.03 + bin.bright * 0.5 + bin.transient * 0.16, 0.04, 0.62);
+    const transientAlpha = clamp((bin.transient - 0.24) * 0.82 + amp * 0.08, 0, 0.66);
 
-    ctx.fillStyle = `rgba(30, 144, 255, ${lowAlpha})`;
+    ctx.fillStyle = semanticRgba(bin.color, semanticAlpha);
     fillSymmetricBar(ctx, x, center, upper, lower, 1);
+
+    const lowHalf = Math.max(1, fallbackHalf * clamp(0.52 + bin.low * 0.34, 0.42, 0.86));
+    ctx.fillStyle = `rgba(30, 144, 255, ${lowAlpha})`;
+    fillSymmetricBar(ctx, x, center, lowHalf, lowHalf, 1);
 
     const midHalf = Math.max(1, fallbackHalf * clamp(0.34 + bin.mid * 0.42, 0.28, 0.72));
     ctx.fillStyle = `rgba(76, 241, 112, ${midAlpha})`;

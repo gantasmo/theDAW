@@ -479,6 +479,18 @@ export function pauseDeck(id: DeckId): void {
   emit();
 }
 
+/** Stop transport and return the deck to the beginning. */
+export function stopDeck(id: DeckId): void {
+  const d = decks[id];
+  if (!d || (!d.buffer && !d.stemMode)) return;
+  stopSource(d);
+  d.playing = false;
+  d.startOffset = 0;
+  d.loopActive = false;
+  d.rollResume = false;
+  emit();
+}
+
 export function toggleDeck(id: DeckId): void {
   const d = decks[id];
   if (!d || (!d.buffer && !d.stemMode)) return;

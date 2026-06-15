@@ -23,7 +23,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2,
+  Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2, Square, DoorOpen,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
   KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ, Plug, Wand2,
 } from 'lucide-react';
@@ -287,7 +287,7 @@ type DeckCtl = ReturnType<typeof useDeck>;
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 15;
+const DJ_LAYOUT_VERSION = 16;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -308,7 +308,7 @@ const defaultDjLayout: SurfaceLayout = {
     'pdA-head': { id: 'pdA-head', type: 'panel', title: 'Deck A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
     'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], widgetMargins: { jogA: { t: 2, r: 4, b: 8, l: 4 } }, mirror: true },
     'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
-    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'syncA'], uniform: true, mirror: true },
+    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'stopA', 'ejectA', 'syncA'], uniform: true, mirror: true },
     'pdA-stems': { id: 'pdA-stems', type: 'panel', title: 'A · Stems', flow: 'row', widgets: ['stemBankA'], mirror: true },
     'pdA-hc': { id: 'pdA-hc', type: 'panel', title: 'A · Hotcues', flow: 'row', widgets: ['hcA1', 'hcA2', 'hcA3', 'hcA4'], uniform: true, mirror: true },
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
@@ -318,7 +318,7 @@ const defaultDjLayout: SurfaceLayout = {
     'pdB-head': { id: 'pdB-head', type: 'panel', title: 'Deck B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
     'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'], widgetMargins: { jogB: { t: 2, r: 4, b: 8, l: 4 } } },
     'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
-    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['cueB', 'playB', 'syncB'], uniform: true },
+    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['cueB', 'playB', 'stopB', 'ejectB', 'syncB'], uniform: true },
     'pdB-stems': { id: 'pdB-stems', type: 'panel', title: 'B · Stems', flow: 'row', widgets: ['stemBankB'] },
     'pdB-hc': { id: 'pdB-hc', type: 'panel', title: 'B · Hotcues', flow: 'row', widgets: ['hcB1', 'hcB2', 'hcB3', 'hcB4'], uniform: true },
     'pdB-loop': { id: 'pdB-loop', type: 'panel', title: 'B · Loop', flow: 'row', widgets: ['loopB_0', 'loopB_1', 'loopB_2', 'loopB_3', 'loopB_4', 'loopOutB'], uniform: true },
@@ -450,6 +450,12 @@ export const DJView: React.FC = () => {
   const masterPlayingRef = useRef(false);
 
   const loadDeck = (entryId: string, deck: djEngine.DeckId) => { if (deck === 'A') setDeckATrack(entryId); else setDeckBTrack(entryId); };
+  const ejectDeck = (deck: djEngine.DeckId) => {
+    djEngine.stopDeck(deck);
+    if (deck === 'A') setDeckATrack(null);
+    else setDeckBTrack(null);
+    setFlash(`Deck ${deck} ejected`);
+  };
 
   useEffect(() => {
     return djEngine.subscribe((a, b) => {
@@ -738,6 +744,7 @@ export const DJView: React.FC = () => {
     cueA, cueB, syncLock, canSync,
     onPlayA: () => djEngine.toggleDeck('A'), onPlayB: () => djEngine.toggleDeck('B'),
     onCueA: () => djEngine.cueDeck('A'), onCueB: () => djEngine.cueDeck('B'),
+    onStop: (d) => djEngine.stopDeck(d), onEject: ejectDeck,
     onSync: syncDeck, onSyncLock: toggleSyncLock, onHeadCue: toggleCue,
     onSendVj: sendDeckToVj, onAddSet: addDeckToSet,
     deckAUrl, deckBUrl, deckATrack, deckBTrack, setDeckATrack, setDeckBTrack,
@@ -1024,9 +1031,11 @@ const StemTogglePad: React.FC<{
   color: RGB;
   preparing?: boolean;
   onPrepare?: () => void;
-}> = ({ deck, name, label, level, color, preparing = false, onPrepare }) => {
+  prepareLabel?: string | null;
+}> = ({ deck, name, label, level, color, preparing = false, onPrepare, prepareLabel }) => {
   const on = !!name && level > 0.001;
   const canPrepare = !name && !!onPrepare;
+  const shownLabel = preparing && !name ? (prepareLabel ?? 'Prep') : label;
   return (
     <SlidePad
       color={color}
@@ -1040,7 +1049,7 @@ const StemTogglePad: React.FC<{
       title={name ? `Deck ${deck} ${name}: ${on ? 'click to mute' : 'click to restore'}` : canPrepare ? `Prepare stems for Deck ${deck}` : 'Load a track first'}
     >
       {preparing && !name ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-      <span className="truncate">{preparing && !name ? 'Prep' : label}</span>
+      <span className="truncate">{shownLabel}</span>
     </SlidePad>
   );
 };
@@ -1048,19 +1057,23 @@ const StemTogglePad: React.FC<{
 const StemPadBank: React.FC<{ deck: djEngine.DeckId; entryId: string | null; color: RGB; ctl: DeckCtl; mirror?: boolean }> = ({ deck, entryId, color, ctl, mirror }) => {
   const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const stemCount = toStemCount(stemSettings.default_count);
   const prepare = async () => {
     if (!entryId || busy) return;
     setBusy(true);
+    setBusyLabel('Check');
     try {
       const refs = await prepareStems(entryId, {
         stems: stemCount,
         device: stemSettings.device || 'auto',
         quality: stemSettings.quality || 'balanced',
-      });
+      }, (pct, phase) => setBusyLabel(pct > 0 ? `${pct}%` : phase.replace(/_/g, ' ')));
+      setBusyLabel('Load');
       await djEngine.loadDeckStems(deck, refs);
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   };
   const cells: React.ReactNode[] = [
@@ -1078,6 +1091,7 @@ const StemPadBank: React.FC<{ deck: djEngine.DeckId; entryId: string | null; col
           level={level}
           color={STEM_PAD_COLORS[i] ?? color}
           preparing={busy}
+          prepareLabel={busyLabel}
           onPrepare={entryId ? () => void prepare() : undefined}
         />
       );
@@ -1900,6 +1914,7 @@ interface DjRegArgs {
   syncLock: djEngine.DeckId | null; canSync: boolean;
   onPlayA: () => void; onPlayB: () => void;
   onCueA: () => void; onCueB: () => void;
+  onStop: (d: djEngine.DeckId) => void; onEject: (d: djEngine.DeckId) => void;
   onSync: (d: djEngine.DeckId) => void; onSyncLock: (d: djEngine.DeckId) => void; onHeadCue: (d: djEngine.DeckId) => void;
   onSendVj: (d: 'A' | 'B') => void; onAddSet: (d: 'A' | 'B') => void;
   deckAUrl: string | null; deckBUrl: string | null;
@@ -2079,6 +2094,8 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
 
     padW(`cue${d}`, `Cue ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onCue} className={PAD_SM} title="Cue to start">Cue</SlidePad>);
     padW(`play${d}`, `Play ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onPlay} className="px-3 py-1" title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}</SlidePad>);
+    padW(`stop${d}`, `Stop ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1" title="Stop and return to start"><Square className="w-3 h-3 fill-current" /></SlidePad>);
+    padW(`eject${d}`, `Eject ${d}`, <SlidePad danger disabled={!hasTrack} onClick={() => p.onEject(d)} className="px-2 py-1" title="Eject this deck"><DoorOpen className="w-3 h-3" /></SlidePad>);
     padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
     padW(`headCue${d}`, `HP Cue ${d}`, <SlidePad color={[34, 211, 238]} on={headCued} disabled={!hasTrack} onClick={() => p.onHeadCue(d)} className="px-1.5 py-1" title="Cue — pre-listen in the headphone output"><Headphones className="w-3 h-3" /></SlidePad>);
