@@ -118,6 +118,7 @@ create_icon
 
 swiftc "$LAUNCHER_SOURCE" \
   -framework AppKit \
+  -framework CoreMIDI \
   -framework WebKit \
   -o "${MACOS_DIR}/${APP_NAME}"
 
