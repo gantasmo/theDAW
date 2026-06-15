@@ -60,7 +60,7 @@ import * as djEngine from '../state/djEngine';
 
 const DJ_TRACK_MIME = 'application/x-thedaw-djtrack';
 
-const DECK_RGB: Record<'purple' | 'cyan', RGB> = { purple: [168, 85, 247], cyan: [34, 211, 238] };
+const DECK_RGB: Record<'purple' | 'cyan', RGB> = { purple: [34, 141, 211], cyan: [239, 68, 68] };
 
 const BEAT_SIZES: Array<{ beats: number; label: string }> = [
   { beats: 0.25, label: '¼' }, { beats: 0.5, label: '½' }, { beats: 1, label: '1' }, { beats: 2, label: '2' }, { beats: 4, label: '4' },
@@ -230,14 +230,17 @@ type DeckCtl = ReturnType<typeof useDeck>;
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 10;
+const DJ_LAYOUT_VERSION = 12;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
   root: 'root',
   nodes: {
-    root: { id: 'root', type: 'container', axis: 'column', children: ['heroP', 'body'], fr: { heroP: 1.4, body: 8 } },
+    root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 3.2, heroP: 1.75, browserDock: 4.1 } },
+    topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.25, mixer: 2.75, deckBcont: 4.25 }, framed: true, frameTitle: 'Decks' },
     heroP: { id: 'heroP', type: 'panel', title: 'Waveforms', flow: 'row', widgets: [], pinned: 'hero' },
+    browserDock: { id: 'browserDock', type: 'container', axis: 'row', children: ['browserLeft', 'libraryP'], fr: { browserLeft: 2.45, libraryP: 9.6 }, framed: true, frameTitle: 'Browser' },
+    browserLeft: { id: 'browserLeft', type: 'container', axis: 'column', children: ['sourceTreeP', 'nextP'], fr: { sourceTreeP: 3.4, nextP: 1.25 } },
     // Left/right rails equalized by default (samplerP == browser).
     body: { id: 'body', type: 'container', axis: 'row', children: ['samplerP', 'center', 'browser'], fr: { samplerP: 2.0, center: 14.963177570093462, browser: 2.0 } },
     samplerP: { id: 'samplerP', type: 'panel', title: 'Sampler', flow: 'row', widgets: [], pinned: 'sampler', uniform: false },
@@ -1219,24 +1222,79 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
+  type SortKey = 'order' | 'bpm' | 'title' | 'key' | 'dur' | 'date' | 'source';
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'order', dir: 'asc' });
 
   const set = source.kind === 'set' ? setlists[source.id] ?? null : null;
   const isSet = source.kind === 'set' && !!set;
 
   // Rows: either library entries or a set's entries (resolved against the library for metadata).
-  type Row = { entryId: string | null; title: string; bpm: number | null; key: string | null; dur: number | null; setIndex?: number };
+  type Row = { entryId: string | null; title: string; bpm: number | null; key: string | null; dur: number | null; date: string | null; source: string; order: number; setIndex?: number };
   const baseRows: Row[] = isSet
     ? set!.entries.map((e, i) => {
         const lib = e.entryId ? entries.find((x) => x.id === e.entryId) ?? null : null;
         const d = e.entryId ? analysisById[e.entryId]?.data ?? null : null;
-        return { entryId: e.entryId, title: e.label, bpm: d?.bpm ?? null, key: d?.key ? keyLabel(d.key, d.scale) : null, dur: d?.duration_sec ?? lib?.duration ?? null, setIndex: i };
+        return {
+          entryId: e.entryId,
+          title: e.label,
+          bpm: d?.bpm ?? null,
+          key: d?.key ? keyLabel(d.key, d.scale) : null,
+          dur: d?.duration_sec ?? lib?.duration ?? null,
+          date: lib?.timestamp ?? null,
+          source: lib?.source ?? 'set',
+          order: i + 1,
+          setIndex: i,
+        };
       })
-    : libSourceFilter(entries, source.kind as LibSourceKind).map((e) => {
+    : libSourceFilter(entries, source.kind as LibSourceKind).map((e, i) => {
         const d = analysisById[e.id]?.data ?? null;
-        return { entryId: e.id, title: e.title, bpm: d?.bpm ?? null, key: d?.key ? keyLabel(d.key, d.scale) : null, dur: d?.duration_sec ?? e.duration ?? null };
+        return {
+          entryId: e.id,
+          title: e.title,
+          bpm: d?.bpm ?? null,
+          key: d?.key ? keyLabel(d.key, d.scale) : null,
+          dur: d?.duration_sec ?? e.duration ?? null,
+          date: e.timestamp,
+          source: e.source,
+          order: i + 1,
+        };
       });
   const sourceLabel = isSet ? set!.name : (LIB_SOURCE_LABEL[source.kind as LibSourceKind] ?? 'Library');
-  const rows = q.trim() ? baseRows.filter((r) => r.title.toLowerCase().includes(q.trim().toLowerCase())) : baseRows;
+  const filteredRows = q.trim() ? baseRows.filter((r) => r.title.toLowerCase().includes(q.trim().toLowerCase())) : baseRows;
+  const rows = useMemo(() => {
+    const value = (r: Row) => {
+      if (sort.key === 'date') return r.date ? Date.parse(r.date) : null;
+      return r[sort.key];
+    };
+    return [...filteredRows].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      if (av == null && bv == null) return a.order - b.order;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredRows, sort]);
+  const setSortKey = (key: SortKey) => setSort((p) => (p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'order' || key === 'title' ? 'asc' : 'desc' }));
+  const dateLabel = (v: string | null) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+  const SortHeader: React.FC<{ id: SortKey; children: React.ReactNode; align?: 'left' | 'right' }> = ({ id, children, align = 'left' }) => (
+    <button
+      type="button"
+      onClick={() => setSortKey(id)}
+      className={`min-w-0 flex items-center gap-1 truncate hover:text-zinc-300 ${align === 'right' ? 'justify-end text-right' : ''} ${sort.key === id ? 'text-zinc-200' : ''}`}
+      title={`Sort by ${String(children)}`}
+    >
+      <span className="truncate">{children}</span>
+      <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform ${sort.key === id ? 'opacity-100' : 'opacity-20'} ${sort.key === id && sort.dir === 'asc' ? 'rotate-180' : ''}`} />
+    </button>
+  );
 
   const commitRename = () => { if (set && editName.trim()) renameSetlist(set.id, editName.trim()); setEditing(false); };
   const reorder = (from: number, to: number) => {
@@ -1279,8 +1337,15 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
       </div>
 
       {/* column header */}
-      <div className="shrink-0 grid items-center gap-1 px-2 py-0.5 border-b border-white/5 text-[7px] font-black uppercase tracking-wider text-zinc-600" style={{ gridTemplateColumns: '1.6rem minmax(0,1fr) 2.6rem 2.4rem 2.6rem 4.2rem' }}>
-        <span className="text-right">#</span><span>Title</span><span className="text-right">BPM</span><span>Key</span><span className="text-right">Len</span><span className="text-right pr-1">Load</span>
+      <div className="shrink-0 grid items-center gap-1 px-2 py-0.5 border-b border-white/5 text-[7px] font-black uppercase tracking-wider text-zinc-600" style={{ gridTemplateColumns: '1.8rem 4.1rem minmax(10rem,1fr) 2.7rem 2.5rem 2.9rem 3.3rem 4.2rem' }}>
+        <SortHeader id="order" align="right">#</SortHeader>
+        <SortHeader id="date">Date</SortHeader>
+        <SortHeader id="title">Title</SortHeader>
+        <SortHeader id="bpm" align="right">BPM</SortHeader>
+        <SortHeader id="key">Key</SortHeader>
+        <SortHeader id="dur" align="right">Len</SortHeader>
+        <SortHeader id="source">Source</SortHeader>
+        <span className="text-right pr-1">Load</span>
       </div>
 
       {/* rows */}
@@ -1293,12 +1358,14 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
           <div key={(r.entryId ?? 'x') + i} draggable={!!r.entryId}
             onDragStart={(ev) => { if (!r.entryId) return; ev.dataTransfer.effectAllowed = 'copy'; ev.dataTransfer.setData(DJ_TRACK_MIME, r.entryId); ev.dataTransfer.setData('text/plain', r.title); }}
             className="grid items-center gap-1 px-2 py-0.5 text-[9px] font-mono text-zinc-400 hover:bg-white/5 border-b border-white/3 group/row cursor-grab active:cursor-grabbing"
-            style={{ gridTemplateColumns: '1.6rem minmax(0,1fr) 2.6rem 2.4rem 2.6rem 4.2rem' }}>
-            <span className="text-right text-zinc-600">{String(i + 1).padStart(2, '0')}</span>
+            style={{ gridTemplateColumns: '1.8rem 4.1rem minmax(10rem,1fr) 2.7rem 2.5rem 2.9rem 3.3rem 4.2rem' }}>
+            <span className="text-right text-zinc-600">{String(r.order).padStart(2, '0')}</span>
+            <span className="truncate text-zinc-600" title={r.date ?? undefined}>{dateLabel(r.date)}</span>
             <span className="truncate text-zinc-300" title={r.title}>{r.title}</span>
             <span className="text-right tabular-nums text-zinc-500">{r.bpm != null ? r.bpm.toFixed(0) : '—'}</span>
             <span className="text-zinc-500">{r.key ?? '—'}</span>
             <span className="text-right tabular-nums text-zinc-600">{r.dur != null ? fmtTime(r.dur) : '—'}</span>
+            <span className="truncate text-zinc-600 capitalize">{r.source}</span>
             <span className="flex items-center gap-0.5 justify-end pr-0.5">
               {isSet ? (
                 <span className="hidden group-hover/row:flex items-center gap-0.5">
