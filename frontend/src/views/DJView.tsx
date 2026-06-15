@@ -74,6 +74,7 @@ const STEM_PAD_SLOTS = 6;
 const AUTO_GAIN_TARGET_DB = -12;
 const AUTOMIX_TAIL = 18;   // s before a track ends to begin the blend
 const AUTOMIX_XFADE = 10;  // s the auto-crossfade takes
+const STOP_CUE_EPS = 0.05; // treat cue hits inside 50ms as "at this cue"
 
 /* DJ MIDI-learn (D6): the bindable actions, grouped for the map panel. CC →
  * continuous (xfader/vol/eq/filter/pitch); note → trigger (play/cue/sync/hotcue). */
@@ -81,6 +82,7 @@ const deckMidiActions = (d: 'A' | 'B'): Array<{ id: string; label: string; group
   ([
     { id: `play${d}`, label: 'Play', kind: 'note' as MidiKind },
     { id: `cue${d}`, label: 'Cue', kind: 'note' as MidiKind },
+    { id: `stop${d}`, label: 'Stop', kind: 'note' as MidiKind },
     { id: `sync${d}`, label: 'Sync', kind: 'note' as MidiKind },
     { id: `headcue${d}`, label: 'Cue (HP)', kind: 'note' as MidiKind },
     { id: `vol${d}`, label: 'Volume', kind: 'cc' as MidiKind },
@@ -178,6 +180,18 @@ const sameNumberRecord = (a: Record<string, number>, b: Record<string, number>) 
   const bk = Object.keys(b);
   return ak.length === bk.length && ak.every((k) => Math.abs((a[k] ?? 0) - (b[k] ?? 0)) < 0.0001);
 };
+
+function sortedCuePoints(cues: Array<number | null> | undefined): number[] {
+  return (cues ?? [])
+    .filter((c): c is number => c != null && Number.isFinite(c))
+    .sort((a, b) => a - b);
+}
+
+function nextCueAfter(cues: Array<number | null> | undefined, currentTime: number): number | null {
+  const points = sortedCuePoints(cues);
+  if (points.length === 0) return null;
+  return points.find((c) => c > currentTime + STOP_CUE_EPS) ?? points[0];
+}
 
 /* ═══════════════════════════ per-deck controller ═══════════════════════════ */
 
@@ -617,6 +631,19 @@ export const DJView: React.FC = () => {
     if (which === 'A') setCueA(next); else setCueB(next);
     djEngine.setDeckCue(which, next);
   };
+  const stopDeckAtNextCue = (which: djEngine.DeckId) => {
+    const ctl = which === 'A' ? ctlA : ctlB;
+    const status = djEngine.getStatus(which);
+    const cue = nextCueAfter(ctl.cues, status.currentTime);
+    if (cue == null) {
+      djEngine.stopDeck(which);
+      return;
+    }
+    const target = quantize ? nearestBeat(cue, ctl.gridBeats) : cue;
+    djEngine.stopDeck(which);
+    djEngine.seekDeck(which, target);
+    setFlash(`Deck ${which} cue -> ${fmtTime(target)}`);
+  };
   const applyCrossfade = (v: number) => { setCrossfader(v); djEngine.setCrossfade(v); };
 
   // DJ MIDI-learn (D6): rebuild the action→handler map each render (cheap; closes
@@ -628,6 +655,7 @@ export const DJView: React.FC = () => {
       const ctl = d === 'A' ? ctlA : ctlB;
       h[`play${d}`] = () => djEngine.toggleDeck(d);
       h[`cue${d}`] = () => djEngine.cueDeck(d);
+      h[`stop${d}`] = () => stopDeckAtNextCue(d);
       h[`sync${d}`] = () => syncDeck(d);
       h[`headcue${d}`] = () => toggleCue(d);
       h[`vol${d}`] = (v) => onVol(d, v / 127);
@@ -744,7 +772,7 @@ export const DJView: React.FC = () => {
     cueA, cueB, syncLock, canSync,
     onPlayA: () => djEngine.toggleDeck('A'), onPlayB: () => djEngine.toggleDeck('B'),
     onCueA: () => djEngine.cueDeck('A'), onCueB: () => djEngine.cueDeck('B'),
-    onStop: (d) => djEngine.stopDeck(d), onEject: ejectDeck,
+    onStop: stopDeckAtNextCue, onEject: ejectDeck,
     onSync: syncDeck, onSyncLock: toggleSyncLock, onHeadCue: toggleCue,
     onSendVj: sendDeckToVj, onAddSet: addDeckToSet,
     deckAUrl, deckBUrl, deckATrack, deckBTrack, setDeckATrack, setDeckBTrack,
@@ -2005,6 +2033,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const headCued = d === 'A' ? p.cueA : p.cueB;
     const onPlay = d === 'A' ? p.onPlayA : p.onPlayB;
     const onCue = d === 'A' ? p.onCueA : p.onCueB;
+    const stopTitle = sortedCuePoints(ctl.cues).length > 0 ? 'Stop and jump to next hotcue' : 'Stop and return to start';
     const syncLocked = p.syncLock === d;
     const grp = `Deck ${d}`;
 
@@ -2094,7 +2123,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
 
     padW(`cue${d}`, `Cue ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onCue} className={PAD_SM} title="Cue to start">Cue</SlidePad>);
     padW(`play${d}`, `Play ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onPlay} className="px-3 py-1" title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}</SlidePad>);
-    padW(`stop${d}`, `Stop ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1" title="Stop and return to start"><Square className="w-3 h-3 fill-current" /></SlidePad>);
+    padW(`stop${d}`, `Stop ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1" title={stopTitle}><Square className="w-3 h-3 fill-current" /></SlidePad>);
     padW(`eject${d}`, `Eject ${d}`, <SlidePad danger disabled={!hasTrack} onClick={() => p.onEject(d)} className="px-2 py-1" title="Eject this deck"><DoorOpen className="w-3 h-3" /></SlidePad>);
     padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
