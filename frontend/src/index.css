@@ -115,6 +115,48 @@
   .btn-ghost {
     @apply bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/5 py-1 px-2 rounded text-[10px] transition-all;
   }
+
+  .dj-eject-heartbeat {
+    animation: dj-eject-heartbeat 1.45s ease-in-out infinite;
+    border-color: rgba(248, 113, 113, 0.58);
+    color: rgb(254, 202, 202);
+  }
+
+  .dj-eject-heartbeat:hover {
+    border-color: rgba(248, 113, 113, 0.88);
+    color: rgb(255, 255, 255);
+  }
+}
+
+@keyframes dj-eject-heartbeat {
+  0%,
+  100% {
+    background: rgba(127, 29, 29, 0.22);
+    box-shadow: 0 0 0 rgba(248, 113, 113, 0), 0 0 0 rgba(220, 38, 38, 0);
+    transform: scale(1);
+  }
+
+  14% {
+    background: rgba(185, 28, 28, 0.38);
+    box-shadow: 0 0 10px rgba(248, 113, 113, 0.72), 0 0 22px rgba(220, 38, 38, 0.42);
+    transform: scale(1.08);
+  }
+
+  24% {
+    transform: scale(0.98);
+  }
+
+  34% {
+    background: rgba(185, 28, 28, 0.32);
+    box-shadow: 0 0 7px rgba(248, 113, 113, 0.55), 0 0 16px rgba(220, 38, 38, 0.3);
+    transform: scale(1.04);
+  }
+
+  48% {
+    background: rgba(127, 29, 29, 0.24);
+    box-shadow: 0 0 3px rgba(248, 113, 113, 0.22), 0 0 8px rgba(220, 38, 38, 0.12);
+    transform: scale(1);
+  }
 }
 
 @theme {

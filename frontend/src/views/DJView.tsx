@@ -23,7 +23,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2, Square, DoorOpen,
+  Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2, Square,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
   KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ, Plug, Wand2,
 } from 'lucide-react';
@@ -63,6 +63,13 @@ import * as djEngine from '../state/djEngine';
 const DJ_TRACK_MIME = 'application/x-thedaw-djtrack';
 
 const DECK_RGB: Record<'purple' | 'cyan', RGB> = { purple: [34, 141, 211], cyan: [239, 68, 68] };
+
+const EjectSymbol: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" {...props}>
+    <path d="M12 5 5 14h14L12 5Z" fill="currentColor" />
+    <path d="M5 19h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
 
 const BEAT_SIZES: Array<{ beats: number; label: string }> = [
   { beats: 0.25, label: '¼' }, { beats: 0.5, label: '½' }, { beats: 1, label: '1' }, { beats: 2, label: '2' }, { beats: 4, label: '4' },
@@ -2216,7 +2223,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     padW(`cue${d}`, `Cue ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onCue} className={PAD_SM} title="Cue to start">Cue</SlidePad>);
     padW(`play${d}`, `Play ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onPlay} className="px-3 py-1" title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}</SlidePad>);
     padW(`stop${d}`, `Stop ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1" title={stopTitle}><Square className="w-3 h-3 fill-current" /></SlidePad>);
-    padW(`eject${d}`, `Eject ${d}`, <SlidePad danger disabled={!hasTrack} onClick={() => p.onEject(d)} className="px-2 py-1" title="Eject this deck"><DoorOpen className="w-3 h-3" /></SlidePad>);
+    padW(`eject${d}`, `Eject ${d}`, <SlidePad danger disabled={!hasTrack} onClick={() => p.onEject(d)} className={`px-2 py-1 ${hasTrack ? 'dj-eject-heartbeat' : ''}`} title="Eject this deck"><EjectSymbol className="w-3 h-3" /></SlidePad>);
     padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
     padW(`headCue${d}`, `HP Cue ${d}`, <SlidePad color={[34, 211, 238]} on={headCued} disabled={!hasTrack} onClick={() => p.onHeadCue(d)} className="px-1.5 py-1" title="Cue — pre-listen in the headphone output"><Headphones className="w-3 h-3" /></SlidePad>);
