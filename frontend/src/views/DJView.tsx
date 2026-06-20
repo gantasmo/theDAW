@@ -496,6 +496,8 @@ export const DJView: React.FC = () => {
   const [eqB, setEqB] = useState({ low: 0, mid: 0, high: 0 });
   const [filterA, setFilterA] = useState(0);
   const [filterB, setFilterB] = useState(0);
+  const [stemKnobModeA, setStemKnobModeA] = useState(false);
+  const [stemKnobModeB, setStemKnobModeB] = useState(false);
   const [volA, setVolA] = useState(1);
   const [volB, setVolB] = useState(1);
   const [cueA, setCueA] = useState(false);
@@ -883,6 +885,7 @@ export const DJView: React.FC = () => {
     deckAUrl, deckBUrl, deckATrack, deckBTrack, setDeckATrack, setDeckBTrack,
     source, setSource, libCount: entries.length, loadDeck,
     gainA, gainB, eqA, eqB, filterA, filterB, volA, volB,
+    stemKnobModeA, stemKnobModeB, setStemKnobModeA, setStemKnobModeB,
     pitchA: deckAPitch, pitchB: deckBPitch, bpmA: ctlA.bpm ?? null, bpmB: ctlB.bpm ?? null,
     onGain, onEq, onFilter, onVol, onPitch, onTargetBpm,
     crossfader, onCrossfade: applyCrossfade,
@@ -2057,6 +2060,8 @@ interface DjRegArgs {
   gainA: number; gainB: number;
   eqA: { low: number; mid: number; high: number }; eqB: { low: number; mid: number; high: number };
   filterA: number; filterB: number; volA: number; volB: number;
+  stemKnobModeA: boolean; stemKnobModeB: boolean;
+  setStemKnobModeA: (v: boolean) => void; setStemKnobModeB: (v: boolean) => void;
   pitchA: number; pitchB: number; bpmA: number | null; bpmB: number | null;
   onGain: (which: djEngine.DeckId, v: number) => void;
   onEq: (which: djEngine.DeckId, band: 'low' | 'mid' | 'high', v: number) => void;
@@ -2108,8 +2113,40 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   const pinned = (id: string, label: string, node: React.ReactNode) => {
     reg[id] = { id, label, group: 'Panels', kind: 'fixed', source: 'builtin', render: () => <div className="h-full w-full min-h-0 overflow-hidden">{node}</div> };
   };
-  const knob = (id: string, label: string, group: string, value: number, onChange: (v: number) => void, min: number, max: number, step: number) => {
-    reg[id] = { id, label, group, kind: 'knob', source: 'builtin', render: (s, opts) => center(<SlideKnob label={label} value={value} onChange={onChange} min={min} max={max} step={step} size={knobSize(s, opts)} center centerReadout />) };
+  const knob = (
+    id: string,
+    label: string,
+    group: string,
+    value: number,
+    onChange: (v: number) => void,
+    min: number,
+    max: number,
+    step: number,
+    extra?: { center?: boolean; onLabelDoubleClick?: () => void; labelTitle?: string; tint?: number },
+  ) => {
+    reg[id] = {
+      id,
+      label,
+      group,
+      kind: 'knob',
+      source: 'builtin',
+      render: (s, opts) => center(
+        <SlideKnob
+          label={label}
+          value={value}
+          onChange={onChange}
+          min={min}
+          max={max}
+          step={step}
+          size={knobSize(s, opts)}
+          center={extra?.center ?? true}
+          centerReadout
+          onLabelDoubleClick={extra?.onLabelDoubleClick}
+          labelTitle={extra?.labelTitle}
+          tint={extra?.tint}
+        />,
+      ),
+    };
   };
 
   /* ── pinned composites ── */
@@ -2265,13 +2302,54 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   addDeck('B');
 
   /* ── per-deck mixer controls ── */
+  const stemKnobSlots = [
+    { id: 'hi', fallback: 'Hi', stemIndex: 3, tint: 0.83 },
+    { id: 'mid', fallback: 'Mid', stemIndex: 2, tint: 0.62 },
+    { id: 'lo', fallback: 'Lo', stemIndex: 1, tint: 0.36 },
+    { id: 'flt', fallback: 'Flt', stemIndex: 0, tint: 0.12 },
+  ] as const;
   const addMixerDeck = (d: 'A' | 'B') => {
     const grp = `Mixer ${d}`;
     const eq = d === 'A' ? p.eqA : p.eqB;
-    knob(`eq${d}.hi`, 'Hi', grp, eq.high, (v) => p.onEq(d, 'high', v), -12, 12, 0.5);
-    knob(`eq${d}.mid`, 'Mid', grp, eq.mid, (v) => p.onEq(d, 'mid', v), -12, 12, 0.5);
-    knob(`eq${d}.lo`, 'Lo', grp, eq.low, (v) => p.onEq(d, 'low', v), -12, 12, 0.5);
-    knob(`flt${d}`, 'Flt', grp, d === 'A' ? p.filterA : p.filterB, (v) => p.onFilter(d, v), -1, 1, 0.01);
+    const ctl = d === 'A' ? p.ctlA : p.ctlB;
+    const stemKnobMode = d === 'A' ? p.stemKnobModeA : p.stemKnobModeB;
+    const setStemKnobMode = d === 'A' ? p.setStemKnobModeA : p.setStemKnobModeB;
+    const toggleStemKnobs = () => setStemKnobMode(!stemKnobMode);
+    const modeTitle = stemKnobMode
+      ? 'Double-click to return these knobs to deck EQ/filter'
+      : 'Double-click to make these knobs control stem volumes';
+
+    const eqKnob = (id: string, label: string, value: number, onChange: (v: number) => void, min: number, max: number, step: number) =>
+      knob(id, label, grp, value, onChange, min, max, step, { onLabelDoubleClick: toggleStemKnobs, labelTitle: modeTitle });
+
+    const stemVolKnob = (widgetId: string, fallback: string, stemIndex: number, tint: number) => {
+      const name = ctl.stemNames[stemIndex] ?? null;
+      const label = name ? stemLabel(name) : fallback;
+      const value = name ? (ctl.stemLevels[name] ?? djEngine.getStemGain(d, name)) : 0;
+      knob(
+        widgetId,
+        label,
+        grp,
+        value,
+        (v) => { if (name) djEngine.setStemGain(d, name, v); },
+        0,
+        1,
+        0.01,
+        { center: false, onLabelDoubleClick: toggleStemKnobs, labelTitle: modeTitle, tint },
+      );
+    };
+
+    if (stemKnobMode) {
+      for (const slot of stemKnobSlots) {
+        const widgetId = slot.id === 'flt' ? `flt${d}` : `eq${d}.${slot.id}`;
+        stemVolKnob(widgetId, slot.fallback, slot.stemIndex, slot.tint);
+      }
+    } else {
+      eqKnob(`eq${d}.hi`, 'Hi', eq.high, (v) => p.onEq(d, 'high', v), -12, 12, 0.5);
+      eqKnob(`eq${d}.mid`, 'Mid', eq.mid, (v) => p.onEq(d, 'mid', v), -12, 12, 0.5);
+      eqKnob(`eq${d}.lo`, 'Lo', eq.low, (v) => p.onEq(d, 'low', v), -12, 12, 0.5);
+      eqKnob(`flt${d}`, 'Flt', d === 'A' ? p.filterA : p.filterB, (v) => p.onFilter(d, v), -1, 1, 0.01);
+    }
     knob(`gain${d}`, 'Gain', grp, d === 'A' ? p.gainA : p.gainB, (v) => p.onGain(d, v), -12, 12, 0.5);
     reg[`vol${d}`] = { id: `vol${d}`, label: `Vol ${d}`, group: grp, kind: 'fader', source: 'builtin', render: () => faderWrap(<SlideFader label={d} value={d === 'A' ? p.volA : p.volB} onChange={(v) => p.onVol(d, v)} min={0} max={1} step={0.01} rulerSide={d === 'B' ? 'right' : 'left'} />) };
     const pitch = d === 'A' ? p.pitchA : p.pitchB;
