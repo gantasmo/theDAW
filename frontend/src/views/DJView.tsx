@@ -439,7 +439,7 @@ function EditableBpmField({
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 20;
+const DJ_LAYOUT_VERSION = 21;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -456,7 +456,7 @@ const defaultDjLayout: SurfaceLayout = {
     center: { id: 'center', type: 'container', axis: 'column', children: ['deckmix', 'fxrow'], fr: { deckmix: 5, fxrow: 2 } },
     deckmix: { id: 'deckmix', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.17953863997903, mixer: 5.180662235484642, deckBcont: 4.439799124536327 } },
     // ── Deck A (pad-rows wrapped with spacer panels in cont-* containers) ──
-    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'fxAP', 'perfAP'], fr: { 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, fxAP: 3.15, perfAP: 1.35, 'pdA-head': 1.12 }, framed: true },
+    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'waveAOverview', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'fxAP', 'perfAP'], fr: { 'pdA-head': 1.12, waveAOverview: 0.72, 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, fxAP: 3.15, perfAP: 1.35 }, framed: true },
     'pdA-head': { id: 'pdA-head', type: 'panel', title: 'Deck A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
     'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], widgetMargins: { jogA: { t: 2, r: 4, b: 8, l: 4 } }, mirror: true },
     'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
@@ -466,7 +466,9 @@ const defaultDjLayout: SurfaceLayout = {
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
     'pdA-perf': { id: 'pdA-perf', type: 'panel', title: 'A · Perf', flow: 'row', widgets: ['rollA_0', 'rollA_1', 'rollA_2', 'slipA', 'jumpA_0', 'jumpA_1', 'jumpA_2', 'jumpA_3'], uniform: true, mirror: true },
     // ── Deck B ──
-    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'fxBP', 'perfBP'], fr: { 'pdB-head': 1.12, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, fxBP: 3.15, perfBP: 1.35 }, framed: true },
+    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'waveBOverview', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'fxBP', 'perfBP'], fr: { 'pdB-head': 1.12, waveBOverview: 0.72, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, fxBP: 3.15, perfBP: 1.35 }, framed: true },
+    waveAOverview: { id: 'waveAOverview', type: 'panel', title: 'A · Overview', flow: 'row', widgets: [], pinned: 'waveAOverview', mirror: true },
+    waveBOverview: { id: 'waveBOverview', type: 'panel', title: 'B · Overview', flow: 'row', widgets: [], pinned: 'waveBOverview' },
     'pdB-head': { id: 'pdB-head', type: 'panel', title: 'Deck B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
     'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'], widgetMargins: { jogB: { t: 2, r: 4, b: 8, l: 4 } } },
     'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
@@ -1038,9 +1040,11 @@ export const DJView: React.FC = () => {
 interface WaveLaneProps {
   deckId: djEngine.DeckId; accent: 'purple' | 'cyan'; entryId: string | null;
   hasTrack: boolean; audioUrl: string | null; ctl: DeckCtl; onLoadDrop: (event: React.DragEvent, deck: djEngine.DeckId) => Promise<boolean>;
+  mode?: 'overview' | 'detail';
+  compact?: boolean;
 }
 
-const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl, ctl, onLoadDrop }) => {
+const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl, ctl, onLoadDrop, mode = 'detail', compact = false }) => {
   const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
   const accentBorder = accent === 'purple' ? 'border-purple-500/30' : 'border-cyan-500/30';
   const [dropHover, setDropHover] = useState(false);
@@ -1060,18 +1064,21 @@ const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl,
     e.stopPropagation();
     await onLoadDrop(e, deckId);
   };
+  const height = compact ? 34 : mode === 'overview' ? 44 : 62;
   return (
     <div
-      className={`flex-1 min-h-0 relative rounded-lg border ${accentBorder} bg-black/40 overflow-hidden ${dropHover ? 'ring-2 ring-inset ring-white/50' : ''}`}
+      className={`flex-1 min-h-0 relative rounded border ${accentBorder} bg-black/40 overflow-hidden ${dropHover ? 'ring-2 ring-inset ring-white/50' : ''}`}
       onDragEnter={onDragOver}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={(e) => { void onDrop(e); }}
     >
-      <span className={`absolute top-1 left-2 z-30 flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.18em] pointer-events-none ${accentText}`}>
-        <Disc className="w-2.5 h-2.5" /> Deck {deckId} · overview
-      </span>
-      {audioUrl ? <DeckWaveform deckId={deckId} audioUrl={audioUrl} beats={ctl.gridBeats} cues={ctl.cues ?? null} accent={accent} height={62} />
+      {!compact && (
+        <span className={`absolute top-1 left-2 z-30 flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.18em] pointer-events-none ${accentText}`}>
+          <Disc className="w-2.5 h-2.5" /> Deck {deckId} · {mode === 'overview' ? 'overview' : 'scroll'}
+        </span>
+      )}
+      {audioUrl ? <DeckWaveform deckId={deckId} audioUrl={audioUrl} beats={ctl.gridBeats} cues={ctl.cues ?? null} accent={accent} height={height} mode={mode} />
         : <div className="h-full grid place-items-center text-[10px] font-mono text-zinc-700">{hasTrack ? '…' : 'drop a song here →'}</div>}
     </div>
   );
@@ -2523,30 +2530,56 @@ function sameLoop(a: { in: number; out: number } | null, b: { in: number; out: n
   return a.in === b.in && a.out === b.out;
 }
 
-const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats: number[] | null; cues: (number | null)[] | null; accent: 'purple' | 'cyan'; height?: number; }> = ({ deckId, audioUrl, beats, cues, accent, height = 48 }) => {
+const DeckWaveform: React.FC<{
+  deckId: djEngine.DeckId;
+  audioUrl: string;
+  beats: number[] | null;
+  cues: (number | null)[] | null;
+  accent: 'purple' | 'cyan';
+  height?: number;
+  mode?: 'overview' | 'detail';
+}> = ({ deckId, audioUrl, beats, cues, accent, height = 48, mode = 'overview' }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const [dur, setDur] = useState(0);
   const [loop, setLoop] = useState<{ in: number; out: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(mode === 'detail' ? 8 : 1);
   const [viewStart, setViewStart] = useState(0);
   const visibleFrac = 1 / zoom;
   const viewEnd = Math.min(1, viewStart + visibleFrac);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const viewStartRef = useRef(viewStart);
+  const visibleFracRef = useRef(visibleFrac);
+  viewStartRef.current = viewStart;
+  visibleFracRef.current = visibleFrac;
 
   useEffect(() => djEngine.subscribe((sa, sb) => {
     const st = deckId === 'A' ? sa : sb;
     const d = st.duration || 0;
     setDur((p) => (p === d ? p : d));
-    if (playheadRef.current) {
-      const pos = d > 0 ? (st.currentTime / d - viewStart) / visibleFrac : 0;
+    const currentNorm = d > 0 ? clamp01(st.currentTime / d) : 0;
+    if (modeRef.current === 'detail') {
+      const vf = visibleFracRef.current;
+      const maxStart = Math.max(0, 1 - vf);
+      const nextStart = clamp(currentNorm - vf / 2, 0, maxStart);
+      if (Math.abs(nextStart - viewStartRef.current) > 0.0008) setViewStart(nextStart);
+      if (playheadRef.current) {
+        playheadRef.current.style.left = '50%';
+        playheadRef.current.style.opacity = '0';
+      }
+    } else if (playheadRef.current) {
+      const vs = viewStartRef.current;
+      const vf = visibleFracRef.current;
+      const pos = vf > 0 ? (currentNorm - vs) / vf : 0;
       playheadRef.current.style.left = `${clamp01(pos) * 100}%`;
       playheadRef.current.style.opacity = pos >= 0 && pos <= 1 ? '1' : '0';
     }
     const nl = st.loopActive && st.loopIn != null && st.loopOut != null ? { in: st.loopIn, out: st.loopOut } : null;
     setLoop((p) => (sameLoop(p, nl) ? p : nl));
-  }), [deckId, viewStart, visibleFrac]);
+  }), [deckId]);
 
-  useEffect(() => { setZoom(1); setViewStart(0); }, [audioUrl]);
+  useEffect(() => { setZoom(mode === 'detail' ? 8 : 1); setViewStart(0); }, [audioUrl, mode]);
 
   const beatMarks = useMemo(() => {
     if (!beats || beats.length === 0 || dur <= 0) return null;
@@ -2583,7 +2616,8 @@ const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats:
   const onWheelZoom = (e: React.WheelEvent) => {
     const el = containerRef.current; if (!el || dur <= 0) return;
     e.preventDefault();
-    const maxZoom = 24;
+    const minZoom = mode === 'detail' ? 2 : 1;
+    const maxZoom = mode === 'detail' ? 36 : 24;
     const rect = el.getBoundingClientRect();
     const pointer = clamp01((e.clientX - rect.left) / rect.width);
     const panIntent = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
@@ -2593,7 +2627,7 @@ const DeckWaveform: React.FC<{ deckId: djEngine.DeckId; audioUrl: string; beats:
       return;
     }
     const nextZoom = clamp(zoom * Math.exp(-e.deltaY * 0.002), 1, maxZoom);
-    const snappedZoom = nextZoom < 1.04 ? 1 : nextZoom;
+    const snappedZoom = nextZoom < minZoom + 0.04 ? minZoom : Math.max(minZoom, nextZoom);
     const underPointer = viewStart + pointer * visibleFrac;
     const nextVisible = 1 / snappedZoom;
     setZoom(snappedZoom);
@@ -2745,10 +2779,19 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   };
 
   /* ── pinned composites ── */
+  pinned('waveAOverview', 'Deck A Overview', (
+    <WaveLane deckId="A" accent="purple" entryId={p.deckATrack} hasTrack={p.hasA} audioUrl={p.deckAUrl} ctl={p.ctlA} onLoadDrop={p.loadDropOntoDeck} mode="overview" compact />
+  ));
+  pinned('waveBOverview', 'Deck B Overview', (
+    <WaveLane deckId="B" accent="cyan" entryId={p.deckBTrack} hasTrack={p.hasB} audioUrl={p.deckBUrl} ctl={p.ctlB} onLoadDrop={p.loadDropOntoDeck} mode="overview" compact />
+  ));
   pinned('hero', 'Waveforms', (
-    <div className="h-full w-full flex flex-col gap-1.5">
-      <WaveLane deckId="A" accent="purple" entryId={p.deckATrack} hasTrack={p.hasA} audioUrl={p.deckAUrl} ctl={p.ctlA} onLoadDrop={p.loadDropOntoDeck} />
-      <WaveLane deckId="B" accent="cyan" entryId={p.deckBTrack} hasTrack={p.hasB} audioUrl={p.deckBUrl} ctl={p.ctlB} onLoadDrop={p.loadDropOntoDeck} />
+    <div className="relative h-full w-full flex flex-col gap-1.5">
+      <WaveLane deckId="A" accent="purple" entryId={p.deckATrack} hasTrack={p.hasA} audioUrl={p.deckAUrl} ctl={p.ctlA} onLoadDrop={p.loadDropOntoDeck} mode="detail" />
+      <WaveLane deckId="B" accent="cyan" entryId={p.deckBTrack} hasTrack={p.hasB} audioUrl={p.deckBUrl} ctl={p.ctlB} onLoadDrop={p.loadDropOntoDeck} mode="detail" />
+      <div className="absolute top-0 bottom-0 left-1/2 z-40 w-px -translate-x-1/2 pointer-events-none bg-white shadow-[0_0_7px_rgba(255,255,255,0.95)]">
+        <div className="absolute -top-0.5 left-1/2 h-0 w-0 -translate-x-1/2 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-white" />
+      </div>
     </div>
   ));
   pinned('sampler', 'Sampler', <SamplerRail />);
