@@ -289,7 +289,9 @@ export const PlayerFooter: React.FC = () => {
           <button
             onClick={handleToggle}
             disabled={!isVjMode && !inEditorMode && !hasTrack}
-            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:pointer-events-none"
+            className={`w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none ${
+              displayIsPlaying ? 'transport-play-active' : 'transport-play-ready'
+            }`}
             title={displayIsPlaying ? 'Pause' : 'Play'}
           >
             {displayIsPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
@@ -411,4 +413,3 @@ export const PlayerFooter: React.FC = () => {
     </footer>
   );
 };
-

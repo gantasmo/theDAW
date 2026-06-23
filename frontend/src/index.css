@@ -126,6 +126,27 @@
     border-color: rgba(248, 113, 113, 0.88);
     color: rgb(255, 255, 255);
   }
+
+  .transport-play-ready {
+    animation: transport-play-heartbeat 1.45s ease-in-out infinite;
+    background: rgb(34, 197, 94);
+    color: rgb(5, 46, 22);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.42), 0 0 24px rgba(22, 163, 74, 0.22);
+  }
+
+  .transport-play-ready:hover {
+    color: rgb(255, 255, 255);
+  }
+
+  .transport-play-active {
+    background: rgb(34, 197, 94);
+    color: rgb(5, 46, 22);
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.52), 0 0 30px rgba(22, 163, 74, 0.28);
+  }
+
+  .transport-play-active:hover {
+    color: rgb(255, 255, 255);
+  }
 }
 
 @keyframes dj-eject-heartbeat {
@@ -155,6 +176,36 @@
   48% {
     background: rgba(127, 29, 29, 0.24);
     box-shadow: 0 0 3px rgba(248, 113, 113, 0.22), 0 0 8px rgba(220, 38, 38, 0.12);
+    transform: scale(1);
+  }
+}
+
+@keyframes transport-play-heartbeat {
+  0%,
+  100% {
+    background: rgb(34, 197, 94);
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.24), 0 0 12px rgba(22, 163, 74, 0.12);
+    transform: scale(1);
+  }
+
+  14% {
+    background: rgb(74, 222, 128);
+    box-shadow: 0 0 14px rgba(74, 222, 128, 0.76), 0 0 28px rgba(22, 163, 74, 0.44);
+    transform: scale(1.08);
+  }
+
+  24% {
+    transform: scale(0.98);
+  }
+
+  34% {
+    background: rgb(34, 197, 94);
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.56), 0 0 22px rgba(22, 163, 74, 0.32);
+    transform: scale(1.04);
+  }
+
+  48% {
+    box-shadow: 0 0 7px rgba(34, 197, 94, 0.34), 0 0 16px rgba(22, 163, 74, 0.18);
     transform: scale(1);
   }
 }
