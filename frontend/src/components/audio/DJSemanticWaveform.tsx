@@ -273,10 +273,7 @@ function drawWaveform(
   const center = pixelHeight / 2;
   const maxBar = Math.max(3, pixelHeight * 0.47);
 
-  const startNorm = clamp(viewportStart, 0, 0.999);
-  const endNorm = clamp(viewportEnd, startNorm + 0.001, 1);
-  const leftIndex = Math.floor(startNorm * bins.length);
-  const rightIndex = Math.max(leftIndex + 1, Math.ceil(endNorm * bins.length));
+  const spanNorm = Math.max(0.001, viewportEnd - viewportStart);
 
   ctx.fillStyle = 'rgba(255,255,255,0.035)';
   ctx.fillRect(0, Math.floor(center * 0.5), width, 1);
@@ -286,8 +283,15 @@ function drawWaveform(
 
   ctx.globalCompositeOperation = 'lighter';
   for (let x = 0; x < width; x += 1) {
-    const start = Math.floor(leftIndex + (x / width) * (rightIndex - leftIndex));
-    const end = Math.max(start + 1, Math.floor(leftIndex + ((x + 1) / width) * (rightIndex - leftIndex)));
+    const startNorm = viewportStart + (x / width) * spanNorm;
+    const endNorm = viewportStart + ((x + 1) / width) * spanNorm;
+    if (endNorm <= 0 || startNorm >= 1) {
+      ctx.fillStyle = 'rgba(72, 83, 100, 0.13)';
+      fillSymmetricBar(ctx, x, center, 1, 1, 1);
+      continue;
+    }
+    const start = Math.floor(clamp(startNorm, 0, 0.999) * bins.length);
+    const end = Math.max(start + 1, Math.ceil(clamp(endNorm, 0.001, 1) * bins.length));
     const bin = sliceStats(bins, start, end);
     const amp = Math.pow(clamp(bin.peak, 0, 1), 0.58);
     const minHalf = Math.max(1, Math.abs(bin.min) * maxBar);

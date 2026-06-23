@@ -2546,7 +2546,9 @@ const DeckWaveform: React.FC<{
   const [zoom, setZoom] = useState(mode === 'detail' ? 8 : 1);
   const [viewStart, setViewStart] = useState(0);
   const visibleFrac = 1 / zoom;
-  const viewEnd = Math.min(1, viewStart + visibleFrac);
+  const viewEnd = viewStart + visibleFrac;
+  const viewMin = mode === 'detail' ? -visibleFrac / 2 : 0;
+  const viewMax = mode === 'detail' ? 1 - visibleFrac / 2 : Math.max(0, 1 - visibleFrac);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const viewStartRef = useRef(viewStart);
@@ -2561,8 +2563,7 @@ const DeckWaveform: React.FC<{
     const currentNorm = d > 0 ? clamp01(st.currentTime / d) : 0;
     if (modeRef.current === 'detail') {
       const vf = visibleFracRef.current;
-      const maxStart = Math.max(0, 1 - vf);
-      const nextStart = clamp(currentNorm - vf / 2, 0, maxStart);
+      const nextStart = clamp(currentNorm - vf / 2, -vf / 2, 1 - vf / 2);
       if (Math.abs(nextStart - viewStartRef.current) > 0.0008) setViewStart(nextStart);
       if (playheadRef.current) {
         playheadRef.current.style.left = '50%';
@@ -2579,7 +2580,11 @@ const DeckWaveform: React.FC<{
     setLoop((p) => (sameLoop(p, nl) ? p : nl));
   }), [deckId]);
 
-  useEffect(() => { setZoom(mode === 'detail' ? 8 : 1); setViewStart(0); }, [audioUrl, mode]);
+  useEffect(() => {
+    const nextZoom = mode === 'detail' ? 8 : 1;
+    setZoom(nextZoom);
+    setViewStart(mode === 'detail' ? -(1 / nextZoom) / 2 : 0);
+  }, [audioUrl, mode]);
 
   const beatMarks = useMemo(() => {
     if (!beats || beats.length === 0 || dur <= 0) return null;
@@ -2623,15 +2628,17 @@ const DeckWaveform: React.FC<{
     const panIntent = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
     if (panIntent && zoom > 1) {
       const delta = (e.deltaX || e.deltaY) / Math.max(160, rect.width);
-      setViewStart((s) => clamp(s + delta * visibleFrac, 0, Math.max(0, 1 - visibleFrac)));
+      setViewStart((s) => clamp(s + delta * visibleFrac, viewMin, viewMax));
       return;
     }
     const nextZoom = clamp(zoom * Math.exp(-e.deltaY * 0.002), 1, maxZoom);
     const snappedZoom = nextZoom < minZoom + 0.04 ? minZoom : Math.max(minZoom, nextZoom);
     const underPointer = viewStart + pointer * visibleFrac;
     const nextVisible = 1 / snappedZoom;
+    const nextMin = mode === 'detail' ? -nextVisible / 2 : 0;
+    const nextMax = mode === 'detail' ? 1 - nextVisible / 2 : Math.max(0, 1 - nextVisible);
     setZoom(snappedZoom);
-    setViewStart(clamp(underPointer - pointer * nextVisible, 0, Math.max(0, 1 - nextVisible)));
+    setViewStart(clamp(underPointer - pointer * nextVisible, nextMin, nextMax));
   };
   const applyScrub = () => { scrubRaf.current = 0; const x = pendingX.current; pendingX.current = null; if (x != null) seekToClientX(x); };
   const queueScrub = (clientX: number) => { pendingX.current = clientX; if (!scrubRaf.current) scrubRaf.current = requestAnimationFrame(applyScrub); };
