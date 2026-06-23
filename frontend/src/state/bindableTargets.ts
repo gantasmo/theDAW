@@ -20,7 +20,7 @@ const perDeck = (d: dj.DeckId): BindableTarget[] => {
     { id: `dj.filter.${d}`, label: `Filter ${d}`, group: g, kind: 'knob', min: -1, max: 1, step: 0.01, invoke: (v) => dj.setDeckFilter(d, Number(v)) },
     { id: `dj.gain.${d}`, label: `Gain ${d}`, group: g, kind: 'knob', min: -12, max: 12, step: 0.5, unit: 'dB', invoke: (v) => dj.setDeckTrim(d, Number(v)) },
     { id: `dj.vol.${d}`, label: `Volume ${d}`, group: g, kind: 'fader', min: 0, max: 1, step: 0.01, invoke: (v) => dj.setDeckVolume(d, Number(v)) },
-    { id: `dj.pitch.${d}`, label: `Pitch ${d}`, group: g, kind: 'fader', min: -50, max: 50, step: 0.1, unit: '%', invoke: (v) => dj.setDeckPitch(d, Number(v)) },
+    { id: `dj.pitch.${d}`, label: `Pitch ${d}`, group: g, kind: 'fader', min: -15, max: 15, step: 0.1, unit: '%', invoke: (v) => dj.setDeckPitch(d, Number(v)) },
     { id: `dj.fxFlanger.${d}`, label: `FX Flanger ${d}`, group: g, kind: 'knob', min: 0, max: 1, step: 0.01, invoke: (v) => dj.setDeckFx(d, 'flanger', Number(v)) },
     { id: `dj.fxReverb.${d}`, label: `FX Reverb ${d}`, group: g, kind: 'knob', min: 0, max: 1, step: 0.01, invoke: (v) => dj.setDeckFx(d, 'reverb', Number(v)) },
     { id: `dj.fxWah.${d}`, label: `FX Wah ${d}`, group: g, kind: 'knob', min: 0, max: 1, step: 0.01, invoke: (v) => dj.setDeckFx(d, 'wahwah', Number(v)) },

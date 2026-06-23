@@ -84,6 +84,8 @@ const AUTO_GAIN_TARGET_DB = -12;
 const AUTOMIX_TAIL = 18;   // s before a track ends to begin the blend
 const AUTOMIX_XFADE = 10;  // s the auto-crossfade takes
 const STOP_CUE_EPS = 0.05; // treat cue hits inside 50ms as "at this cue"
+const PITCH_RANGES = [10, 15] as const;
+type PitchRange = typeof PITCH_RANGES[number];
 
 /* DJ MIDI-learn (D6): the bindable actions, grouped for the map panel. CC →
  * continuous (xfader/vol/eq/filter/pitch); note → trigger (play/cue/sync/hotcue). */
@@ -436,7 +438,7 @@ function EditableBpmField({
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 19;
+const DJ_LAYOUT_VERSION = 20;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -474,7 +476,7 @@ const defaultDjLayout: SurfaceLayout = {
     'pdB-perf': { id: 'pdB-perf', type: 'panel', title: 'B · Perf', flow: 'row', widgets: ['rollB_0', 'rollB_1', 'rollB_2', 'slipB', 'jumpB_0', 'jumpB_1', 'jumpB_2', 'jumpB_3'], uniform: true },
     // ── Mixer ──
     mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 1, mixChans: 6, mixXfade: 1.6 }, framed: true },
-    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['spacer:s-24-02c5d864', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap', 'spacer:s-23-936b468e'], uniform: true },
+    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['spacer:s-24-02c5d864', 'pitchRange', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap', 'spacer:s-23-936b468e'], uniform: true },
     mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['eqAP', 'chAP', 'chBP', 'eqBP'], fr: { eqAP: 1.35, chAP: 1.15, chBP: 1.15, eqBP: 1.35 } },
     pchAP: { id: 'pchAP', type: 'panel', title: 'Pitch A', flow: 'column', widgets: ['pitchA'], widgetMargins: { pitchA: { t: 8, r: 4, b: 8, l: 4 } }, mirror: true },
     eqAP: { id: 'eqAP', type: 'panel', title: 'EQ A', flow: 'column', widgets: ['eqA.hi', 'eqA.mid', 'eqA.lo', 'fltA'], mirror: true },
@@ -532,6 +534,7 @@ export const DJView: React.FC = () => {
   const [crossfader, setCrossfader] = useState(() => djEngine.getCrossfade());
   const [deckAPitch, setDeckAPitch] = useState(0);
   const [deckBPitch, setDeckBPitch] = useState(0);
+  const [pitchRange, setPitchRange] = useState<PitchRange>(10);
   const [syncLock, setSyncLock] = useState<djEngine.DeckId | null>(null);
   const [quantize, setQuantize] = useState(false);
   const [autoGain, setAutoGain] = useState(true);
@@ -594,6 +597,7 @@ export const DJView: React.FC = () => {
   const camB = ctlB.cam;
   const harmonic = camA && camB ? camA.compatible.includes(camB.code) : null;
   const canSync = !!ctlA.a?.bpm && !!ctlB.a?.bpm;
+  const clampToPitchRange = (v: number) => clamp(v, -pitchRange, pitchRange);
 
   const deckATrackRef = useRef<string | null>(deckATrack);
   const deckBTrackRef = useRef<string | null>(deckBTrack);
@@ -671,6 +675,19 @@ export const DJView: React.FC = () => {
   useEffect(() => { if (djTabActive && entries.length) void analyzeAll(entries.map((e) => e.id)); }, [djTabActive, entries, analyzeAll]);
 
   useEffect(() => {
+    setDeckAPitch((prev) => {
+      const next = clamp(prev, -pitchRange, pitchRange);
+      if (next !== prev) djEngine.setDeckPitch('A', next);
+      return next;
+    });
+    setDeckBPitch((prev) => {
+      const next = clamp(prev, -pitchRange, pitchRange);
+      if (next !== prev) djEngine.setDeckPitch('B', next);
+      return next;
+    });
+  }, [pitchRange]);
+
+  useEffect(() => {
     const t = trackById(deckATrack);
     void djEngine.loadDeck('A', t ? (t.audioUrl ?? null) : null, t?.title ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -720,7 +737,7 @@ export const DJView: React.FC = () => {
     let rate = masterEffBpm / followerBpm;
     while (rate > Math.SQRT2) rate /= 2;
     while (rate < Math.SQRT1_2) rate *= 2;
-    const pct = (rate - 1) * 100;
+    const pct = clampToPitchRange((rate - 1) * 100);
     if (follower === 'A') setDeckAPitch(pct); else setDeckBPitch(pct);
     djEngine.setDeckPitch(follower, pct);
     const followerBeats = followerCtl.a?.beats ?? null;
@@ -769,23 +786,24 @@ export const DJView: React.FC = () => {
       if (dPhase > 0.5) dPhase -= 1;
       if (dPhase < -0.5) dPhase += 1;
       const bend = Math.abs(dPhase) > DEADBAND ? Math.max(-MAX_BEND, Math.min(MAX_BEND, dPhase * KP)) : 0;
-      const pct = Math.max(-50, Math.min(50, (rate - 1) * 100 + bend));
+      const pct = clampToPitchRange((rate - 1) * 100 + bend);
       djEngine.setDeckPitch(follower, pct);
       if (follower === 'A') setDeckAPitch(pct); else setDeckBPitch(pct);
     }, 350);
     return () => window.clearInterval(id);
-  }, [syncLock, aData, bData]);
+  }, [syncLock, aData, bData, pitchRange]);
 
   const onPitch = (which: djEngine.DeckId, v: number) => {
+    const pitch = clampToPitchRange(v);
     if (syncLock === which) setSyncLock(null);
-    if (which === 'A') setDeckAPitch(v); else setDeckBPitch(v);
-    djEngine.setDeckPitch(which, v);
+    if (which === 'A') setDeckAPitch(pitch); else setDeckBPitch(pitch);
+    djEngine.setDeckPitch(which, pitch);
   };
   const onTargetBpm = (which: djEngine.DeckId, bpm: number) => {
     const sourceBpm = (which === 'A' ? ctlA.bpm : ctlB.bpm) ?? null;
     if (!sourceBpm || sourceBpm <= 0) return;
     const rawPitch = (bpm / sourceBpm - 1) * 100;
-    const pitch = Math.max(-50, Math.min(50, rawPitch));
+    const pitch = clampToPitchRange(rawPitch);
     onPitch(which, pitch);
     const effectiveBpm = sourceBpm * (1 + pitch / 100);
     if (Math.abs(effectiveBpm - bpm) > 0.05) {
@@ -836,7 +854,7 @@ export const DJView: React.FC = () => {
       h[`vol${d}`] = (v) => onVol(d, v / 127);
       h[`gain${d}`] = (v) => onGain(d, (v / 127) * 24 - 12);
       h[`filter${d}`] = (v) => onFilter(d, (v / 127) * 2 - 1);
-      h[`pitch${d}`] = (v) => onPitch(d, (v / 127) * 100 - 50);
+      h[`pitch${d}`] = (v) => onPitch(d, (v / 127) * (pitchRange * 2) - pitchRange);
       h[`eq${d}.high`] = (v) => onEq(d, 'high', (v / 127) * 24 - 12);
       h[`eq${d}.mid`] = (v) => onEq(d, 'mid', (v / 127) * 24 - 12);
       h[`eq${d}.low`] = (v) => onEq(d, 'low', (v / 127) * 24 - 12);
@@ -955,6 +973,7 @@ export const DJView: React.FC = () => {
     gainA, gainB, eqA, eqB, filterA, filterB, volA, volB,
     stemKnobModeA, stemKnobModeB, setStemKnobModeA, setStemKnobModeB,
     pitchA: deckAPitch, pitchB: deckBPitch, bpmA: ctlA.bpm ?? null, bpmB: ctlB.bpm ?? null,
+    pitchRange, setPitchRange,
     onGain, onEq, onFilter, onVol, onPitch, onTargetBpm,
     crossfader, onCrossfade: applyCrossfade,
     quantize, setQuantize, autoGain, setAutoGain,
@@ -2470,6 +2489,7 @@ interface DjRegArgs {
   stemKnobModeA: boolean; stemKnobModeB: boolean;
   setStemKnobModeA: (v: boolean) => void; setStemKnobModeB: (v: boolean) => void;
   pitchA: number; pitchB: number; bpmA: number | null; bpmB: number | null;
+  pitchRange: PitchRange; setPitchRange: (range: PitchRange) => void;
   onGain: (which: djEngine.DeckId, v: number) => void;
   onEq: (which: djEngine.DeckId, band: 'low' | 'mid' | 'high', v: number) => void;
   onFilter: (which: djEngine.DeckId, v: number) => void; onVol: (which: djEngine.DeckId, v: number) => void;
@@ -2778,7 +2798,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const effBpm = bpm != null ? (bpm * (1 + pitch / 100)).toFixed(1) : '—';
     reg[`pitch${d}`] = { id: `pitch${d}`, label: `Pitch ${d}`, group: grp, kind: 'fader', source: 'builtin', render: () => (
       <div className="h-full w-full min-h-0 flex flex-col items-center">
-        <div className="flex-1 min-h-0 flex justify-center"><SlideFader label={`Pch ${d}`} value={pitch} onChange={(v) => p.onPitch(d, v)} min={-50} max={50} step={0.1} rulerSide={d === 'A' ? 'left' : 'right'} /></div>
+        <div className="flex-1 min-h-0 flex justify-center"><SlideFader label={`Pch ${d}`} value={pitch} onChange={(v) => p.onPitch(d, v)} min={-p.pitchRange} max={p.pitchRange} step={0.1} rulerSide={d === 'A' ? 'left' : 'right'} /></div>
         <span className="shrink-0 text-[8px] font-mono tabular-nums text-zinc-500" title="Effective BPM at this pitch">{effBpm}</span>
       </div>
     ) };
@@ -2787,6 +2807,17 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   addMixerDeck('B');
 
   /* ── shared mixer controls ── */
+  reg.pitchRange = { id: 'pitchRange', label: 'Pitch Range', group: 'Mixer', kind: 'button', source: 'builtin', render: () => center(
+    <button
+      type="button"
+      onClick={() => p.setPitchRange(p.pitchRange === 10 ? 15 : 10)}
+      title="Pitch range"
+      className="flex flex-col items-center justify-center gap-0.5 min-w-12 px-2 py-1 rounded-md border border-amber-400/50 bg-amber-500/15 text-amber-100 shadow-[0_0_14px_rgba(245,158,11,0.25)] hover:bg-amber-500/25 transition-colors"
+    >
+      <span className="text-[7px] font-black uppercase tracking-wider leading-none">Range</span>
+      <span className="text-[12px] font-black font-mono tabular-nums leading-none">±{p.pitchRange}%</span>
+    </button>
+  ) };
   reg.qtz = { id: 'qtz', label: 'Quantize', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Qtz" icon={Magnet} on={p.quantize} onChange={p.setQuantize} box={toggleBox(s, opts)} />) };
   reg.autoGain = { id: 'autoGain', label: 'Auto-gain', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Gain" icon={Gauge} on={p.autoGain} onChange={p.setAutoGain} box={toggleBox(s, opts)} />) };
   reg.lim = { id: 'lim', label: 'Limiter', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Lim" icon={Shield} on={p.limiterOn} onChange={(v) => { p.setLimiterOn(v); djEngine.setLimiter(v); }} box={toggleBox(s, opts)} />) };
