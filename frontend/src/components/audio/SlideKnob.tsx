@@ -42,13 +42,14 @@ interface SlideKnobProps {
   /** Value a double-click resets to. Defaults to the bipolar midpoint for
    *  `center` dials, else 0 (clamped into range). */
   defaultValue?: number;
+  onLabelClick?: () => void;
   onLabelDoubleClick?: () => void;
   labelTitle?: string;
 }
 
 const SlideKnobImpl: React.FC<SlideKnobProps> = ({
   label, value, onChange, min, max, step = 0.01, tipKey, size = 42, centerReadout = false, center = false, tint,
-  defaultValue, onLabelDoubleClick, labelTitle,
+  defaultValue, onLabelClick, onLabelDoubleClick, labelTitle,
 }) => {
   const dragging = useRef(false);
   const lastY = useRef(0);
@@ -117,8 +118,14 @@ const SlideKnobImpl: React.FC<SlideKnobProps> = ({
 
   const labelEl = (
     <span
-      className={`text-[8px] font-bold uppercase tracking-wider text-zinc-400 truncate max-w-full text-center leading-none ${onLabelDoubleClick ? 'cursor-pointer' : ''}`}
+      className={`text-[8px] font-bold uppercase tracking-wider text-zinc-400 truncate max-w-full text-center leading-none ${onLabelClick || onLabelDoubleClick ? 'cursor-pointer hover:text-zinc-200' : ''}`}
       title={labelTitle}
+      onClick={(e) => {
+        if (!onLabelClick) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onLabelClick();
+      }}
       onDoubleClick={(e) => {
         if (!onLabelDoubleClick) return;
         e.preventDefault();

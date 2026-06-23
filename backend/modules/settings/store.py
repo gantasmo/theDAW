@@ -1,8 +1,8 @@
 """App-wide feature settings persisted to ``data/settings.json``.
 
-This is the source of truth for opt-in background workflows: auto-analysis,
-auto-stems, auto-midi. Defaults are OFF for every toggle so that nothing
-runs automatically until the user explicitly enables it.
+This is the source of truth for background workflows: auto-analysis,
+auto-stems, auto-midi. Analysis and stems are default-on so imported /
+generated tracks are DJ-ready without extra clicks; MIDI remains opt-in.
 
 The on-disk schema is versioned (``schema_version``) so we can migrate
 fields forward without losing the user's existing choices. Missing keys
@@ -23,7 +23,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -38,9 +38,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "include_key": True,
     },
     "stems": {
-        # Heavy; requires the integration-package sidecar. Opt-in.
-        "auto_on_import": False,
-        "auto_on_generate": False,
+        # Heavy, but DJ mode expects separated stems to be ready by default.
+        # Users can still turn this off from Settings → Background features.
+        "auto_on_import": True,
+        "auto_on_generate": True,
         "default_count": 4,
         # 'cuda' | 'cpu' | 'auto'. The integration-package's sidecar
         # respects this query param. Default cuda because demucs on cpu
@@ -133,6 +134,12 @@ def _merge_defaults(payload: dict[str, Any]) -> dict[str, Any]:
         # section, so it's already filled from DEFAULT_SETTINGS above;
         # this branch only exists to re-persist the bumped schema.
         merged.setdefault("vj", deepcopy(DEFAULT_SETTINGS["vj"]))
+    if old_version < 6:
+        # Migration v5 → v6: make auto-stems default-on so DJ imports
+        # start separating in the background without a manual stem click.
+        # Users who prefer lighter imports can flip this back in Settings.
+        merged["stems"]["auto_on_import"] = True
+        merged["stems"]["auto_on_generate"] = True
 
     merged["schema_version"] = SCHEMA_VERSION
     return merged

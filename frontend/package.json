@@ -21,7 +21,6 @@
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/react-window": "^1.8.8",
-    "@vitejs/plugin-react": "^5.0.4",
     "@wavesurfer/react": "^1.0.12",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
@@ -40,7 +39,6 @@
     "spessasynth_core": "^4.3.10",
     "spessasynth_lib": "^4.3.7",
     "three": "^0.184.0",
-    "vite": "^7.3.5",
     "wavesurfer.js": "^7.12.7",
     "zustand": "^5.0.8"
   },
@@ -49,11 +47,12 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.4.21",
     "playwright": "^1.60.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^7.3.5"
+    "vite": "^8.1.0"
   }
 }

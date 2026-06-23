@@ -54,11 +54,13 @@ export default defineConfig(({mode}) => {
           // LiquidChromeTitle) and lazily (the visualizer), so giving it a
           // dedicated chunk keeps exactly one cached copy and pulls ~600KB out of
           // the entry chunk. (react-force-graph stays code-split via LineageModal.)
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
-            three: ['three'],
-            wavesurfer: ['wavesurfer.js', '@wavesurfer/react'],
-            icons: ['lucide-react'],
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (/[\\/]node_modules[\\/](react|react-dom)[\\/]/.test(id)) return 'react-vendor';
+            if (/[\\/]node_modules[\\/]three[\\/]/.test(id)) return 'three';
+            if (/[\\/]node_modules[\\/](@wavesurfer[\\/]react|wavesurfer\.js)[\\/]/.test(id)) return 'wavesurfer';
+            if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) return 'icons';
+            return undefined;
           },
         },
       },

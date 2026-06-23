@@ -55,10 +55,11 @@ import { SlidePad } from '../components/audio/SlidePad';
 import { SlideCrossfader } from '../components/audio/SlideCrossfader';
 import { RoundToggle } from '../components/audio/RoundToggle';
 import { JogWheel } from '../components/audio/JogWheel';
+import { ContextMenu, useContextMenu, type ContextMenuItem } from '../components/ui/ContextMenu';
 import { sendSetToVj, sendTrackToVj, isVjSetTargetActive, type VjSetItem } from '../state/vjSetBus';
 import { registerDjMasterHandler, reportDjMasterState } from '../state/djMasterBus';
 import { importUrlToLibrary } from '../lib/onlineImport';
-import { prepareStems } from '../lib/djStems';
+import { listStems, prepareStems } from '../lib/djStems';
 import * as djEngine from '../state/djEngine';
 
 const DJ_TRACK_MIME = 'application/x-thedaw-djtrack';
@@ -538,6 +539,8 @@ export const DJView: React.FC = () => {
   const [syncLock, setSyncLock] = useState<djEngine.DeckId | null>(null);
   const [quantize, setQuantize] = useState(false);
   const [autoGain, setAutoGain] = useState(true);
+  const [vinylSpinA, setVinylSpinA] = useState(false);
+  const [vinylSpinB, setVinylSpinB] = useState(false);
   const [gainA, setGainA] = useState(0);
   const [gainB, setGainB] = useState(0);
   const [eqA, setEqA] = useState({ low: 0, mid: 0, high: 0 });
@@ -824,17 +827,22 @@ export const DJView: React.FC = () => {
     if (which === 'A') setCueA(next); else setCueB(next);
     djEngine.setDeckCue(which, next);
   };
+  const toggleDeckWithSpin = (which: djEngine.DeckId) => {
+    const spin = which === 'A' ? vinylSpinA : vinylSpinB;
+    if (djEngine.getStatus(which).playing) djEngine.pauseDeck(which);
+    else djEngine.playDeck(which, { spinUp: spin });
+  };
   const stopDeckAtNextCue = (which: djEngine.DeckId) => {
+    const spin = which === 'A' ? vinylSpinA : vinylSpinB;
     const ctl = which === 'A' ? ctlA : ctlB;
     const status = djEngine.getStatus(which);
     const cue = nextCueAfter(ctl.cues, status.currentTime);
     if (cue == null) {
-      djEngine.stopDeck(which);
+      djEngine.stopDeck(which, { windDown: spin });
       return;
     }
     const target = quantize ? nearestBeat(cue, ctl.gridBeats) : cue;
-    djEngine.stopDeck(which);
-    djEngine.seekDeck(which, target);
+    djEngine.stopDeck(which, { windDown: spin, targetOffset: target });
     setFlash(`Deck ${which} cue -> ${fmtTime(target)}`);
   };
   const applyCrossfade = (v: number) => { setCrossfader(v); djEngine.setCrossfade(v); };
@@ -846,23 +854,43 @@ export const DJView: React.FC = () => {
     const h: Record<string, (v: number) => void> = { xfader: (v) => applyCrossfade((v / 127) * 2 - 1) };
     for (const d of ['A', 'B'] as djEngine.DeckId[]) {
       const ctl = d === 'A' ? ctlA : ctlB;
-      h[`play${d}`] = () => djEngine.toggleDeck(d);
+      h[`play${d}`] = () => toggleDeckWithSpin(d);
       h[`cue${d}`] = () => djEngine.cueDeck(d);
       h[`stop${d}`] = () => stopDeckAtNextCue(d);
       h[`sync${d}`] = () => syncDeck(d);
       h[`headcue${d}`] = () => toggleCue(d);
       h[`vol${d}`] = (v) => onVol(d, v / 127);
       h[`gain${d}`] = (v) => onGain(d, (v / 127) * 24 - 12);
-      h[`filter${d}`] = (v) => onFilter(d, (v / 127) * 2 - 1);
+      h[`filter${d}`] = (v) => {
+        const mode = d === 'A' ? stemKnobModeA : stemKnobModeB;
+        const stem = mode ? findStemForSlot(ctl.stemNames, STEM_MIXER_KNOB_SLOTS.flt.aliases) : null;
+        if (stem) djEngine.setStemGain(d, stem, v / 127);
+        else onFilter(d, (v / 127) * 2 - 1);
+      };
       h[`pitch${d}`] = (v) => onPitch(d, (v / 127) * (pitchRange * 2) - pitchRange);
-      h[`eq${d}.high`] = (v) => onEq(d, 'high', (v / 127) * 24 - 12);
-      h[`eq${d}.mid`] = (v) => onEq(d, 'mid', (v / 127) * 24 - 12);
-      h[`eq${d}.low`] = (v) => onEq(d, 'low', (v / 127) * 24 - 12);
+      h[`eq${d}.high`] = (v) => {
+        const mode = d === 'A' ? stemKnobModeA : stemKnobModeB;
+        const stem = mode ? findStemForSlot(ctl.stemNames, STEM_MIXER_KNOB_SLOTS.hi.aliases) : null;
+        if (stem) djEngine.setStemGain(d, stem, v / 127);
+        else onEq(d, 'high', (v / 127) * 24 - 12);
+      };
+      h[`eq${d}.mid`] = (v) => {
+        const mode = d === 'A' ? stemKnobModeA : stemKnobModeB;
+        const stem = mode ? findStemForSlot(ctl.stemNames, STEM_MIXER_KNOB_SLOTS.mid.aliases) : null;
+        if (stem) djEngine.setStemGain(d, stem, v / 127);
+        else onEq(d, 'mid', (v / 127) * 24 - 12);
+      };
+      h[`eq${d}.low`] = (v) => {
+        const mode = d === 'A' ? stemKnobModeA : stemKnobModeB;
+        const stem = mode ? findStemForSlot(ctl.stemNames, STEM_MIXER_KNOB_SLOTS.lo.aliases) : null;
+        if (stem) djEngine.setStemGain(d, stem, v / 127);
+        else onEq(d, 'low', (v / 127) * 24 - 12);
+      };
       for (let i = 0; i < STEM_PAD_SLOTS; i++) {
         h[`stem${d}${i}`] = () => {
           const name = ctl.stemNames[i];
           if (!name) return;
-          const cur = ctl.stemLevels[name] ?? djEngine.getStemGain(d, name);
+          const cur = djEngine.getStemGain(d, name);
           djEngine.setStemGain(d, name, cur > 0.001 ? 0 : 1);
         };
       }
@@ -963,7 +991,7 @@ export const DJView: React.FC = () => {
     hasA: !!deckATrack, hasB: !!deckBTrack,
     playingA: deckAPlaying, playingB: deckBPlaying,
     cueA, cueB, syncLock, canSync,
-    onPlayA: () => djEngine.toggleDeck('A'), onPlayB: () => djEngine.toggleDeck('B'),
+    onPlayA: () => toggleDeckWithSpin('A'), onPlayB: () => toggleDeckWithSpin('B'),
     onCueA: () => djEngine.cueDeck('A'), onCueB: () => djEngine.cueDeck('B'),
     onStop: stopDeckAtNextCue, onEject: ejectDeck,
     onSync: syncDeck, onSyncLock: toggleSyncLock, onHeadCue: toggleCue,
@@ -977,6 +1005,7 @@ export const DJView: React.FC = () => {
     onGain, onEq, onFilter, onVol, onPitch, onTargetBpm,
     crossfader, onCrossfade: applyCrossfade,
     quantize, setQuantize, autoGain, setAutoGain,
+    vinylSpinA, setVinylSpinA, vinylSpinB, setVinylSpinB,
     limiterOn, setLimiterOn, cueSupported, cueDevices, cueDev, setCueDev,
     midiMapOn: midiMapOpen, onToggleMidiMap: () => setMidiMapOpen((v) => !v),
     automixOn, onToggleAutomix: () => setAutomixOn((v) => !v),
@@ -1210,6 +1239,26 @@ const stemLabel = (n: string) => {
   return STEM_LABEL[key] ?? (n.charAt(0).toUpperCase() + n.slice(1, 4));
 };
 const STEM_PAD_FALLBACKS = ['vocals', 'drums', 'bass', 'other', 'kick', 'hihat'];
+const STEM_MIXER_KNOB_SLOTS = {
+  hi: { id: 'hi', fallback: 'Vocal', aliases: ['vocals', 'vocal', 'voice', 'singing'], tint: 0.83 },
+  mid: { id: 'mid', fallback: 'Kick', aliases: ['kick', 'kick drum', 'bd', 'drums', 'drum'], tint: 0.62 },
+  lo: { id: 'lo', fallback: 'Bass', aliases: ['bass', 'sub', 'sub bass'], tint: 0.36 },
+  flt: { id: 'flt', fallback: 'Other', aliases: ['other', 'instrumental', 'accompaniment', 'music'], tint: 0.12 },
+} as const;
+const STEM_MIXER_KNOB_SLOT_LIST = [
+  STEM_MIXER_KNOB_SLOTS.hi,
+  STEM_MIXER_KNOB_SLOTS.mid,
+  STEM_MIXER_KNOB_SLOTS.lo,
+  STEM_MIXER_KNOB_SLOTS.flt,
+] as const;
+const findStemForSlot = (names: string[], aliases: readonly string[]) => {
+  const norm = (s: string) => s.toLowerCase().replace(/[_-]+/g, ' ').trim();
+  const normalized = names.map((name) => ({ name, key: norm(name) }));
+  return aliases
+    .map(norm)
+    .map((alias) => normalized.find((stem) => stem.key === alias || stem.key.includes(alias))?.name)
+    .find((name): name is string => !!name) ?? null;
+};
 const STEM_PAD_COLORS: RGB[] = [
   [34, 197, 94],
   [245, 158, 11],
@@ -1283,7 +1332,10 @@ const StemTogglePad: React.FC<{
       on={on || preparing}
       disabled={!name && !canPrepare}
       onClick={() => {
-        if (name) djEngine.setStemGain(deck, name, on ? 0 : 1);
+        if (name) {
+          const current = djEngine.getStemGain(deck, name);
+          djEngine.setStemGain(deck, name, current > 0.001 ? 0 : 1);
+        }
         else onPrepare?.();
       }}
       className="w-full h-full px-1 py-1 text-[7px] min-w-0"
@@ -1809,6 +1861,7 @@ const SideListLane: React.FC<{ onLoadDeck: (entryId: string, deck: djEngine.Deck
 const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; onLoadDeck: (entryId: string, deck: djEngine.DeckId) => void }> = ({ source, setSource, onLoadDeck }) => {
   const entries = useLibraryStore((s) => s.entries);
   const analysisById = useDjAnalysisStore((s) => s.byId);
+  const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
   const setlists = useSetlistStore((s) => s.setlists);
   const renameSetlist = useSetlistStore((s) => s.rename);
   const removeSetlist = useSetlistStore((s) => s.remove);
@@ -1822,12 +1875,16 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   type SortKey = 'order' | 'bpm' | 'title' | 'key' | 'dur' | 'date' | 'source';
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'order', dir: 'asc' });
   const [appliedSetSort, setAppliedSetSort] = useState<{ key: 'title' | 'bpm'; dir: 'asc' | 'desc' } | null>(null);
+  type StemCache = { status: 'checking' | 'none' | 'ready' | 'running' | 'error'; count?: number; message?: string };
+  const [stemCache, setStemCache] = useState<Record<string, StemCache>>({});
+  const [stemRun, setStemRun] = useState<{ entryId: string; title: string; phase: string; progress: number } | null>(null);
 
   const set = source.kind === 'set' ? setlists[source.id] ?? null : null;
   const isSet = source.kind === 'set' && !!set;
 
   // Rows: either library entries or a set's entries (resolved against the library for metadata).
   type Row = { entryId: string | null; title: string; bpm: number | null; key: string | null; dur: number | null; date: string | null; source: string; order: number; setIndex?: number };
+  const rowMenu = useContextMenu<{ row: Row }>();
   const baseRows: Row[] = isSet
     ? set!.entries.map((e, i) => {
         const lib = e.entryId ? entries.find((x) => x.id === e.entryId) ?? null : null;
@@ -1971,6 +2028,101 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   const setSortIconClass = (key: 'title' | 'bpm') =>
     `w-3 h-3 transition-transform ${appliedSetSort?.key === key ? 'opacity-100 text-purple-200' : 'opacity-55'} ${appliedSetSort?.key === key && appliedSetSort.dir === 'desc' ? 'rotate-180' : ''}`;
 
+  const stemCount = toStemCount(stemSettings.default_count);
+  const refreshStemCache = async (entryId: string) => {
+    setStemCache((p) => ({ ...p, [entryId]: { status: 'checking' } }));
+    try {
+      const refs = await listStems(entryId);
+      setStemCache((p) => ({
+        ...p,
+        [entryId]: refs.length >= stemCount
+          ? { status: 'ready', count: refs.length }
+          : { status: 'none', count: refs.length },
+      }));
+    } catch (e) {
+      setStemCache((p) => ({
+        ...p,
+        [entryId]: { status: 'error', message: e instanceof Error ? e.message : 'Stem check failed' },
+      }));
+    }
+  };
+  const openSetRowMenu = (e: React.MouseEvent, row: Row) => {
+    if (!isSet || !row.entryId) return;
+    rowMenu.open(e, { row });
+    const cached = stemCache[row.entryId];
+    if (!cached || cached.status === 'error') void refreshStemCache(row.entryId);
+  };
+  const separateSetRowStems = async (row: Row) => {
+    if (!row.entryId) return;
+    const entryId = row.entryId;
+    setStemCache((p) => ({ ...p, [entryId]: { status: 'running', count: p[entryId]?.count } }));
+    setStemRun({ entryId, title: row.title, phase: 'starting', progress: 0 });
+    try {
+      const refs = await prepareStems(
+        entryId,
+        {
+          stems: stemCount,
+          device: stemSettings.device || 'auto',
+          quality: stemSettings.quality || 'balanced',
+        },
+        (pct, phase) => {
+          setStemRun({ entryId, title: row.title, phase: phase.replace(/_/g, ' '), progress: pct });
+        },
+      );
+      setStemCache((p) => ({ ...p, [entryId]: { status: 'ready', count: refs.length } }));
+      setStemRun({ entryId, title: row.title, phase: 'complete', progress: 100 });
+      window.setTimeout(() => {
+        setStemRun((cur) => (cur?.entryId === entryId ? null : cur));
+      }, 2200);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Stem separation failed';
+      setStemCache((p) => ({ ...p, [entryId]: { status: 'error', message, count: p[entryId]?.count } }));
+      setStemRun({ entryId, title: row.title, phase: message.slice(0, 36), progress: 0 });
+      window.setTimeout(() => {
+        setStemRun((cur) => (cur?.entryId === entryId ? null : cur));
+      }, 3600);
+    }
+  };
+  const menuRow = rowMenu.payload?.row ?? null;
+  const menuStem = menuRow?.entryId ? stemCache[menuRow.entryId] : null;
+  const menuItems: ContextMenuItem[] = menuRow ? [
+    {
+      type: 'item',
+      label: menuStem?.status === 'checking'
+        ? 'Checking stems…'
+        : menuStem?.status === 'running'
+          ? 'Running stems…'
+          : menuStem?.status === 'ready'
+            ? 'Stems already cached'
+            : (menuStem?.count ? `Upgrade to ${stemCount} stems…` : `Separate ${stemCount} stems…`),
+      icon: menuStem?.status === 'checking' || menuStem?.status === 'running'
+        ? <Loader2 className="w-3 h-3 animate-spin" />
+        : <Scissors className="w-3 h-3" />,
+      hint: menuStem?.count ? `${menuStem.count}` : undefined,
+      disabled: !menuRow.entryId || menuStem?.status === 'checking' || menuStem?.status === 'running' || menuStem?.status === 'ready',
+      onSelect: () => { void separateSetRowStems(menuRow); },
+    },
+    { type: 'separator' },
+    {
+      type: 'item',
+      label: 'Load on Deck A',
+      onSelect: () => { if (menuRow.entryId) onLoadDeck(menuRow.entryId, 'A'); },
+    },
+    {
+      type: 'item',
+      label: 'Load on Deck B',
+      onSelect: () => { if (menuRow.entryId) onLoadDeck(menuRow.entryId, 'B'); },
+    },
+    {
+      type: 'item',
+      label: 'Remove from set',
+      icon: <Trash2 className="w-3 h-3" />,
+      danger: true,
+      disabled: menuRow.setIndex == null,
+      onSelect: () => { if (menuRow.setIndex != null) removeEntry(menuRow.setIndex); },
+    },
+  ] : [];
+
   return (
     <div
       className={`hardware-card h-full w-full flex flex-col min-h-0 overflow-hidden ${dropOverSet ? 'ring-2 ring-inset ring-purple-300/60' : ''}`}
@@ -1988,6 +2140,11 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
           <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 truncate max-w-40" title={sourceLabel}>{sourceLabel}</span>
         )}
         <span className="text-[8px] font-mono text-zinc-600">{rows.length} {isSet ? 'tracks' : 'files'}</span>
+        {stemRun && (
+          <span className="min-w-0 max-w-48 truncate text-[8px] font-mono text-emerald-300" title={`${stemRun.title}: ${stemRun.phase}`}>
+            stems · {stemRun.progress > 0 ? `${Math.round(stemRun.progress)}%` : stemRun.phase}
+          </span>
+        )}
         <div className="flex items-center gap-1 ml-auto bg-black/40 border border-white/10 rounded px-1.5 w-36 max-w-[40%]">
           <Search className="w-3 h-3 text-zinc-600 shrink-0" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search…" className="flex-1 min-w-0 bg-transparent text-[10px] font-mono text-zinc-200 py-1 focus:outline-none placeholder:text-zinc-600" />
@@ -2023,6 +2180,7 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
           </div>
         ) : rows.map((r, i) => (
           <div key={(r.entryId ?? 'x') + i} draggable={!!r.entryId}
+            onContextMenu={(e) => openSetRowMenu(e, r)}
             onDragStart={(ev) => { if (!r.entryId) return; ev.dataTransfer.effectAllowed = 'copy'; ev.dataTransfer.setData(DJ_TRACK_MIME, r.entryId); ev.dataTransfer.setData('text/plain', r.title); }}
             className="grid items-center gap-1 px-2 py-0.5 text-[9px] font-mono text-zinc-400 hover:bg-white/5 border-b border-white/3 group/row cursor-grab active:cursor-grabbing"
             style={{ gridTemplateColumns: '1.8rem 4.1rem minmax(10rem,1fr) 2.7rem 2.5rem 2.9rem 3.3rem 4.2rem' }}>
@@ -2049,6 +2207,13 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
           </div>
         ))}
       </div>
+      <ContextMenu
+        position={rowMenu.position}
+        onClose={rowMenu.close}
+        items={menuItems}
+        title={menuRow ? `Set track · ${menuRow.title}` : undefined}
+        minWidth="14rem"
+      />
     </div>
   );
 };
@@ -2497,6 +2662,8 @@ interface DjRegArgs {
   onTargetBpm: (which: djEngine.DeckId, bpm: number) => void;
   crossfader: number; onCrossfade: (v: number) => void;
   quantize: boolean; setQuantize: (v: boolean) => void; autoGain: boolean; setAutoGain: (v: boolean) => void;
+  vinylSpinA: boolean; setVinylSpinA: (v: boolean) => void;
+  vinylSpinB: boolean; setVinylSpinB: (v: boolean) => void;
   limiterOn: boolean; setLimiterOn: (v: boolean) => void;
   cueSupported: boolean; cueDevices: Array<{ id: string; label: string }>; cueDev: string; setCueDev: (v: string) => void;
   midiMapOn: boolean; onToggleMidiMap: () => void;
@@ -2549,7 +2716,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     min: number,
     max: number,
     step: number,
-    extra?: { center?: boolean; onLabelDoubleClick?: () => void; labelTitle?: string; tint?: number },
+    extra?: { center?: boolean; onLabelClick?: () => void; onLabelDoubleClick?: () => void; labelTitle?: string; tint?: number },
   ) => {
     reg[id] = {
       id,
@@ -2568,6 +2735,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
           size={knobSize(s, opts)}
           center={extra?.center ?? true}
           centerReadout
+          onLabelClick={extra?.onLabelClick}
           onLabelDoubleClick={extra?.onLabelDoubleClick}
           labelTitle={extra?.labelTitle}
           tint={extra?.tint}
@@ -2606,6 +2774,8 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const pitch = d === 'A' ? p.pitchA : p.pitchB;
     const onPlay = d === 'A' ? p.onPlayA : p.onPlayB;
     const onCue = d === 'A' ? p.onCueA : p.onCueB;
+    const vinylSpin = d === 'A' ? p.vinylSpinA : p.vinylSpinB;
+    const setVinylSpin = d === 'A' ? p.setVinylSpinA : p.setVinylSpinB;
     const stopTitle = sortedCuePoints(ctl.cues).length > 0 ? 'Stop and jump to next hotcue' : 'Stop and return to start';
     const syncLocked = p.syncLock === d;
     const grp = `Deck ${d}`;
@@ -2697,10 +2867,27 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
           ),
       };
     };
+    const StopSpinPad: React.FC<{ shape?: unknown }> = ({ shape: _shape }) => (
+      <div className="h-full w-full grid grid-cols-[1fr_1.35rem] gap-0.5">
+        <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1 min-w-0" title={stopTitle}>
+          <Square className="w-3 h-3 fill-current" />
+        </SlidePad>
+        <SlidePad
+          color={rgbc}
+          on={vinylSpin}
+          disabled={!hasTrack}
+          onClick={() => setVinylSpin(!vinylSpin)}
+          className="px-1 py-1 min-w-0"
+          title={vinylSpin ? 'Turntable spin-up/down on' : 'Turntable spin-up/down off'}
+        >
+          <Disc className="w-2.5 h-2.5" />
+        </SlidePad>
+      </div>
+    );
 
     padW(`cue${d}`, `Cue ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onCue} className={PAD_SM} title="Cue to start">Cue</SlidePad>);
     padW(`play${d}`, `Play ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={onPlay} className="px-3 py-1" title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}</SlidePad>);
-    padW(`stop${d}`, `Stop ${d}`, <SlidePad color={rgbc} disabled={!hasTrack} onClick={() => p.onStop(d)} className="px-2 py-1" title={stopTitle}><Square className="w-3 h-3 fill-current" /></SlidePad>);
+    padW(`stop${d}`, `Stop ${d}`, <StopSpinPad />);
     padW(`eject${d}`, `Eject ${d}`, <SlidePad danger disabled={!hasTrack} onClick={() => p.onEject(d)} className={`px-2 py-1 ${hasTrack ? 'dj-eject-heartbeat' : ''}`} title="Eject this deck"><EjectSymbol className="w-3 h-3" /></SlidePad>);
     padW(`sync${d}`, `Sync ${d}`, <SlidePad color={rgbc} disabled={!p.canSync} onClick={() => p.onSync(d)} className={PAD_SM} title={p.canSync ? 'BPM Sync — when one deck is playing, match the stopped incoming deck to it' : 'SYNC needs BPM on both decks'}>Sync</SlidePad>);
     padW(`syncLock${d}`, `Sync-Lock ${d}`, <SlidePad color={rgbc} on={syncLocked} disabled={!p.canSync} onClick={() => p.onSyncLock(d)} className="px-1.5 py-1" title="Sync-Lock — hold tempo + phase"><Lock className="w-3 h-3" /></SlidePad>);
@@ -2717,7 +2904,11 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
           color={color}
           on={on}
           disabled={!name}
-          onClick={() => { if (name) djEngine.setStemGain(d, name, on ? 0 : 1); }}
+          onClick={() => {
+            if (!name) return;
+            const current = djEngine.getStemGain(d, name);
+            djEngine.setStemGain(d, name, current > 0.001 ? 0 : 1);
+          }}
           className="px-1 py-1 text-[7px] min-w-0"
           title={name ? `Deck ${d} ${name}: ${on ? 'click to mute' : 'click to restore'}` : 'Load stems first'}
         >
@@ -2743,12 +2934,6 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   addDeck('B');
 
   /* ── per-deck mixer controls ── */
-  const stemKnobSlots = [
-    { id: 'hi', fallback: 'Hi', stemIndex: 3, tint: 0.83 },
-    { id: 'mid', fallback: 'Mid', stemIndex: 2, tint: 0.62 },
-    { id: 'lo', fallback: 'Lo', stemIndex: 1, tint: 0.36 },
-    { id: 'flt', fallback: 'Flt', stemIndex: 0, tint: 0.12 },
-  ] as const;
   const addMixerDeck = (d: 'A' | 'B') => {
     const grp = `Mixer ${d}`;
     const eq = d === 'A' ? p.eqA : p.eqB;
@@ -2757,14 +2942,14 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     const setStemKnobMode = d === 'A' ? p.setStemKnobModeA : p.setStemKnobModeB;
     const toggleStemKnobs = () => setStemKnobMode(!stemKnobMode);
     const modeTitle = stemKnobMode
-      ? 'Double-click to return these knobs to deck EQ/filter'
-      : 'Double-click to make these knobs control stem volumes';
+      ? 'Click to return these knobs to deck EQ/filter'
+      : 'Click to make these knobs control stem volumes';
 
     const eqKnob = (id: string, label: string, value: number, onChange: (v: number) => void, min: number, max: number, step: number) =>
-      knob(id, label, grp, value, onChange, min, max, step, { onLabelDoubleClick: toggleStemKnobs, labelTitle: modeTitle });
+      knob(id, label, grp, value, onChange, min, max, step, { onLabelClick: toggleStemKnobs, labelTitle: modeTitle });
 
-    const stemVolKnob = (widgetId: string, fallback: string, stemIndex: number, tint: number) => {
-      const name = ctl.stemNames[stemIndex] ?? null;
+    const stemVolKnob = (widgetId: string, fallback: string, aliases: readonly string[], tint: number) => {
+      const name = findStemForSlot(ctl.stemNames, aliases);
       const label = name ? stemLabel(name) : fallback;
       const value = name ? (ctl.stemLevels[name] ?? djEngine.getStemGain(d, name)) : 0;
       knob(
@@ -2776,14 +2961,14 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
         0,
         1,
         0.01,
-        { center: false, onLabelDoubleClick: toggleStemKnobs, labelTitle: modeTitle, tint },
+        { center: false, onLabelClick: toggleStemKnobs, labelTitle: modeTitle, tint },
       );
     };
 
     if (stemKnobMode) {
-      for (const slot of stemKnobSlots) {
+      for (const slot of STEM_MIXER_KNOB_SLOT_LIST) {
         const widgetId = slot.id === 'flt' ? `flt${d}` : `eq${d}.${slot.id}`;
-        stemVolKnob(widgetId, slot.fallback, slot.stemIndex, slot.tint);
+        stemVolKnob(widgetId, slot.fallback, slot.aliases, slot.tint);
       }
     } else {
       eqKnob(`eq${d}.hi`, 'Hi', eq.high, (v) => p.onEq(d, 'high', v), -12, 12, 0.5);

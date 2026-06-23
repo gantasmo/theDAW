@@ -127,9 +127,14 @@ interface Deck {
   vinylPos: number; // last read-head position (sec) the worklet reported
   vinylWasPlaying: boolean; // deck playing state captured on grab, to restore
   vinylLoadedUrl: string | null; // which track's samples the worklet holds
+  transportRamp: { kind: 'spinUp' | 'windDown'; start: number; end: number; fromRate: number; toRate: number; targetOffset: number } | null;
+  transportRampTimer: number | null;
 }
 
 const RAMP_TC = 0.012;
+const VINYL_SPINUP_SEC = 0.55;
+const VINYL_WINDDOWN_SEC = 1.15;
+const MIN_TRANSPORT_RATE = 0.001;
 
 let djMaster: GainNode | null = null;
 let limiter: DynamicsCompressorNode | null = null;
@@ -273,6 +278,7 @@ function buildDeck(id: DeckId): Deck {
     slip: false, virtualBase: 0, virtualStart: 0,
     fx: null,
     vinyl: null, vinylActive: false, vinylPos: 0, vinylWasPlaying: false, vinylLoadedUrl: null,
+    transportRamp: null, transportRampTimer: null,
   };
   decks[id] = deck;
   return deck;
@@ -292,7 +298,14 @@ function deckDuration(d: Deck): number {
 function audiblePos(d: Deck): number {
   const dur = deckDuration(d);
   if (!d.playing) return clamp(d.startOffset, 0, dur);
-  let pos = d.startOffset + (ctxNow() - d.startCtxTime) * d.rate;
+  const elapsed = ctxNow() - d.startCtxTime;
+  let pos = d.startOffset + elapsed * d.rate;
+  if (d.transportRamp) {
+    const ramp = d.transportRamp;
+    const t = clamp((ctxNow() - ramp.start) / Math.max(0.001, ramp.end - ramp.start), 0, 1);
+    const avgRate = ramp.fromRate + (ramp.toRate - ramp.fromRate) * t * 0.5;
+    pos = d.startOffset + Math.max(0, ctxNow() - ramp.start) * avgRate;
+  }
   if (d.loopActive && d.loopOut > d.loopIn && pos >= d.loopOut) {
     const span = d.loopOut - d.loopIn;
     pos = d.loopIn + ((pos - d.loopIn) % span);
@@ -308,6 +321,7 @@ function virtualPos(d: Deck): number {
 }
 
 function stopSource(d: Deck): void {
+  clearTransportRamp(d);
   if (d.srcs.length === 0) return;
   const srcs = d.srcs;
   d.srcs = [];
@@ -317,19 +331,29 @@ function stopSource(d: Deck): void {
   }
 }
 
+function clearTransportRamp(d: Deck): void {
+  if (d.transportRampTimer != null) {
+    window.clearTimeout(d.transportRampTimer);
+    d.transportRampTimer = null;
+  }
+  d.transportRamp = null;
+}
+
 /** (Re)start the deck's source(s) from `offset`, honoring loop state. In stem
  *  mode this starts N stem sources in lock-step (each → its stem gain → srcBus);
  *  in full mode a single source → srcBus. */
-function startSource(d: Deck, offset: number): void {
+function startSource(d: Deck, offset: number, spinUp = false): void {
   if ((d.stemMode && (!d.stems || d.stems.length === 0)) || (!d.stemMode && !d.buffer)) return;
   stopSource(d);
   const ctx = getEngineCtx();
   const dur = deckDuration(d);
   const start = clamp(offset, 0, dur);
+  const startRate = spinUp ? MIN_TRANSPORT_RATE : d.rate;
   const mk = (buffer: AudioBuffer, dest: AudioNode): AudioBufferSourceNode => {
     const s = ctx.createBufferSource();
     s.buffer = buffer;
-    s.playbackRate.value = d.rate;
+    s.playbackRate.setValueAtTime(startRate, ctx.currentTime);
+    if (spinUp) s.playbackRate.linearRampToValueAtTime(d.rate, ctx.currentTime + VINYL_SPINUP_SEC);
     if (d.loopActive && d.loopOut > d.loopIn) { s.loop = true; s.loopStart = d.loopIn; s.loopEnd = d.loopOut; }
     s.connect(dest);
     s.start(0, start);
@@ -352,6 +376,23 @@ function startSource(d: Deck, offset: number): void {
   d.startCtxTime = ctx.currentTime;
   d.startOffset = start;
   d.playing = true;
+  if (spinUp) {
+    d.transportRamp = {
+      kind: 'spinUp',
+      start: ctx.currentTime,
+      end: ctx.currentTime + VINYL_SPINUP_SEC,
+      fromRate: startRate,
+      toRate: d.rate,
+      targetOffset: start,
+    };
+    d.transportRampTimer = window.setTimeout(() => {
+      const pos = audiblePos(d);
+      d.startOffset = pos;
+      d.startCtxTime = ctx.currentTime;
+      d.transportRamp = null;
+      d.transportRampTimer = null;
+    }, VINYL_SPINUP_SEC * 1000);
+  }
 }
 
 function statusOf(id: DeckId): DeckStatus {
@@ -389,15 +430,16 @@ function emit(): void {
   const b = statusOf('B');
   for (const cb of listeners) cb(a, b);
   const anyPlaying = a.playing || b.playing;
-  if (anyPlaying && !rafId) rafId = requestAnimationFrame(tick);
-  if (!anyPlaying && rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+  const anyMoving = anyPlaying || !!decks.A?.transportRamp || !!decks.B?.transportRamp;
+  if (anyMoving && !rafId) rafId = requestAnimationFrame(tick);
+  if (!anyMoving && rafId) { cancelAnimationFrame(rafId); rafId = 0; }
 }
 
 function tick(): void {
   const a = statusOf('A');
   const b = statusOf('B');
   for (const cb of listeners) cb(a, b);
-  if (a.playing || b.playing) rafId = requestAnimationFrame(tick);
+  if (a.playing || b.playing || !!decks.A?.transportRamp || !!decks.B?.transportRamp) rafId = requestAnimationFrame(tick);
   else rafId = 0;
 }
 
@@ -460,12 +502,12 @@ export async function loadDeck(id: DeckId, url: string | null, label: string | n
   emit();
 }
 
-export function playDeck(id: DeckId): void {
+export function playDeck(id: DeckId, opts: { spinUp?: boolean } = {}): void {
   const d = decks[id];
   if (!d || (!d.buffer && !d.stemMode) || d.playing) return;
   const ctx = getEngineCtx();
   if (ctx.state === 'suspended') void ctx.resume().catch(() => { /* retry next gesture */ });
-  startSource(d, d.startOffset);
+  startSource(d, d.startOffset, opts.spinUp);
   emit();
 }
 
@@ -479,15 +521,52 @@ export function pauseDeck(id: DeckId): void {
   emit();
 }
 
-/** Stop transport and return the deck to the beginning. */
-export function stopDeck(id: DeckId): void {
+/** Stop transport and return the deck to the beginning, optionally with a
+ *  turntable motor wind-down before the transport parks. */
+export function stopDeck(id: DeckId, opts: { windDown?: boolean; targetOffset?: number } = {}): void {
   const d = decks[id];
   if (!d || (!d.buffer && !d.stemMode)) return;
-  stopSource(d);
-  d.playing = false;
-  d.startOffset = 0;
-  d.loopActive = false;
-  d.rollResume = false;
+  const targetOffset = clamp(opts.targetOffset ?? 0, 0, deckDuration(d));
+  if (opts.windDown && d.playing && d.srcs.length > 0) {
+    clearTransportRamp(d);
+    const ctx = getEngineCtx();
+    const start = ctx.currentTime;
+    for (const s of d.srcs) {
+      try {
+        s.playbackRate.cancelScheduledValues(start);
+        s.playbackRate.setValueAtTime(Math.max(MIN_TRANSPORT_RATE, d.rate), start);
+        s.playbackRate.exponentialRampToValueAtTime(MIN_TRANSPORT_RATE, start + VINYL_WINDDOWN_SEC);
+      } catch {
+        /* ramp is best-effort; final stop still parks the transport */
+      }
+    }
+    d.transportRamp = {
+      kind: 'windDown',
+      start,
+      end: start + VINYL_WINDDOWN_SEC,
+      fromRate: d.rate,
+      toRate: MIN_TRANSPORT_RATE,
+      targetOffset,
+    };
+    d.transportRampTimer = window.setTimeout(() => {
+      const dd = decks[id];
+      if (!dd || dd.transportRamp?.kind !== 'windDown') return;
+      stopSource(dd);
+      dd.playing = false;
+      dd.startOffset = targetOffset;
+      dd.loopActive = false;
+      dd.rollResume = false;
+      dd.transportRamp = null;
+      dd.transportRampTimer = null;
+      emit();
+    }, VINYL_WINDDOWN_SEC * 1000);
+  } else {
+    stopSource(d);
+    d.playing = false;
+    d.startOffset = targetOffset;
+    d.loopActive = false;
+    d.rollResume = false;
+  }
   emit();
 }
 

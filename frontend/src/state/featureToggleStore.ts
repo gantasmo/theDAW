@@ -60,16 +60,16 @@ export interface FeatureSettings {
 }
 
 export const DEFAULT_FEATURE_SETTINGS: FeatureSettings = {
-  schema_version: 1,
+  schema_version: 6,
   analysis: {
-    auto_on_import: false,
-    auto_on_generate: false,
+    auto_on_import: true,
+    auto_on_generate: true,
     include_genre: false,
     include_key: true,
   },
   stems: {
-    auto_on_import: false,
-    auto_on_generate: false,
+    auto_on_import: true,
+    auto_on_generate: true,
     default_count: 4,
     device: 'cuda',
     quality: 'balanced',
@@ -162,4 +162,3 @@ export const useFeatureToggleStore = create<FeatureToggleState>()(
     },
   ),
 );
-

@@ -20,6 +20,7 @@ import tempfile
 import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -107,6 +108,20 @@ def _generation_models() -> dict[str, Any]:
 
         _GENERATION_MODELS_CACHE = {**arc_models, **rf_models}
     return _GENERATION_MODELS_CACHE
+
+
+class _LazyGenerationModels(Mapping[str, Any]):
+    def __getitem__(self, key: str) -> Any:
+        return _generation_models()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_generation_models())
+
+    def __len__(self) -> int:
+        return len(_generation_models())
+
+
+GENERATION_MODELS: Mapping[str, Any] = _LazyGenerationModels()
 
 
 def _warm_heavy() -> None:
