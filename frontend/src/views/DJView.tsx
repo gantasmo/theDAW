@@ -62,6 +62,7 @@ import { prepareStems } from '../lib/djStems';
 import * as djEngine from '../state/djEngine';
 
 const DJ_TRACK_MIME = 'application/x-thedaw-djtrack';
+const AUDIO_FILE_EXTENSIONS = new Set(['aac', 'aif', 'aiff', 'flac', 'm4a', 'mp3', 'ogg', 'opus', 'wav', 'weba', 'webm']);
 
 const DECK_RGB: Record<'purple' | 'cyan', RGB> = { purple: [34, 141, 211], cyan: [239, 68, 68] };
 
@@ -179,6 +180,47 @@ const libSourceFilter = (entries: LibraryEntry[], kind: LibSourceKind): LibraryE
     case 'import': return entries.filter((e) => e.source === 'import');
     default: return entries;
   }
+};
+
+const isExternalAudioFile = (file: File): boolean => {
+  if (file.type.startsWith('audio/')) return true;
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return AUDIO_FILE_EXTENSIONS.has(ext);
+};
+
+const hasDeckLoadDragData = (event: React.DragEvent): boolean => {
+  const dt = event.dataTransfer;
+  if (Array.from(dt.types).includes(DJ_TRACK_MIME)) return true;
+  return Array.from(dt.items ?? []).some((item) => item.kind === 'file' && (item.type.startsWith('audio/') || item.type === ''));
+};
+
+const decodeAudioDuration = async (file: File): Promise<number | undefined> => {
+  const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return undefined;
+  const ctx = new AudioContextCtor();
+  try {
+    const decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+    return decoded.duration;
+  } finally {
+    await ctx.close().catch(() => undefined);
+  }
+};
+
+const importAudioFileToLibrary = async (file: File): Promise<LibraryEntry> => {
+  const duration = await decodeAudioDuration(file).catch(() => undefined);
+  return useLibraryStore.getState().importEntry({
+    blob: file,
+    filename: file.name,
+    mimeType: file.type || undefined,
+    metadata: {
+      title: file.name.replace(/\.[^.]+$/, '') || file.name,
+      prompt: 'Imported from Finder drop',
+      model: 'imported',
+      duration,
+      source: 'import',
+      tags: ['finder-drop'],
+    },
+  });
 };
 
 const sameStringArray = (a: string[], b: string[]) =>
@@ -561,6 +603,29 @@ export const DJView: React.FC = () => {
   const masterPlayingRef = useRef(false);
 
   const loadDeck = (entryId: string, deck: djEngine.DeckId) => { if (deck === 'A') setDeckATrack(entryId); else setDeckBTrack(entryId); };
+  const loadDropOntoDeck = async (event: React.DragEvent, deck: djEngine.DeckId): Promise<boolean> => {
+    const entryId = event.dataTransfer.getData(DJ_TRACK_MIME);
+    if (entryId) {
+      event.preventDefault();
+      loadDeck(entryId, deck);
+      return true;
+    }
+
+    const file = Array.from(event.dataTransfer.files).find(isExternalAudioFile);
+    if (!file) return false;
+
+    event.preventDefault();
+    setFlash(`Importing "${file.name}" to Deck ${deck}…`);
+    try {
+      const entry = await importAudioFileToLibrary(file);
+      loadDeck(entry.id, deck);
+      setFlash(`Loaded "${entry.title}" on Deck ${deck}`);
+      return true;
+    } catch (e) {
+      setFlash(`Deck ${deck} import failed`);
+      return false;
+    }
+  };
   const ejectDeck = (deck: djEngine.DeckId) => {
     djEngine.stopDeck(deck);
     if (deck === 'A') setDeckATrack(null);
@@ -886,7 +951,7 @@ export const DJView: React.FC = () => {
     onSync: syncDeck, onSyncLock: toggleSyncLock, onHeadCue: toggleCue,
     onSendVj: sendDeckToVj, onAddSet: addDeckToSet,
     deckAUrl, deckBUrl, deckATrack, deckBTrack, setDeckATrack, setDeckBTrack,
-    source, setSource, libCount: entries.length, loadDeck,
+    source, setSource, libCount: entries.length, loadDeck, loadDropOntoDeck,
     gainA, gainB, eqA, eqB, filterA, filterB, volA, volB,
     stemKnobModeA, stemKnobModeB, setStemKnobModeA, setStemKnobModeB,
     pitchA: deckAPitch, pitchB: deckBPitch, bpmA: ctlA.bpm ?? null, bpmB: ctlB.bpm ?? null,
@@ -924,25 +989,42 @@ export const DJView: React.FC = () => {
 
 interface WaveLaneProps {
   deckId: djEngine.DeckId; accent: 'purple' | 'cyan'; entryId: string | null;
-  hasTrack: boolean; audioUrl: string | null; ctl: DeckCtl; onLoadId: (id: string) => void;
+  hasTrack: boolean; audioUrl: string | null; ctl: DeckCtl; onLoadDrop: (event: React.DragEvent, deck: djEngine.DeckId) => Promise<boolean>;
 }
 
-const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl, ctl, onLoadId }) => {
+const WaveLane: React.FC<WaveLaneProps> = ({ deckId, accent, hasTrack, audioUrl, ctl, onLoadDrop }) => {
   const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
   const accentBorder = accent === 'purple' ? 'border-purple-500/30' : 'border-cyan-500/30';
   const [dropHover, setDropHover] = useState(false);
+  const onDragOver = (e: React.DragEvent) => {
+    if (!hasDeckLoadDragData(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropHover(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropHover(false);
+  };
+  const onDrop = async (e: React.DragEvent) => {
+    setDropHover(false);
+    if (!hasDeckLoadDragData(e)) return;
+    e.stopPropagation();
+    await onLoadDrop(e, deckId);
+  };
   return (
     <div
       className={`flex-1 min-h-0 relative rounded-lg border ${accentBorder} bg-black/40 overflow-hidden ${dropHover ? 'ring-2 ring-inset ring-white/50' : ''}`}
-      onDragOver={(e) => { if (e.dataTransfer.types.includes(DJ_TRACK_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropHover(true); } }}
-      onDragLeave={() => setDropHover(false)}
-      onDrop={(e) => { setDropHover(false); const id = e.dataTransfer.getData(DJ_TRACK_MIME); if (id) { e.preventDefault(); onLoadId(id); } }}
+      onDragEnter={onDragOver}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { void onDrop(e); }}
     >
       <span className={`absolute top-1 left-2 z-30 flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.18em] pointer-events-none ${accentText}`}>
         <Disc className="w-2.5 h-2.5" /> Deck {deckId} · overview
       </span>
       {audioUrl ? <DeckWaveform deckId={deckId} audioUrl={audioUrl} beats={ctl.gridBeats} cues={ctl.cues ?? null} accent={accent} height={62} />
-        : <div className="h-full grid place-items-center text-[10px] font-mono text-zinc-700">{hasTrack ? '…' : 'drag a track here from the browser →'}</div>}
+        : <div className="h-full grid place-items-center text-[10px] font-mono text-zinc-700">{hasTrack ? '…' : 'drop a song here →'}</div>}
     </div>
   );
 };
@@ -953,11 +1035,11 @@ const PlatterDropTarget: React.FC<{
   hasTrack: boolean;
   bpm: number | null;
   pitchPct: number;
-  onLoadId: (id: string) => void;
-}> = ({ deckId, color, hasTrack, bpm, pitchPct, onLoadId }) => {
+  onLoadDrop: (event: React.DragEvent, deck: djEngine.DeckId) => Promise<boolean>;
+}> = ({ deckId, color, hasTrack, bpm, pitchPct, onLoadDrop }) => {
   const [dropHover, setDropHover] = useState(false);
   const onDragOver = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(DJ_TRACK_MIME)) return;
+    if (!hasDeckLoadDragData(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setDropHover(true);
@@ -966,13 +1048,11 @@ const PlatterDropTarget: React.FC<{
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     setDropHover(false);
   };
-  const onDrop = (e: React.DragEvent) => {
-    const id = e.dataTransfer.getData(DJ_TRACK_MIME);
+  const onDrop = async (e: React.DragEvent) => {
     setDropHover(false);
-    if (!id) return;
-    e.preventDefault();
+    if (!hasDeckLoadDragData(e)) return;
     e.stopPropagation();
-    onLoadId(id);
+    await onLoadDrop(e, deckId);
   };
 
   return (
@@ -982,7 +1062,7 @@ const PlatterDropTarget: React.FC<{
       onDragEnter={onDragOver}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDrop={(e) => { void onDrop(e); }}
       title={`Drop a track on Deck ${deckId} platter`}
     >
       <div className={`absolute inset-1 rounded-full pointer-events-none transition-opacity ${dropHover ? 'opacity-100' : 'opacity-0'}`} style={{ border: `1px solid ${rgba(color, 0.75)}`, boxShadow: `0 0 22px ${rgba(color, 0.45)}, inset 0 0 18px ${rgba(color, 0.16)}` }} />
@@ -1714,10 +1794,12 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
   const renameSetlist = useSetlistStore((s) => s.rename);
   const removeSetlist = useSetlistStore((s) => s.remove);
   const setEntries = useSetlistStore((s) => s.setEntries);
+  const appendToSet = useSetlistStore((s) => s.append);
   const stage = useDjSideList((s) => s.add);
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
+  const [dropOverSet, setDropOverSet] = useState(false);
   type SortKey = 'order' | 'bpm' | 'title' | 'key' | 'dur' | 'date' | 'source';
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'order', dir: 'asc' });
   const [appliedSetSort, setAppliedSetSort] = useState<{ key: 'title' | 'bpm'; dir: 'asc' | 'desc' } | null>(null);
@@ -1802,6 +1884,43 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
     setEntries(set.id, arr);
   };
   const removeEntry = (i: number) => { if (set) setEntries(set.id, set.entries.filter((_, idx) => idx !== i)); };
+  const hasSetDropData = (e: React.DragEvent): boolean => {
+    if (!set) return false;
+    if (e.dataTransfer.types.includes(DJ_TRACK_MIME)) return true;
+    return Array.from(e.dataTransfer.files).some(isExternalAudioFile)
+      || Array.from(e.dataTransfer.items ?? []).some((item) => item.kind === 'file' && (item.type.startsWith('audio/') || item.type === ''));
+  };
+  const onSetDragOver = (e: React.DragEvent) => {
+    if (!hasSetDropData(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropOverSet(true);
+  };
+  const onSetDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDropOverSet(false);
+  };
+  const onSetDrop = async (e: React.DragEvent) => {
+    setDropOverSet(false);
+    if (!set || !hasSetDropData(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const entryId = e.dataTransfer.getData(DJ_TRACK_MIME);
+    if (entryId) {
+      const lib = entries.find((x) => x.id === entryId);
+      appendToSet(set.id, [{ entryId, label: lib?.title || e.dataTransfer.getData('text/plain') || 'Untitled', kind: 'audio' }]);
+      return;
+    }
+
+    const imported: SetlistEntry[] = [];
+    for (const file of Array.from(e.dataTransfer.files).filter(isExternalAudioFile)) {
+      const entry = await importAudioFileToLibrary(file);
+      imported.push({ entryId: entry.id, label: entry.title, kind: 'audio' });
+    }
+    if (imported.length > 0) appendToSet(set.id, imported);
+  };
   const sendEntry = (e: SetlistEntry) => { const lib = e.entryId ? entries.find((x) => x.id === e.entryId) ?? null : null; sendTrackToVj({ entryId: e.entryId, label: e.label, url: lib?.audioUrl ?? e.url, kind: e.kind ?? 'audio' }); };
   const sendWholeSet = () => {
     if (!set) return;
@@ -1834,7 +1953,13 @@ const TrackBrowser: React.FC<{ source: Source; setSource: (s: Source) => void; o
     `w-3 h-3 transition-transform ${appliedSetSort?.key === key ? 'opacity-100 text-purple-200' : 'opacity-55'} ${appliedSetSort?.key === key && appliedSetSort.dir === 'desc' ? 'rotate-180' : ''}`;
 
   return (
-    <div className="hardware-card h-full w-full flex flex-col min-h-0 overflow-hidden">
+    <div
+      className={`hardware-card h-full w-full flex flex-col min-h-0 overflow-hidden ${dropOverSet ? 'ring-2 ring-inset ring-purple-300/60' : ''}`}
+      onDragEnter={isSet ? onSetDragOver : undefined}
+      onDragOver={isSet ? onSetDragOver : undefined}
+      onDragLeave={isSet ? onSetDragLeave : undefined}
+      onDrop={isSet ? (e) => { void onSetDrop(e); } : undefined}
+    >
       {/* header: source name + count + search + (set actions) */}
       <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-white/5">
         {isSet ? <ListMusic className="w-3.5 h-3.5 text-purple-400 shrink-0" /> : <LibraryIcon className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
@@ -2338,6 +2463,7 @@ interface DjRegArgs {
   deckATrack: string | null; deckBTrack: string | null;
   setDeckATrack: (id: string) => void; setDeckBTrack: (id: string) => void;
   source: Source; setSource: (s: Source) => void; libCount: number; loadDeck: (entryId: string, deck: djEngine.DeckId) => void;
+  loadDropOntoDeck: (event: React.DragEvent, deck: djEngine.DeckId) => Promise<boolean>;
   gainA: number; gainB: number;
   eqA: { low: number; mid: number; high: number }; eqB: { low: number; mid: number; high: number };
   filterA: number; filterB: number; volA: number; volB: number;
@@ -2433,8 +2559,8 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   /* ── pinned composites ── */
   pinned('hero', 'Waveforms', (
     <div className="h-full w-full flex flex-col gap-1.5">
-      <WaveLane deckId="A" accent="purple" entryId={p.deckATrack} hasTrack={p.hasA} audioUrl={p.deckAUrl} ctl={p.ctlA} onLoadId={(id) => p.setDeckATrack(id)} />
-      <WaveLane deckId="B" accent="cyan" entryId={p.deckBTrack} hasTrack={p.hasB} audioUrl={p.deckBUrl} ctl={p.ctlB} onLoadId={(id) => p.setDeckBTrack(id)} />
+      <WaveLane deckId="A" accent="purple" entryId={p.deckATrack} hasTrack={p.hasA} audioUrl={p.deckAUrl} ctl={p.ctlA} onLoadDrop={p.loadDropOntoDeck} />
+      <WaveLane deckId="B" accent="cyan" entryId={p.deckBTrack} hasTrack={p.hasB} audioUrl={p.deckBUrl} ctl={p.ctlB} onLoadDrop={p.loadDropOntoDeck} />
     </div>
   ));
   pinned('sampler', 'Sampler', <SamplerRail />);
@@ -2470,7 +2596,19 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
           <Music2 className="w-3.5 h-3.5" style={{ color: rgb(rgbc) }} />
         </div>
         <div className={`min-w-0 flex-1 flex flex-col ${opts?.mirror ? 'items-end text-right' : ''}`}>
-          <span className="text-[10px] font-bold text-zinc-200 truncate max-w-full leading-tight" title={title ?? ''}>{title ?? 'Empty deck'}</span>
+          <span
+            draggable={!!entryId}
+            onDragStart={(ev) => {
+              if (!entryId) return;
+              ev.dataTransfer.effectAllowed = 'copy';
+              ev.dataTransfer.setData(DJ_TRACK_MIME, entryId);
+              ev.dataTransfer.setData('text/plain', title ?? `Deck ${d} track`);
+            }}
+            className={`text-[10px] font-bold text-zinc-200 truncate max-w-full leading-tight ${entryId ? 'cursor-grab active:cursor-grabbing hover:text-white' : ''}`}
+            title={entryId ? `Drag "${title ?? 'this track'}" into a set or playlist` : ''}
+          >
+            {title ?? 'Empty deck'}
+          </span>
           <DeckTimes deckId={d} mirror={opts?.mirror} />
         </div>
         <div className="shrink-0 flex flex-col gap-0.5">
@@ -2518,7 +2656,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     ) };
 
     reg[`jog${d}`] = { id: `jog${d}`, label: `Jog ${d}`, group: grp, kind: 'jog', source: 'builtin', render: () => (
-      <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} bpm={ctl.bpm ?? null} pitchPct={d === 'A' ? p.pitchA : p.pitchB} onLoadId={(id) => p.loadDeck(id, d)} />
+      <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} bpm={ctl.bpm ?? null} pitchPct={d === 'A' ? p.pitchA : p.pitchB} onLoadDrop={p.loadDropOntoDeck} />
     ) };
     reg[`stemBank${d}`] = { id: `stemBank${d}`, label: `Stem Pads ${d}`, group: grp, kind: 'fixed', source: 'builtin', render: (_s, opts) => (
       <StemPadBank deck={d} entryId={entryId} color={rgbc} ctl={ctl} mirror={opts?.mirror} />
