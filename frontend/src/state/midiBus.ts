@@ -1,3 +1,5 @@
+import { isMidiMessageIgnored } from './midiIgnoreStore';
+
 /**
  * Global MIDI event bus.
  *
@@ -22,6 +24,7 @@ type MidiListener = (msg: MidiBusMessage) => void;
 const listeners = new Set<MidiListener>();
 
 export function publishMidi(data: Uint8Array | number[], t: number = performance.now()): void {
+  if (isMidiMessageIgnored(data)) return;
   const arr = Array.from(data, (n) => Number(n) | 0);
   const msg: MidiBusMessage = { data: arr, t };
   for (const cb of listeners) {
@@ -40,4 +43,3 @@ export function subscribeToMidi(cb: MidiListener): () => void {
     listeners.delete(cb);
   };
 }
-

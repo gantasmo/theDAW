@@ -8,8 +8,9 @@
  * localStorage under `storageKey`.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Music2, Plug, X, RotateCcw, Crosshair, Zap } from 'lucide-react';
+import { Ban, Music2, Plug, X, RotateCcw, Crosshair, Zap } from 'lucide-react';
 import { subscribeToMidi } from '../../state/midiBus';
+import { midiIgnoreLabel, useMidiIgnoreStore } from '../../state/midiIgnoreStore';
 import { enableMidi } from '../../state/midiTriggerStore';
 
 export interface MidiParamDef<K extends string = string> {
@@ -144,6 +145,11 @@ export function MidiMapper<K extends string = string>({
   const [learning, setLearning] = useState<K | null>(null);
   const [lastSeenCc, setLastSeenCc] = useState<{ cc: number; value: number; channel: number } | null>(null);
   const [connected, setConnected] = useState(false);
+  const ignoredControls = useMidiIgnoreStore((s) => s.controls);
+  const ignoreControl = useMidiIgnoreStore((s) => s.ignoreControl);
+  const ignoreChannel = useMidiIgnoreStore((s) => s.ignoreChannel);
+  const removeIgnoredControl = useMidiIgnoreStore((s) => s.removeIgnoredControl);
+  const clearIgnoredControls = useMidiIgnoreStore((s) => s.clearIgnoredControls);
 
   // Refs so the bus subscriber callback (set up once below) always
   // sees the freshest mapping table + learn target.
@@ -271,8 +277,59 @@ export function MidiMapper<K extends string = string>({
           <span className="text-zinc-400">{connected ? 'Receiving controller input' : 'Waiting for controller'}</span>
         </div>
         {lastSeenCc && (
-          <div className="text-[9px] text-zinc-600 mt-0.5">
-            last seen: CC <span className={cls.icon}>{lastSeenCc.cc}</span> = <span className={cls.icon}>{lastSeenCc.value}</span> (ch <span className={cls.icon}>{lastSeenCc.channel + 1}</span>)
+          <div className="text-[9px] text-zinc-600 mt-0.5 flex items-center gap-1.5">
+            <span className="min-w-0 flex-1">
+              last seen: CC <span className={cls.icon}>{lastSeenCc.cc}</span> = <span className={cls.icon}>{lastSeenCc.value}</span> (ch <span className={cls.icon}>{lastSeenCc.channel + 1}</span>)
+            </span>
+            <button
+              type="button"
+              onClick={() => ignoreControl({ kind: 'cc', number: lastSeenCc.cc, channel: lastSeenCc.channel })}
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500/10 text-[8px] uppercase tracking-wider text-rose-200 hover:bg-rose-500/20"
+              title={`Ignore CC ${lastSeenCc.cc} on channel ${lastSeenCc.channel + 1}`}
+            >
+              <Ban className="w-2.5 h-2.5" /> Ignore
+            </button>
+            <button
+              type="button"
+              onClick={() => ignoreControl({ kind: 'cc', number: lastSeenCc.cc, channel: lastSeenCc.channel }, { anyChannel: true })}
+              className="shrink-0 px-1.5 py-0.5 rounded border border-rose-500/20 bg-rose-500/5 text-[8px] uppercase tracking-wider text-rose-200 hover:bg-rose-500/15"
+              title={`Ignore CC ${lastSeenCc.cc} on any MIDI channel`}
+            >
+              Any ch
+            </button>
+            <button
+              type="button"
+              onClick={() => ignoreChannel('cc', lastSeenCc.channel)}
+              className="shrink-0 px-1.5 py-0.5 rounded border border-rose-500/20 bg-rose-500/5 text-[8px] uppercase tracking-wider text-rose-200 hover:bg-rose-500/15"
+              title={`Ignore all CC messages on channel ${lastSeenCc.channel + 1}`}
+            >
+              Ch
+            </button>
+          </div>
+        )}
+        {ignoredControls.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {ignoredControls.map((control) => (
+              <button
+                key={control.id}
+                type="button"
+                onClick={() => removeIgnoredControl(control.id)}
+                className="inline-flex items-center gap-1 rounded border border-rose-500/25 bg-rose-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-rose-200 hover:bg-rose-500/20"
+                title="Stop ignoring this MIDI control"
+              >
+                <Ban className="w-2.5 h-2.5" />
+                {midiIgnoreLabel(control)}
+                <X className="w-2.5 h-2.5" />
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={clearIgnoredControls}
+              className="inline-flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
+              title="Clear all ignored MIDI controls"
+            >
+              Clear
+            </button>
           </div>
         )}
         {learning && (
@@ -339,4 +396,3 @@ export function MidiMapper<K extends string = string>({
     </div>
   );
 }
-

@@ -17,9 +17,19 @@ const SEC_PER_REV = 1.8;      // 33⅓-rpm feel
 const SCRUB_TURNS = 4;        // seconds of travel per full drag-turn
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale = 1 }: {
+const fmtPct = (pct: number): string => `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+const fmtTime = (sec: number): string => {
+  if (!Number.isFinite(sec) || sec <= 0) return '0:00.0';
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+};
+
+export function JogWheel({ deckId, color, bpm = null, pitchPct = 0, size = 132, disabled, fill, fillScale = 1 }: {
   deckId: djEngine.DeckId;
   color: RGB;
+  bpm?: number | null;
+  pitchPct?: number;
   size?: number;
   disabled?: boolean;
   /** Auto-size the platter to fill its container (min of its width/height). */
@@ -31,6 +41,9 @@ export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale 
   const rootRef = useRef<HTMLDivElement>(null);
   const platterRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGCircleElement>(null);
+  const progressRef = useRef<HTMLSpanElement>(null);
+  const elapsedRef = useRef<HTMLSpanElement>(null);
+  const remainRef = useRef<HTMLSpanElement>(null);
   const [dim, setDim] = useState(size);
 
   // Scratch character (shared by both decks), pushed live to the engine.
@@ -57,14 +70,18 @@ export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale 
   const r = R - stroke / 2 - 1;
   const circ = 2 * Math.PI * r;
 
-  useEffect(() => djEngine.subscribe((sa, sb) => {
-    const st = deckId === 'A' ? sa : sb;
-    if (platterRef.current) platterRef.current.style.transform = `rotate(${(st.currentTime / SEC_PER_REV) * 360}deg)`;
-    if (ringRef.current) {
+  useEffect(() => {
+    const syncReadout = (st: djEngine.DeckStatus) => {
       const p = st.duration > 0 ? clamp01(st.currentTime / st.duration) : 0;
-      ringRef.current.style.strokeDashoffset = String(circ * (1 - p));
-    }
-  }), [deckId, circ]);
+      if (platterRef.current) platterRef.current.style.transform = `rotate(${(st.currentTime / SEC_PER_REV) * 360}deg)`;
+      if (ringRef.current) ringRef.current.style.strokeDashoffset = String(circ * (1 - p));
+      if (progressRef.current) progressRef.current.textContent = `${Math.round(p * 100)}%`;
+      if (elapsedRef.current) elapsedRef.current.textContent = fmtTime(st.currentTime);
+      if (remainRef.current) remainRef.current.textContent = fmtTime(Math.max(0, st.duration - st.currentTime));
+    };
+    syncReadout(djEngine.getStatus(deckId));
+    return djEngine.subscribe((sa, sb) => syncReadout(deckId === 'A' ? sa : sb));
+  }, [deckId, circ]);
 
   const angleOf = (e: React.PointerEvent) => {
     const el = rootRef.current;
@@ -145,6 +162,14 @@ export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale 
     window.clearTimeout(stall.current);
   }, []);
 
+  const effectiveBpm = bpm != null && bpm > 0 ? bpm * (1 + pitchPct / 100) : null;
+  const accent = rgb(color);
+  const dimmedAccent = rgba(color, 0.68);
+  const muted = 'rgba(255,255,255,0.46)';
+  const bpmSize = Math.max(18, D * 0.165);
+  const metaSize = Math.max(8, D * 0.062);
+  const timeSize = Math.max(10, D * 0.075);
+
   const wheel = (
     <div
       ref={rootRef}
@@ -171,9 +196,32 @@ export function JogWheel({ deckId, color, size = 132, disabled, fill, fillScale 
           style={{ width: Math.max(3, D * 0.03), height: '36%', background: rgb(color), boxShadow: `0 0 6px ${rgba(color, 0.85)}` }} />
       </div>
       <div className="absolute inset-0 grid place-items-center pointer-events-none">
-        <div className="rounded-full bg-black/70 border border-white/10 grid place-items-center"
-          style={{ width: D * 0.32, height: D * 0.32 }}>
-          <span className="font-black uppercase" style={{ color: rgb(color), fontSize: Math.max(11, D * 0.1) }}>{deckId}</span>
+        <div
+          className="grid place-items-center text-center font-mono tabular-nums"
+          style={{
+            width: D * 0.7,
+            minHeight: D * 0.47,
+            paddingTop: D * 0.04,
+            color: muted,
+            textShadow: '0 1px 2px rgba(0,0,0,0.95)',
+          }}
+        >
+          <div
+            className="font-black leading-none"
+            style={{ color: accent, fontSize: bpmSize, textShadow: `0 0 12px ${rgba(color, 0.35)}` }}
+            title="Effective BPM"
+          >
+            {effectiveBpm != null ? effectiveBpm.toFixed(2) : '--.--'}
+          </div>
+          <div className="flex items-center justify-center gap-[0.45em] font-bold leading-none" style={{ fontSize: metaSize }}>
+            <span title="Pitch adjustment">{fmtPct(pitchPct)}</span>
+            <span className="rounded-full" style={{ width: D * 0.07, height: D * 0.07, background: accent, boxShadow: `0 0 8px ${dimmedAccent}` }} />
+            <span ref={progressRef} title="Track progress">0%</span>
+          </div>
+          <div className="mt-[0.25em] grid gap-[0.08em] font-black leading-none" style={{ color: 'rgba(255,255,255,0.54)', fontSize: timeSize }}>
+            <span ref={elapsedRef} title="Elapsed">0:00.0</span>
+            <span ref={remainRef} title="Remaining">0:00.0</span>
+          </div>
         </div>
       </div>
       {/* Scratch character toggle — classic vinyl vs cyber glitch (global). */}

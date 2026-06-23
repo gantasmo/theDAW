@@ -177,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var serverProcess: Process?
     private var pollTimer: Timer?
     private var midiBridge: CoreMidiBridge?
+    private var launchLog = ""
 
     private let appURL = URL(string: "http://localhost:5173")!
 
@@ -223,6 +224,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         loadingLabel.alignment = .center
         loadingLabel.font = NSFont.systemFont(ofSize: 18, weight: .medium)
         loadingLabel.textColor = .secondaryLabelColor
+        loadingLabel.lineBreakMode = .byWordWrapping
+        loadingLabel.maximumNumberOfLines = 0
         loadingLabel.frame = frame
         loadingLabel.autoresizingMask = [.width, .height]
 
@@ -235,8 +238,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func startServers() {
-        guard let repoPath = Bundle.main.object(forInfoDictionaryKey: "StableDAWRepositoryPath") as? String else {
-            showLaunchError("Missing repository path in app bundle.")
+        guard let repoPath = resolveRepositoryPath() else {
+            showLaunchError("Could not find the bundled StableDAW project.")
             return
         }
 
@@ -254,8 +257,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         environment["SA3_OPEN_MODE"] = "none"
         environment["PATH"] = "\(NSHomeDirectory())/.local/bin:/opt/homebrew/bin:/usr/local/bin:" + (environment["PATH"] ?? "")
         process.environment = environment
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendLaunchOutput(handle.availableData)
+        }
+        errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendLaunchOutput(handle.availableData)
+        }
+        process.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.pollTimer != nil else { return }
+                self.showLaunchError("theDAW stopped during startup.\n\n\(self.launchLogTail())")
+            }
+        }
 
         do {
             try process.run()
@@ -263,6 +280,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         } catch {
             showLaunchError("Could not start theDAW launcher: \(error.localizedDescription)")
         }
+    }
+
+    private func appendLaunchOutput(_ data: Data) {
+        guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.launchLog += text
+            if self.launchLog.count > 8000 {
+                self.launchLog = String(self.launchLog.suffix(8000))
+            }
+        }
+    }
+
+    private func launchLogTail() -> String {
+        let lines = launchLog
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .suffix(12)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return lines.isEmpty ? "No startup logs were captured." : lines
+    }
+
+    private func resolveRepositoryPath() -> String? {
+        let fileManager = FileManager.default
+        if let bundledRepo = Bundle.main.resourceURL?.appendingPathComponent("StableDAW").path,
+           fileManager.fileExists(atPath: bundledRepo) {
+            return bundledRepo
+        }
+
+        if let repoPath = Bundle.main.object(forInfoDictionaryKey: "StableDAWRepositoryPath") as? String,
+           fileManager.fileExists(atPath: repoPath) {
+            return repoPath
+        }
+
+        return nil
     }
 
     private func pollForFrontend() {

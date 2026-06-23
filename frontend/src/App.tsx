@@ -20,6 +20,7 @@ import { useLayoutPrefs } from './state/layoutPrefsStore';
 import { triggerPianoNoteFromMidi } from './components/audio/PianoRoll';
 import { publishMidi } from './state/midiBus';
 import { startQuestMidi, stopQuestMidi } from './state/questMidiClient';
+import { isMidiMessageIgnored } from './state/midiIgnoreStore';
 import { useMidiDevicesStore } from './state/midiDevicesStore';
 import { isMidiAudioMuted, useMidiTriggerStore } from './state/midiTriggerStore';
 
@@ -175,6 +176,7 @@ export default function App() {
       const detail = (event as CustomEvent<NativeMidiMessageDetail>).detail;
       const data = Array.isArray(detail?.data) ? detail.data : null;
       if (!data || data.length < 2) return;
+      if (isMidiMessageIgnored(data)) return;
       publishMidi(data);
       triggerOptionalPianoVoice(data);
     };
@@ -222,6 +224,7 @@ export default function App() {
 
     const onMidiMessage = (e: MIDIMessageEvent) => {
       if (!e.data) return;
+      if (isMidiMessageIgnored(e.data)) return;
       // 1. Republish on the global MIDI bus so every feature
       //    (VJView iframe forwarder, MidiMapper popups in Piano +
       //    Sequence) sees the same stream. Each subscriber decides

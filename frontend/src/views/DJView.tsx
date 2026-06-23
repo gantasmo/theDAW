@@ -25,10 +25,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Disc, Play, Pause, Plus, Save, Trash2, Cast, Music2, Square,
   ChevronDown, ChevronRight, Magnet, Gauge, Lock,
-  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ, Plug, Wand2,
+  KeyRound, Pencil, Search, Library as LibraryIcon, ListMusic, Layers, Sparkles, Download, Link2, Loader2, Shield, Headphones, Piano, X, Scissors, ArrowDownAZ, Plug, Wand2, Ban,
 } from 'lucide-react';
 import { subscribeToMidi } from '../state/midiBus';
 import { useDjControlMap, sigLabel, type MidiKind, type MidiSig } from '../state/djControlMap';
+import { midiIgnoreLabel, useMidiIgnoreStore } from '../state/midiIgnoreStore';
 import { enableMidi } from '../state/midiTriggerStore';
 import { useMidiDevicesStore } from '../state/midiDevicesStore';
 import { useDjSampler } from '../state/djSamplerStore';
@@ -393,7 +394,7 @@ function EditableBpmField({
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 16;
+const DJ_LAYOUT_VERSION = 19;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
@@ -410,7 +411,7 @@ const defaultDjLayout: SurfaceLayout = {
     center: { id: 'center', type: 'container', axis: 'column', children: ['deckmix', 'fxrow'], fr: { deckmix: 5, fxrow: 2 } },
     deckmix: { id: 'deckmix', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.17953863997903, mixer: 5.180662235484642, deckBcont: 4.439799124536327 } },
     // ── Deck A (pad-rows wrapped with spacer panels in cont-* containers) ──
-    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'cont-13-90c67ecb', 'cont-16-c9fc3a59', 'cont-18-cd01de17'], fr: { 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, 'cont-13-90c67ecb': 0.82, 'cont-16-c9fc3a59': 0.82, 'cont-18-cd01de17': 0.86, 'pdA-head': 1.12 }, framed: true },
+    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'fxAP', 'perfAP'], fr: { 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, fxAP: 3.15, perfAP: 1.35, 'pdA-head': 1.12 }, framed: true },
     'pdA-head': { id: 'pdA-head', type: 'panel', title: 'Deck A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
     'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], widgetMargins: { jogA: { t: 2, r: 4, b: 8, l: 4 } }, mirror: true },
     'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
@@ -420,7 +421,7 @@ const defaultDjLayout: SurfaceLayout = {
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
     'pdA-perf': { id: 'pdA-perf', type: 'panel', title: 'A · Perf', flow: 'row', widgets: ['rollA_0', 'rollA_1', 'rollA_2', 'slipA', 'jumpA_0', 'jumpA_1', 'jumpA_2', 'jumpA_3'], uniform: true, mirror: true },
     // ── Deck B ──
-    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'cont-4-4f4c96d2', 'cont-6-29de8ab7', 'cont-9-aebcd780'], fr: { 'pdB-head': 1.12, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, 'cont-4-4f4c96d2': 0.82, 'cont-6-29de8ab7': 0.82, 'cont-9-aebcd780': 0.86 }, framed: true },
+    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'fxBP', 'perfBP'], fr: { 'pdB-head': 1.12, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, fxBP: 3.15, perfBP: 1.35 }, framed: true },
     'pdB-head': { id: 'pdB-head', type: 'panel', title: 'Deck B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
     'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'], widgetMargins: { jogB: { t: 2, r: 4, b: 8, l: 4 } } },
     'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
@@ -442,9 +443,11 @@ const defaultDjLayout: SurfaceLayout = {
     mixXfade: { id: 'mixXfade', type: 'panel', title: 'Crossfade', flow: 'row', widgets: ['spacer:s-22-ffca8259', 'crossfader', 'spacer:s-21-cb584c7d'], widgetFr: { 'spacer:s-22-ffca8259': 0.4556701030927834, crossfader: 2.039175257731959, 'spacer:s-21-cb584c7d': 0.5051546391752577 }, widgetMargins: { crossfader: { t: 16, r: 0, b: 0, l: 0 } }, uniform: false },
     // ── FX row + rails ──
     fxrow: { id: 'fxrow', type: 'container', axis: 'row', children: ['fxAP', 'nextP', 'fxBP'], fr: { fxAP: 0.7703206562266971, nextP: 1.9175988068605512, fxBP: 0.812080536912752 } },
-    fxAP: { id: 'fxAP', type: 'panel', title: 'FX A', flow: 'row', widgets: [], pinned: 'fxA', mirror: true },
+    fxAP: { id: 'fxAP', type: 'panel', title: 'Onboard FX A', flow: 'row', widgets: [], pinned: 'fxA', mirror: true },
+    perfAP: { id: 'perfAP', type: 'panel', title: 'Performance Pads A', flow: 'row', widgets: [], pinned: 'perfA', mirror: true },
     nextP: { id: 'nextP', type: 'panel', title: 'Next', flow: 'row', widgets: [], pinned: 'next' },
-    fxBP: { id: 'fxBP', type: 'panel', title: 'FX B', flow: 'row', widgets: [], pinned: 'fxB', uniform: false },
+    fxBP: { id: 'fxBP', type: 'panel', title: 'Onboard FX B', flow: 'row', widgets: [], pinned: 'fxB', uniform: false },
+    perfBP: { id: 'perfBP', type: 'panel', title: 'Performance Pads B', flow: 'row', widgets: [], pinned: 'perfB', uniform: false },
     browser: { id: 'browser', type: 'container', axis: 'column', children: ['sourceTreeP', 'libraryP'], fr: { sourceTreeP: 2, libraryP: 3 } },
     sourceTreeP: { id: 'sourceTreeP', type: 'panel', title: 'Sources', flow: 'row', widgets: [], pinned: 'sourceTree' },
     libraryP: { id: 'libraryP', type: 'panel', title: 'Library', flow: 'row', widgets: [], pinned: 'library', uniform: true },
@@ -948,8 +951,10 @@ const PlatterDropTarget: React.FC<{
   deckId: djEngine.DeckId;
   color: RGB;
   hasTrack: boolean;
+  bpm: number | null;
+  pitchPct: number;
   onLoadId: (id: string) => void;
-}> = ({ deckId, color, hasTrack, onLoadId }) => {
+}> = ({ deckId, color, hasTrack, bpm, pitchPct, onLoadId }) => {
   const [dropHover, setDropHover] = useState(false);
   const onDragOver = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(DJ_TRACK_MIME)) return;
@@ -981,7 +986,7 @@ const PlatterDropTarget: React.FC<{
       title={`Drop a track on Deck ${deckId} platter`}
     >
       <div className={`absolute inset-1 rounded-full pointer-events-none transition-opacity ${dropHover ? 'opacity-100' : 'opacity-0'}`} style={{ border: `1px solid ${rgba(color, 0.75)}`, boxShadow: `0 0 22px ${rgba(color, 0.45)}, inset 0 0 18px ${rgba(color, 0.16)}` }} />
-      <JogWheel deckId={deckId} color={color} disabled={!hasTrack} fill fillScale={0.88} />
+      <JogWheel deckId={deckId} color={color} bpm={bpm} pitchPct={pitchPct} disabled={!hasTrack} fill fillScale={0.88} />
       {dropHover && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
           <div className="rounded bg-black/75 border px-2 py-1 text-[8px] font-black uppercase tracking-wider" style={{ borderColor: rgba(color, 0.7), color: rgb(color), boxShadow: `0 0 14px ${rgba(color, 0.35)}` }}>
@@ -1091,6 +1096,7 @@ const DeckTimes: React.FC<{ deckId: djEngine.DeckId; mirror?: boolean }> = ({ de
 const DJ_FX: Array<{ key: djEngine.DjFx; label: string }> = [
   { key: 'flanger', label: 'Flng' }, { key: 'reverb', label: 'Verb' }, { key: 'wahwah', label: 'Wah' },
 ];
+const FX_PAD_BT = 'w-full h-full px-1 py-1 text-[7px] min-w-0 tracking-normal leading-tight';
 const STEM_COUNT_OPTIONS = [2, 4, 6, 12] as const;
 type StemCount = typeof STEM_COUNT_OPTIONS[number];
 const toStemCount = (n: number | undefined): StemCount =>
@@ -1243,8 +1249,10 @@ const StemPadBank: React.FC<{ deck: djEngine.DeckId; entryId: string | null; col
   );
 };
 
-const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null }> = ({ deck, accent, entryId }) => {
+const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null; ctl: DeckCtl }> = ({ deck, accent, entryId, ctl }) => {
   const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
+  const color = DECK_RGB[accent];
+  const hasTrack = !!entryId;
   // Deck A's rack sits on the left — push its contents to the right (toward the
   // center) so A and B mirror symmetrically around the browser.
   const toCenter = deck === 'A';
@@ -1252,6 +1260,7 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
   // the deck's FX rack on first non-zero touch.
   const [fx, setFx] = useState<Record<string, number>>({ flanger: 0, reverb: 0, wahwah: 0 });
   const onFx = (k: djEngine.DjFx, v: number) => { setFx((p) => ({ ...p, [k]: v })); djEngine.setDeckFx(deck, k, v); };
+  const triggerFx = (k: djEngine.DjFx, amount = 0.72) => onFx(k, fx[k] > 0.001 ? 0 : amount);
 
   // Live stems (D4): load (separate if needed) cached stems, then per-stem faders.
   const stemSettings = useFeatureToggleStore((s) => s.settings.stems);
@@ -1303,14 +1312,66 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
     <div className="hardware-card flex flex-col min-h-0 overflow-hidden">
       <div className={`shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-white/5 ${toCenter ? 'flex-row-reverse' : ''}`}>
         <Layers className={`w-3 h-3 shrink-0 ${accentText}`} />
-        <span className={`text-[9px] font-black uppercase tracking-wider ${accentText}`}>FX · Stems {deck}</span>
+        <span className={`text-[9px] font-black uppercase tracking-wider ${accentText}`}>Onboard FX · Stems {deck}</span>
       </div>
       <div className={`flex-1 min-h-0 flex flex-col gap-1.5 p-1.5 overflow-hidden ${toCenter ? 'items-end' : 'items-start'}`}>
-        {/* FX rack — live wet knobs (flanger / reverb / wah) */}
-        <div className="grid grid-cols-3 gap-1 place-items-center w-fit">
-          {DJ_FX.map(({ key, label }) => (
-            <SlideKnob key={key} label={label} value={fx[key]} onChange={(v) => onFx(key, v)} min={0} max={1} step={0.01} size={30} centerReadout />
-          ))}
+        <div className="w-full min-w-0 border-b border-white/5 pb-1.5">
+          <div className={`mb-1 flex items-center gap-1.5 ${toCenter ? 'flex-row-reverse text-right' : ''}`}>
+            <Sparkles className={`w-3 h-3 ${accentText}`} />
+            <span className={`text-[8px] font-black uppercase tracking-widest ${accentText}`}>Onboard FX</span>
+          </div>
+          <div className="w-full min-w-0 grid grid-cols-2 gap-1">
+            <div className={`min-w-0 ${toCenter ? 'text-right' : ''}`}>
+              <div className="mb-0.5 flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+                <Magnet className="w-2.5 h-2.5" />
+                <span>Beat Grid</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {([[-4, '«4'], [-1, '‹1'], [1, '1›'], [4, '4»']] as const).map(([n, label]) => (
+                  <SlidePad key={label} className={FX_PAD_BT} color={color} disabled={!hasTrack} onClick={() => ctl.beatJump(n)} title={`Jump ${n > 0 ? '+' : ''}${n} beat${Math.abs(n) === 1 ? '' : 's'} on the beat grid`}>
+                    {label}
+                  </SlidePad>
+                ))}
+              </div>
+            </div>
+            <div className={`min-w-0 ${toCenter ? 'text-right' : ''}`}>
+              <div className="mb-0.5 flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+                <Link2 className="w-2.5 h-2.5" />
+                <span>Loop Roll</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {ROLL_SIZES.map((b) => (
+                  <SlidePad
+                    key={b.label}
+                    className={FX_PAD_BT}
+                    color={color}
+                    disabled={!hasTrack}
+                    onPointerDown={(e) => { e.preventDefault(); ctl.rollDown(b.beats); }}
+                    onPointerUp={ctl.rollUp}
+                    onPointerLeave={(e) => { if (e.buttons) ctl.rollUp(); }}
+                    title={`${b.label}-beat loop-roll (hold)`}
+                  >
+                    {b.label}
+                  </SlidePad>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-1 grid grid-cols-[1fr_auto] gap-1 items-center">
+            <div className="grid grid-cols-2 gap-1">
+              <SlidePad className={FX_PAD_BT} on={fx.flanger > 0.001} color={color} disabled={!hasTrack} onClick={() => triggerFx('flanger')} title="Trigger deck flanger">
+                Flanger
+              </SlidePad>
+              <SlidePad className={FX_PAD_BT} on={fx.reverb > 0.001} color={color} disabled={!hasTrack} onClick={() => triggerFx('reverb', 0.65)} title="Trigger deck reverb">
+                Reverb
+              </SlidePad>
+            </div>
+            <div className={`grid grid-cols-3 gap-1 place-items-center w-fit ${toCenter ? 'justify-self-start' : 'justify-self-end'}`}>
+              {DJ_FX.map(({ key, label }) => (
+                <SlideKnob key={key} label={label} value={fx[key]} onChange={(v) => onFx(key, v)} min={0} max={1} step={0.01} size={30} centerReadout />
+              ))}
+            </div>
+          </div>
         </div>
         {/* Live stems (D4) — per-stem gain faders, or a load/separate button */}
         <div className="mt-auto w-full min-h-0">
@@ -1363,6 +1424,168 @@ const DeckRack: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: 
               </div>
             </div>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const OnboardFxPanel: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null; ctl: DeckCtl }> = ({ deck, accent, entryId, ctl }) => {
+  const color = DECK_RGB[accent];
+  const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
+  const hasTrack = !!entryId;
+  const [fx, setFx] = useState<Record<string, number>>({ flanger: 0, reverb: 0, wahwah: 0 });
+  const onFx = (k: djEngine.DjFx, v: number) => {
+    setFx((p) => ({ ...p, [k]: v }));
+    djEngine.setDeckFx(deck, k, v);
+  };
+  const triggerFx = (k: djEngine.DjFx, amount = 0.72) => onFx(k, fx[k] > 0.001 ? 0 : amount);
+  const padLabel = (top: string, bottom: string) => (
+    <span className="flex flex-col items-center gap-0.5 leading-none">
+      <span className="text-[7px] font-black">{top}</span>
+      <span className="text-[8px] font-black">{bottom}</span>
+    </span>
+  );
+
+  return (
+    <div className="hardware-card h-full w-full min-h-0 min-w-0 overflow-hidden p-1.5">
+      <div className="h-full w-full min-h-0 grid grid-cols-[1.15fr_1.2fr_1.05fr_1.15fr] gap-1.5 items-stretch">
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className={`flex items-center gap-1 text-[8px] font-black uppercase tracking-widest ${accentText}`}>
+            <Sparkles className="w-3 h-3 shrink-0" />
+            <span className="truncate">Onboard FX {deck}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 flex-1 min-h-0">
+            <SlidePad className={FX_PAD_BT} on={fx.flanger > 0.001} color={color} disabled={!hasTrack} onClick={() => triggerFx('flanger')} title="Toggle flanger">
+              {padLabel('FX', 'Flanger')}
+            </SlidePad>
+            <SlidePad className={FX_PAD_BT} on={fx.reverb > 0.001} color={color} disabled={!hasTrack} onClick={() => triggerFx('reverb', 0.65)} title="Toggle reverb">
+              {padLabel('FX', 'Reverb')}
+            </SlidePad>
+          </div>
+        </div>
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+            <Magnet className="w-2.5 h-2.5" />
+            <span>Beat Grid</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1 flex-1 min-h-0">
+            {([[-4, '«4'], [-1, '‹1'], [1, '1›'], [4, '4»']] as const).map(([n, label]) => (
+              <SlidePad key={label} className={FX_PAD_BT} color={color} disabled={!hasTrack} onClick={() => ctl.beatJump(n)} title={`Jump ${n > 0 ? '+' : ''}${n} beat${Math.abs(n) === 1 ? '' : 's'}`}>
+                {padLabel('Jump', `${n > 0 ? '+' : ''}${n}`)}
+              </SlidePad>
+            ))}
+          </div>
+        </div>
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+            <Link2 className="w-2.5 h-2.5" />
+            <span>Loop Roll</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1 flex-1 min-h-0">
+            {ROLL_SIZES.map((b) => (
+              <SlidePad
+                key={b.label}
+                className={FX_PAD_BT}
+                color={color}
+                disabled={!hasTrack}
+                onPointerDown={(e) => { e.preventDefault(); ctl.rollDown(b.beats); }}
+                onPointerUp={ctl.rollUp}
+                onPointerLeave={(e) => { if (e.buttons) ctl.rollUp(); }}
+                title={`${b.label}-beat loop-roll (hold)`}
+              >
+                {padLabel('Roll', b.label)}
+              </SlidePad>
+            ))}
+          </div>
+        </div>
+        <div className="min-w-0 grid grid-cols-3 gap-1 place-items-center">
+          <SlideKnob label="Reverb" value={fx.reverb} onChange={(v) => onFx('reverb', v)} min={0} max={1} step={0.01} size={34} centerReadout />
+          <SlideKnob label="Flanger" value={fx.flanger} onChange={(v) => onFx('flanger', v)} min={0} max={1} step={0.01} size={34} centerReadout />
+          <SlideKnob label="Wah" value={fx.wahwah} onChange={(v) => onFx('wahwah', v)} min={0} max={1} step={0.01} size={34} centerReadout />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PERF_PAD_BT = 'w-full h-full px-1 py-0.5 text-[7px] min-w-0 tracking-normal leading-tight';
+
+const CompactPerformancePads: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null; ctl: DeckCtl }> = ({ deck, accent, entryId, ctl }) => {
+  const color = DECK_RGB[accent];
+  const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
+  const hasTrack = !!entryId;
+  const padLabel = (top: string, bottom: string) => (
+    <span className="flex flex-col items-center gap-0.5 leading-none">
+      <span className="text-[6px] font-black opacity-80">{top}</span>
+      <span className="text-[8px] font-black">{bottom}</span>
+    </span>
+  );
+  return (
+    <div className="hardware-card h-full w-full min-h-0 min-w-0 overflow-hidden p-1.5">
+      <div className="h-full w-full min-h-0 grid grid-cols-[0.8fr_1.15fr_1.35fr] gap-1.5 items-stretch">
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className={`text-[7px] font-black uppercase tracking-widest ${accentText}`}>Hot Cues</div>
+          <div className="grid grid-cols-4 gap-1 flex-1 min-h-0">
+            {Array.from({ length: HOTCUE_SLOTS }, (_, i) => {
+              const c = ctl.cues?.[i] ?? null;
+              const set = c != null;
+              return (
+                <SlidePad
+                  key={i}
+                  on={set}
+                  color={color}
+                  disabled={!hasTrack}
+                  className={PERF_PAD_BT}
+                  onClick={() => ctl.setHotcue(i)}
+                  onContextMenu={(e) => { e.preventDefault(); ctl.dropHotcue(i); }}
+                  title={set ? `Hot cue ${i + 1} at ${fmtTime(c)} — click to jump, right-click to clear` : `Set hot cue ${i + 1}`}
+                >
+                  {padLabel('Cue', String(i + 1))}
+                </SlidePad>
+              );
+            })}
+          </div>
+        </div>
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="text-[7px] font-black uppercase tracking-widest text-zinc-500">Beat Loops</div>
+          <div className="grid grid-cols-6 gap-1 flex-1 min-h-0">
+            {BEAT_SIZES.map((b) => (
+              <SlidePad key={b.label} className={PERF_PAD_BT} on={ctl.loopActive && ctl.activeLoopBeats === b.beats} color={color} disabled={!hasTrack} onClick={() => ctl.toggleBeatLoop(b.beats)} title={`${b.label}-beat loop`}>
+                {padLabel('Loop', b.label)}
+              </SlidePad>
+            ))}
+            <SlidePad className={PERF_PAD_BT} danger disabled={!ctl.loopActive} onClick={ctl.exitLoop} title="Exit beat loop">
+              {padLabel('Loop', 'Out')}
+            </SlidePad>
+          </div>
+        </div>
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="text-[7px] font-black uppercase tracking-widest text-zinc-500">Roll / Jump</div>
+          <div className="grid grid-cols-8 gap-1 flex-1 min-h-0">
+            {ROLL_SIZES.map((b) => (
+              <SlidePad
+                key={b.label}
+                className={PERF_PAD_BT}
+                color={color}
+                disabled={!hasTrack}
+                onPointerDown={(e) => { e.preventDefault(); ctl.rollDown(b.beats); }}
+                onPointerUp={ctl.rollUp}
+                onPointerLeave={(e) => { if (e.buttons) ctl.rollUp(); }}
+                title={`${b.label}-beat loop-roll (hold)`}
+              >
+                {padLabel('Roll', b.label)}
+              </SlidePad>
+            ))}
+            <SlidePad className={PERF_PAD_BT} on={ctl.slip} color={[245, 158, 11]} disabled={!hasTrack} onClick={() => ctl.setSlip(!ctl.slip)} title="Slip mode">
+              {padLabel('Mode', 'Slip')}
+            </SlidePad>
+            {([[-4, '-4'], [-1, '-1'], [1, '+1'], [4, '+4']] as const).map(([n, label]) => (
+              <SlidePad key={label} className={PERF_PAD_BT} color={color} disabled={!hasTrack} onClick={() => ctl.beatJump(n)} title={`Jump ${n > 0 ? '+' : ''}${n} beat${Math.abs(n) === 1 ? '' : 's'}`}>
+                {padLabel('Jump', label)}
+              </SlidePad>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1792,6 +2015,11 @@ const DjMidiMap: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const clearAll = useDjControlMap((s) => s.clearAll);
   const replaceAll = useDjControlMap((s) => s.replaceAll);
   const midiInputs = useMidiDevicesStore((s) => s.inputs);
+  const ignoredControls = useMidiIgnoreStore((s) => s.controls);
+  const ignoreControl = useMidiIgnoreStore((s) => s.ignoreControl);
+  const ignoreChannel = useMidiIgnoreStore((s) => s.ignoreChannel);
+  const removeIgnoredControl = useMidiIgnoreStore((s) => s.removeIgnoredControl);
+  const clearIgnoredControls = useMidiIgnoreStore((s) => s.clearIgnoredControls);
   const detectedPreset = useMemo(() => {
     const names = midiInputs.map((n) => n.toLowerCase());
     return DJ_MIDI_PRESETS.find((p) => p.match.some((m) => names.some((n) => n.includes(m)))) ?? null;
@@ -1840,11 +2068,64 @@ const DjMidiMap: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 {midiInputs.length ? midiInputs.join(', ') : 'Waiting for a MIDI input'}
               </span>
               {lastSeen && (
-                <span className="shrink-0 text-[8px] font-mono text-emerald-300">
-                  {sigLabel(lastSeen)}
-                </span>
+                <>
+                  <span className="shrink-0 text-[8px] font-mono text-emerald-300">
+                    {sigLabel(lastSeen)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => ignoreControl({ kind: lastSeen.kind, number: lastSeen.number, channel: lastSeen.channel ?? 0 })}
+                    className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-rose-500/30 bg-rose-500/10 text-[8px] font-black uppercase tracking-wider text-rose-200 hover:bg-rose-500/20"
+                    title={`Ignore ${sigLabel(lastSeen)}`}
+                  >
+                    <Ban className="w-2.5 h-2.5" /> Ignore
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => ignoreControl({ kind: lastSeen.kind, number: lastSeen.number, channel: lastSeen.channel ?? 0 }, { anyChannel: true })}
+                    className="shrink-0 px-1.5 py-0.5 rounded border border-rose-500/20 bg-rose-500/5 text-[8px] font-black uppercase tracking-wider text-rose-200 hover:bg-rose-500/15"
+                    title={`Ignore ${lastSeen.kind.toUpperCase()} ${lastSeen.number} on any MIDI channel`}
+                  >
+                    Any ch
+                  </button>
+                  {lastSeen.channel !== null && (
+                    <button
+                      type="button"
+                      onClick={() => ignoreChannel(lastSeen.kind, lastSeen.channel)}
+                      className="shrink-0 px-1.5 py-0.5 rounded border border-rose-500/20 bg-rose-500/5 text-[8px] font-black uppercase tracking-wider text-rose-200 hover:bg-rose-500/15"
+                      title={`Ignore all ${lastSeen.kind.toUpperCase()} messages on channel ${lastSeen.channel + 1}`}
+                    >
+                      Ch
+                    </button>
+                  )}
+                </>
               )}
             </div>
+            {ignoredControls.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {ignoredControls.map((control) => (
+                  <button
+                    key={control.id}
+                    type="button"
+                    onClick={() => removeIgnoredControl(control.id)}
+                    className="inline-flex items-center gap-1 rounded border border-rose-500/25 bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider text-rose-200 hover:bg-rose-500/20"
+                    title="Stop ignoring this MIDI control"
+                  >
+                    <Ban className="w-2.5 h-2.5" />
+                    {midiIgnoreLabel(control)}
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={clearIgnoredControls}
+                  className="inline-flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
+                  title="Clear all ignored MIDI controls"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
               <label htmlFor="dj-midi-preset" className="sr-only">MIDI preset</label>
               <select
@@ -2157,8 +2438,10 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     </div>
   ));
   pinned('sampler', 'Sampler', <SamplerRail />);
-  pinned('fxA', 'FX · Stems A', <DeckRack deck="A" accent="purple" entryId={p.deckATrack} />);
-  pinned('fxB', 'FX · Stems B', <DeckRack deck="B" accent="cyan" entryId={p.deckBTrack} />);
+  pinned('fxA', 'Onboard FX A', <OnboardFxPanel deck="A" accent="purple" entryId={p.deckATrack} ctl={p.ctlA} />);
+  pinned('fxB', 'Onboard FX B', <OnboardFxPanel deck="B" accent="cyan" entryId={p.deckBTrack} ctl={p.ctlB} />);
+  pinned('perfA', 'Performance Pads A', <CompactPerformancePads deck="A" accent="purple" entryId={p.deckATrack} ctl={p.ctlA} />);
+  pinned('perfB', 'Performance Pads B', <CompactPerformancePads deck="B" accent="cyan" entryId={p.deckBTrack} ctl={p.ctlB} />);
   pinned('next', 'Next / Staging', <SideListLane onLoadDeck={p.loadDeck} />);
   pinned('sourceTree', 'Source Tree', <SourceTree source={p.source} setSource={p.setSource} libCount={p.libCount} />);
   pinned('library', 'Library', <TrackBrowser source={p.source} setSource={p.setSource} onLoadDeck={p.loadDeck} />);
@@ -2235,7 +2518,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
     ) };
 
     reg[`jog${d}`] = { id: `jog${d}`, label: `Jog ${d}`, group: grp, kind: 'jog', source: 'builtin', render: () => (
-      <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} onLoadId={(id) => p.loadDeck(id, d)} />
+      <PlatterDropTarget deckId={d} color={rgbc} hasTrack={hasTrack} bpm={ctl.bpm ?? null} pitchPct={d === 'A' ? p.pitchA : p.pitchB} onLoadId={(id) => p.loadDeck(id, d)} />
     ) };
     reg[`stemBank${d}`] = { id: `stemBank${d}`, label: `Stem Pads ${d}`, group: grp, kind: 'fixed', source: 'builtin', render: (_s, opts) => (
       <StemPadBank deck={d} entryId={entryId} color={rgbc} ctl={ctl} mirror={opts?.mirror} />
