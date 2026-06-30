@@ -954,8 +954,53 @@ def _run_windows_picker(script: str) -> PickerResult:
     return PickerResult(path=picked, cancelled=False)
 
 
+def _applescript_string(value: str) -> str:
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
+    return f'"{escaped}"'
+
+
+def _run_macos_picker(kind: str, title: str) -> PickerResult:
+    if sys.platform != "darwin":
+        raise HTTPException(501, "Native path picker is implemented for Windows and macOS only.")
+    if kind == "folder":
+        chooser = f"choose folder with prompt {_applescript_string(title)}"
+    elif kind == "file":
+        chooser = f"choose file with prompt {_applescript_string(title)}"
+    else:
+        raise HTTPException(500, f"Unknown picker kind: {kind}")
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", f"POSIX path of ({chooser})"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_PICKER_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise HTTPException(408, "Path picker timed out.") from e
+    except OSError as e:
+        raise HTTPException(500, f"Could not open path picker: {e}") from e
+
+    if result.returncode == 0:
+        picked = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+        return PickerResult(path=picked, cancelled=not bool(picked))
+    if result.returncode == 1 and "User canceled" in (result.stderr or result.stdout):
+        return PickerResult(cancelled=True)
+    detail = (result.stderr or result.stdout or "path picker failed").strip()
+    raise HTTPException(500, detail[:500])
+
+
 @router.post("/pick-folder")
 def storage_pick_folder() -> dict:
+    if sys.platform == "darwin":
+        return _run_macos_picker("folder", "Select a folder for theDAW").model_dump()
     script = r"""
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
@@ -992,6 +1037,8 @@ def _ps_single_quote(value: str) -> str:
 def storage_pick_file(req: PickFileRequest | None = None) -> dict:
     flt = (req.filter if req and req.filter else None) or "All files (*.*)|*.*"
     title = (req.title if req and req.title else None) or "Select a file for theDAW"
+    if sys.platform == "darwin":
+        return _run_macos_picker("file", title).model_dump()
     script = r"""
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
