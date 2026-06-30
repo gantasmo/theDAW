@@ -487,10 +487,11 @@ function registerAppProtocol(): void {
 // ---------------------------------------------------------------------------
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('dialog:selectFile', async () => {
+  ipcMain.handle('dialog:selectFile', async (_event, options?: Electron.OpenDialogOptions) => {
     if (!mainWindow) return { canceled: true, filePaths: [] }
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
+      ...(options ?? {}),
     })
     return result
   })

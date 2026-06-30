@@ -2,6 +2,30 @@ import React, { useState } from 'react';
 import { FolderOpen, FileSearch, Loader2 } from 'lucide-react';
 import { pickFile, pickFolder } from '../../lib/storageClient';
 
+interface ElectronDialogResult {
+  canceled?: boolean;
+  cancelled?: boolean;
+  filePaths?: string[];
+  filePath?: string;
+}
+
+interface ElectronOpenDialogOptions {
+  filters?: Array<{
+    name: string;
+    extensions: string[];
+  }>;
+}
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron?: boolean;
+      selectFile?: (options?: ElectronOpenDialogOptions) => Promise<ElectronDialogResult>;
+      selectDirectory?: () => Promise<ElectronDialogResult>;
+    };
+  }
+}
+
 interface PathInputProps {
   id: string;
   name: string;
@@ -23,6 +47,23 @@ interface PathInputProps {
    *  to all files on the backend when omitted. */
   fileFilter?: string;
 }
+
+const electronFiltersFromPathInputFilter = (filter?: string): ElectronOpenDialogOptions['filters'] | undefined => {
+  if (!filter) return undefined;
+  const parts = filter.split('|');
+  const filters: ElectronOpenDialogOptions['filters'] = [];
+  for (let i = 0; i < parts.length - 1; i += 2) {
+    const label = parts[i]?.trim();
+    const patterns = parts[i + 1]?.trim();
+    if (!label || !patterns) continue;
+    const extensions = patterns
+      .split(';')
+      .map((pattern) => pattern.trim().replace(/^\*\./, '').replace(/^\*$/, '*'))
+      .filter(Boolean);
+    if (extensions.length) filters.push({ name: label.replace(/\s*\([^)]*\)\s*$/, ''), extensions });
+  }
+  return filters.length ? filters : undefined;
+};
 
 export const PathInput: React.FC<PathInputProps> = ({
   id,
@@ -49,6 +90,17 @@ export const PathInput: React.FC<PathInputProps> = ({
     setPicking(true);
     setError(null);
     try {
+      const electron = window.electronAPI;
+      if (electron?.isElectron) {
+        const result =
+          kind === 'folder'
+            ? await electron.selectDirectory?.()
+            : await electron.selectFile?.({ filters: electronFiltersFromPathInputFilter(fileFilter) });
+        const cancelled = Boolean(result?.canceled ?? result?.cancelled);
+        const path = result?.filePaths?.[0] ?? result?.filePath;
+        if (!cancelled && path) onChange(path);
+        return;
+      }
       const result =
         kind === 'folder'
           ? await pickFolder()
