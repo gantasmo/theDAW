@@ -265,7 +265,7 @@ export const Shell: React.FC = () => {
           collapse toggle + resize handle (multiHeight / logHeight in
           bottomPanelStore) — expanding or resizing one does NOT
           affect the other. */}
-      <ShellBottomDock />
+      {!isDjWorkspace && <ShellBottomDock />}
 
       {/* Library pull handle — root-level so it floats ABOVE every panel (bottom
           dock, log, maximized panels) and is never clipped by the work area's
@@ -398,7 +398,6 @@ const LOG_MIN_WIDTH = 220;
 const LOG_MAX_WIDTH = 720;
 
 const ShellBottomDock: React.FC = () => {
-  const centerTab = useAppUiStore((s) => s.centerTab);
   const multiHeight = useBottomPanelStore((s) => s.multiHeight);
   const setMultiHeight = useBottomPanelStore((s) => s.setMultiHeight);
   const logWidth = useBottomPanelStore((s) => s.logWidth);
@@ -408,8 +407,6 @@ const ShellBottomDock: React.FC = () => {
   const isLogOpen = useBottomPanelStore((s) => s.isLogOpen);
   const setLogOpen = useBottomPanelStore((s) => s.setLogOpen);
   const multiMaximized = useBottomPanelStore((s) => s.multiMaximized);
-
-  if (centerTab === 'dj') return null;
 
   // Dock-body height — shared by the multi-tab panel (in-flow) and the floating
   // LOG overlay. Maximized fills the work area. The height MUST be computed in
