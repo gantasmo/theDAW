@@ -21,6 +21,17 @@ import { triggerPianoNoteFromMidi } from './components/audio/PianoRoll';
 import { publishMidi } from './state/midiBus';
 import { startQuestMidi, stopQuestMidi } from './state/questMidiClient';
 import { isMidiMessageIgnored } from './state/midiIgnoreStore';
+import { startXrControl, stopXrControl, registerXrControlSource } from './state/xrControlClient';
+import { djControlSource } from './state/xrControlDjSource';
+import { makeControlSource } from './state/makeControlSource';
+import { processControlSource } from './state/processControlSource';
+import { swayControlSource, startSwayXrMirror } from './state/swayControlSource';
+import { startSwayBus } from './state/swayBus';
+import { startSwayRouting } from './state/swayRouting';
+import { poseControlSource, startPoseXrMirror } from './state/poseControlSource';
+import { startPoseRouting } from './state/poseRouting';
+import { startXrViz, stopXrViz } from './state/xrViz';
+import { XrBusTester } from './components/dev/XrBusTester';
 import { useMidiDevicesStore } from './state/midiDevicesStore';
 import { isMidiAudioMuted, useMidiTriggerStore } from './state/midiTriggerStore';
 
@@ -296,8 +307,49 @@ export default function App() {
   useEffect(() => {
     if (!midiEnabled) return;
     startQuestMidi();
-    return () => stopQuestMidi();
+    // XR control bus (spatialization P0/P1): publish theDAW's control manifest
+    // to a theDAW-XR headset and apply inbound control-sets. The DJ source maps
+    // DJ_TARGETS to spatial controls with no per-control wiring; it lazy-loads
+    // the DJ engine so registering it here does not pull djEngine into boot.
+    registerXrControlSource(djControlSource);
+    // Sway (Audima): the six expressive dimensions become named 0..1 signals on
+    // the same control bus, learned from the device's CCs. Target-agnostic, so
+    // they can drive VFX, 3D audio, and MAKE/voice targets once those subscribe.
+    registerXrControlSource(swayControlSource);
+    const stopSway = startSwayBus();
+    const stopSwayMirror = startSwayXrMirror();
+    const stopSwayRoute = startSwayRouting();
+    // Body-pose source (camera, forwarded from the VJ). Publish its channels on
+    // the same bus; the pose values themselves arrive via poseBus regardless of MIDI.
+    registerXrControlSource(poseControlSource);
+    const stopPoseMirror = startPoseXrMirror();
+    // MAKE (Magenta RT2): live generation params as bindable targets, so SWAY and
+    // an XR headset can drive generation. Bidirectional like DJ; lazy-loaded.
+    registerXrControlSource(makeControlSource);
+    // PROCESS (MIX effect chain): drive effect params on the next offline render,
+    // including the vocal_processing path. Bidirectional like DJ; lazy-loaded.
+    registerXrControlSource(processControlSource);
+    startXrControl();
+    // Stream the visualization feed (waveform pack) over the same bridge so a
+    // theDAW-XR headset can render theDAW's live audio natively.
+    startXrViz();
+    return () => {
+      stopQuestMidi();
+      stopSway();
+      stopSwayMirror();
+      stopSwayRoute();
+      stopPoseMirror();
+      stopXrControl();
+      stopXrViz();
+    };
   }, [midiEnabled]);
+
+  // Pose routing is camera-driven (forwarded from the VJ), independent of the
+  // Web MIDI gate, so it runs for the app's lifetime.
+  useEffect(() => {
+    const stop = startPoseRouting();
+    return stop;
+  }, []);
 
   const handleAssistantAction = useCallback((action: { type: string; payload?: any }) => {
     const result = handletheDAWAction(action);
@@ -333,6 +385,10 @@ export default function App() {
           />
         </>
       )}
+
+      {/* Dev-only: simulated XR controller to drive the control bus without a
+          headset. Stripped from production builds. */}
+      {import.meta.env.DEV && <XrBusTester />}
 
       {/* Loading screen overlays everything until backend is ready */}
       <AnimatePresence>

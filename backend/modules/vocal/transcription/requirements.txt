@@ -1,0 +1,4 @@
+# Installed into the isolated .whisper_venv on first transcription request.
+# faster-whisper pulls ctranslate2 + tokenizers + huggingface_hub + onnxruntime + av.
+# CPU int8 is the default compute path, so no CUDA/cuDNN wheels are required here.
+faster-whisper>=1.0.0

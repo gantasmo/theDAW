@@ -27,6 +27,7 @@ interface CenterTabBarProps {
 const TABS: Array<{
   id: CenterTab;
   label: string;
+  desc: string;
   icon: React.ComponentType<{ className?: string }>;
   /** Per-tab accent color — used for active border + soft bg tint
    *  so each workspace gets a recognizable color at a glance. */
@@ -36,6 +37,7 @@ const TABS: Array<{
   {
     id: 'make',
     label: 'Make',
+    desc: 'Generate audio from a text prompt with the AI models',
     icon: Sparkles,
     accent: {
       border: 'border-purple-500/50',
@@ -47,6 +49,7 @@ const TABS: Array<{
   {
     id: 'edit',
     label: 'Edit',
+    desc: 'Arrange clips on a timeline, add effects and automation, export',
     icon: Scissors,
     accent: {
       border: 'border-emerald-500/50',
@@ -58,6 +61,7 @@ const TABS: Array<{
   {
     id: 'mix',
     label: 'Mix',
+    desc: 'Process and master audio with the effect and module rack',
     icon: Zap,
     accent: {
       border: 'border-orange-500/50',
@@ -69,6 +73,7 @@ const TABS: Array<{
   {
     id: 'dj',
     label: 'DJ',
+    desc: 'Two-deck DJ console: mix, cue, scratch, stems and automix',
     icon: Disc,
     accent: {
       border: 'border-pink-500/50',
@@ -80,6 +85,7 @@ const TABS: Array<{
   {
     id: 'vj',
     label: 'VJ',
+    desc: 'Live visuals engine: sources, effects and output for performance',
     icon: Tv2,
     accent: {
       border: 'border-fuchsia-500/50',
@@ -91,6 +97,7 @@ const TABS: Array<{
   {
     id: 'train',
     label: 'Train',
+    desc: 'Train and manage LoRA models on your own audio',
     icon: Brain,
     accent: {
       border: 'border-cyan-500/50',
@@ -102,6 +109,7 @@ const TABS: Array<{
   {
     id: 'learn',
     label: 'Learn',
+    desc: 'Guides, docs and the in-app assistant',
     icon: Workflow,
     accent: {
       border: 'border-rose-500/50',
@@ -143,7 +151,7 @@ export const CenterTabBar: React.FC<CenterTabBarProps> = ({
                   ? `${t.accent.border} ${t.accent.bg} ${t.accent.text}`
                   : 'border-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/3',
               ].join(' ')}
-              title={t.label}
+              title={t.desc}
             >
               <Icon className={`w-3.5 h-3.5 ${active ? t.accent.iconText : ''}`} />
               <span>{t.label}</span>

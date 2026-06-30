@@ -858,6 +858,26 @@ async def load_model():
     except Exception as e:
         logger.warning("startup: background worker queue failed to start: %s", e)
 
+    # One idle-gated pass to ensure every entry with MIDI has a titled sheet
+    # (and existing sheets get their "Music21 Fragment" placeholder replaced
+    # with the real song name). Idempotent + serialized, so it's safe to run
+    # every launch — it only does work where a sheet is missing or mistitled.
+    try:
+        from backend.core.background_workers import get_background_queue
+        from backend.modules.library.router import get_store as _get_lib_store
+        from backend.modules.notation.backfill import backfill_scores
+
+        _bf_store = _get_lib_store()
+
+        async def _run_backfill() -> None:
+            import asyncio
+
+            await asyncio.to_thread(backfill_scores, _bf_store)
+
+        get_background_queue().enqueue("notation:backfill", _run_backfill)
+    except Exception as e:
+        logger.debug("startup: notation backfill enqueue skipped: %s", e)
+
 
 @app.on_event("shutdown")
 async def stop_background_workers() -> None:
@@ -1540,6 +1560,7 @@ async def _run_generate_job(
                         from backend.modules.library.store import (
                             _maybe_enqueue_analysis,
                             _maybe_enqueue_midi,
+                            _maybe_enqueue_score,
                             _maybe_enqueue_stems,
                         )
 
@@ -1566,6 +1587,9 @@ async def _run_generate_job(
                                 _lib_store, _entry_id, source="generate"
                             )
                             _maybe_enqueue_midi(
+                                _lib_store, _entry_id, source="generate"
+                            )
+                            _maybe_enqueue_score(
                                 _lib_store, _entry_id, source="generate"
                             )
                     except Exception as _e:

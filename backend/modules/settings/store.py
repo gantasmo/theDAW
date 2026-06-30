@@ -23,11 +23,17 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "schema_version": SCHEMA_VERSION,
+    "app": {
+        # How theDAW opens on the next launch (read by theDAW.bat before it
+        # starts anything): "web" = backend + Vite + browser (current default),
+        # "desktop" = the Electron shell. Both share the same backend + DB.
+        "launch_mode": "web",
+    },
     "analysis": {
         # Analysis is cheap (local librosa + aubio), so it's default-ON
         # — every imported / generated track gets its bpm/key/pitch/bars
@@ -70,6 +76,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         # Each take also lands in a per-export subfolder named in the VJ
         # record bar, so the final file is <export_root>/<subfolder>/…
         "export_root": "exports/vj",
+    },
+    "notation": {
+        # Global artist/composer name. Stamped as the composer credit on every
+        # generated sheet (and appended to song titles). Defaults to GANTASMO;
+        # editable in Settings. The engine falls back to GANTASMO even if this
+        # is blanked, so a sheet is never credited to "Music21".
+        "artist": "GANTASMO",
     },
 }
 
@@ -137,9 +150,15 @@ def _merge_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     if old_version < 6:
         # Migration v5 → v6: make auto-stems default-on so DJ imports
         # start separating in the background without a manual stem click.
-        # Users who prefer lighter imports can flip this back in Settings.
+        # Also add the `app` section (launch_mode). Users who prefer lighter
+        # imports can flip stems back in Settings.
         merged["stems"]["auto_on_import"] = True
         merged["stems"]["auto_on_generate"] = True
+        merged.setdefault("app", deepcopy(DEFAULT_SETTINGS["app"]))
+    if old_version < 7:
+        # Migration v6 → v7: add the `notation` section (artist). New section,
+        # already filled from DEFAULT_SETTINGS above; re-persist the bump.
+        merged.setdefault("notation", deepcopy(DEFAULT_SETTINGS["notation"]))
 
     merged["schema_version"] = SCHEMA_VERSION
     return merged

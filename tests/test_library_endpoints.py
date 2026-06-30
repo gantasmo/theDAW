@@ -187,3 +187,67 @@ def test_stream_stem_audio_endpoint_serves_stem_bytes(client_with_root, tmp_path
 def test_stream_stem_audio_endpoint_404_for_unknown_stem(client_with_root):
     r = client_with_root.get("/api/library/stems/does-not-exist/audio")
     assert r.status_code == 404
+
+
+def test_list_entries_attaches_analysis_and_embedded_tags(client_with_root, tmp_path):
+    """Regression for the analytics-surfacing fix: the /entries payload must
+    carry the stored musical analysis + embedded file tags so the Catalogue
+    inspector (which reads ``entry.analysis`` / ``entry.embedded_tags``) and the
+    library search can render/use them. An entry WITHOUT an analysis row must
+    stay untouched — no empty ``analysis`` key."""
+    _seed_generate_entry(tmp_path, "job_anal", 0)
+    _seed_generate_entry(tmp_path, "job_plain", 0)
+
+    # First list registers the on-disk entries into the DB — the FK target the
+    # analysis row references (foreign_keys is ON).
+    client_with_root.get("/api/library/entries")
+
+    store = library_router_module.get_store()
+    assert store.db is not None
+    store.db.upsert_analysis(
+        "job_anal_00",
+        {
+            "bpm": 120.0,
+            "key": "C",
+            "scale": "major",
+            "key_confidence": 0.9,
+            "semantic_tags": ["warm", "ambient"],
+            "embedded_tags": {"artist": "Tester", "play_count": 7},
+            "ffprobe": {"_summary": {"sample_rate": 44100, "codec": "pcm_s16le"}},
+            "version": 2,
+        },
+    )
+
+    body = client_with_root.get("/api/library/entries").json()
+    by_id = {e["id"]: e for e in body["entries"]}
+
+    enriched = by_id["job_anal_00"]
+    assert enriched["analysis"]["bpm"] == 120.0
+    assert enriched["analysis"]["key"] == "C"
+    assert enriched["analysis"]["scale"] == "major"
+    assert enriched["analysis"]["semantic_tags"] == ["warm", "ambient"]
+    # ffprobe `_summary` technicals are flattened onto the analysis dict.
+    assert enriched["analysis"]["sample_rate"] == 44100
+    assert enriched["analysis"]["codec"] == "pcm_s16le"
+    # Embedded ID3/Vorbis tags surface under their own key.
+    assert enriched["embedded_tags"] == {"artist": "Tester", "play_count": 7}
+
+    # The un-analyzed entry must NOT gain empty analysis / embedded_tags keys.
+    plain = by_id["job_plain_00"]
+    assert "analysis" not in plain
+    assert "embedded_tags" not in plain
+
+
+def test_single_entry_endpoint_attaches_analysis(client_with_root, tmp_path):
+    """The per-id endpoint enriches via the targeted single-row lookup
+    (``_attach_analysis_one``), not the whole-table bulk path."""
+    _seed_generate_entry(tmp_path, "job_one", 0)
+    client_with_root.get("/api/library/entries")
+
+    store = library_router_module.get_store()
+    assert store.db is not None
+    store.db.upsert_analysis("job_one_00", {"bpm": 90.0, "key": "A"})
+
+    data = client_with_root.get("/api/library/entries/job_one_00").json()
+    assert data["analysis"]["bpm"] == 90.0
+    assert data["analysis"]["key"] == "A"

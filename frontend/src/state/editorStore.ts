@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { logError, logInfo } from './logStore';
 import type { PianoNote } from './pianoRollStore';
-import type { ChainEntry } from './effectChainStore';
+import type { ChainEntry, VstNode } from './effectChainStore';
 import { rackEffectDefaults } from '../lib/rackEffects';
 
 export type ToolMode = 'move' | 'cut' | 'split';
@@ -62,6 +62,9 @@ export interface EditorTrack {
   mute: boolean;
   solo: boolean;
   color: string;
+  /** Record-armed: target for mic/vocal recording. Shown as a red dot in the
+   *  track header. */
+  armed?: boolean;
   /** Default GM program (0-127) for MIDI clips on this track; undefined = global default. */
   instrumentProgram?: number;
   /** Per-track insert FX chain (real-time psychoacoustic rack), spliced between
@@ -175,6 +178,15 @@ interface EditorStoreState {
   automationLanes: AutomationLane[];
   /** Write/arm mode: while on, moving an armed control during playback records. */
   automationWrite: boolean;
+  /** Master-bus VST3 chain (hosted via pedalboard). NOT a Web-Audio rack — these
+   *  apply when the master is rendered ("frozen"); see frozenMaster + previewMode. */
+  masterVstChain: ChainEntry[];
+  /** 'live' = play the realtime multitrack mix; 'frozen' = play the rendered
+   *  VST-processed master. Toggled from the Master VST panel. */
+  previewMode: 'live' | 'frozen';
+  /** The latest VST-rendered master plus the project signature it was rendered
+   *  from, so the UI can flag it stale after edits. Never persisted. */
+  frozenMaster: { blob: Blob; sig: string } | null;
 
   // Mutations
   addTrack: (overrides?: Partial<EditorTrack>) => string;
@@ -250,6 +262,13 @@ interface EditorStoreState {
   redo: () => void;
 
   // Selectors
+  addMasterVst: (plugin: VstNode) => void;
+  removeMasterVst: (entryId: string) => void;
+  reorderMasterVst: (from: number, to: number) => void;
+  clearMasterVst: () => void;
+  setPreviewMode: (mode: 'live' | 'frozen') => void;
+  setFrozenMaster: (frozen: { blob: Blob; sig: string } | null) => void;
+
   getTotalDurationSec: () => number;
   snapSec: (s: number) => number;
 }
@@ -304,6 +323,9 @@ export const useEditorStore = create<EditorStoreState>()((set, get) => ({
   bpm: 120,
   inpaintSelection: null,
   masterFxChain: [],
+  masterVstChain: [],
+  previewMode: 'live',
+  frozenMaster: null,
   automationLanes: [],
   automationWrite: false,
   loopEnabled: false,
@@ -477,6 +499,39 @@ export const useEditorStore = create<EditorStoreState>()((set, get) => ({
     set((s) => ({
       masterFxChain: s.masterFxChain.map((e) => (e.id === entryId ? { ...e, params } : e)),
     })),
+
+  // --- Master VST3 chain (rendered/frozen, not live Web-Audio) ---
+  addMasterVst: (plugin) =>
+    set((s) => ({
+      masterVstChain: [
+        ...s.masterVstChain,
+        { id: uid(), effect: 'vst3', params: {}, enabled: true, vst: plugin },
+      ],
+      frozenMaster: null,
+    })),
+
+  removeMasterVst: (entryId) =>
+    set((s) => ({
+      masterVstChain: s.masterVstChain.filter((e) => e.id !== entryId),
+      frozenMaster: null,
+    })),
+
+  reorderMasterVst: (from, to) =>
+    set((s) => {
+      if (from === to || from < 0 || to < 0 || from >= s.masterVstChain.length || to >= s.masterVstChain.length) {
+        return {};
+      }
+      const next = [...s.masterVstChain];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return { masterVstChain: next, frozenMaster: null };
+    }),
+
+  clearMasterVst: () => set({ masterVstChain: [], frozenMaster: null, previewMode: 'live' }),
+
+  setPreviewMode: (mode) => set({ previewMode: mode }),
+
+  setFrozenMaster: (frozen) => set({ frozenMaster: frozen }),
 
   addTrackEffect: (trackId, effectId) =>
     set((s) => ({

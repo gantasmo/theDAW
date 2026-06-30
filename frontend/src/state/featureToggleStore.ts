@@ -50,17 +50,34 @@ export interface VjSettings {
   export_root: string;
 }
 
+export interface AppSettings {
+  /** How theDAW opens on the next launch: 'web' (browser) | 'desktop' (Electron).
+   *  Read by theDAW.bat before it starts anything. */
+  launch_mode: string;
+}
+
+export interface NotationSettings {
+  /** Global artist/composer name, stamped on every generated sheet + appended
+   *  to song titles. Defaults to GANTASMO. */
+  artist: string;
+}
+
 export interface FeatureSettings {
   schema_version: number;
+  app: AppSettings;
   analysis: AnalysisSettings;
   stems: StemsSettings;
   midi: MidiSettings;
   idle: IdleSettings;
   vj: VjSettings;
+  notation: NotationSettings;
 }
 
 export const DEFAULT_FEATURE_SETTINGS: FeatureSettings = {
-  schema_version: 6,
+  schema_version: 7,
+  app: {
+    launch_mode: 'web',
+  },
   analysis: {
     auto_on_import: true,
     auto_on_generate: true,
@@ -86,6 +103,9 @@ export const DEFAULT_FEATURE_SETTINGS: FeatureSettings = {
   vj: {
     export_root: 'exports/vj',
   },
+  notation: {
+    artist: 'GANTASMO',
+  },
 };
 
 interface FeatureToggleState {
@@ -104,11 +124,13 @@ type DeepPartial<T> = {
 function mergeSettings(base: FeatureSettings, patch: DeepPartial<FeatureSettings>): FeatureSettings {
   const next: FeatureSettings = {
     ...base,
+    app: { ...DEFAULT_FEATURE_SETTINGS.app, ...(base.app ?? {}), ...(patch.app ?? {}) },
     analysis: { ...base.analysis, ...(patch.analysis ?? {}) },
     stems: { ...base.stems, ...(patch.stems ?? {}) },
     midi: { ...base.midi, ...(patch.midi ?? {}) },
     idle: { ...base.idle, ...(patch.idle ?? {}) },
     vj: { ...base.vj, ...(patch.vj ?? {}) },
+    notation: { ...DEFAULT_FEATURE_SETTINGS.notation, ...(base.notation ?? {}), ...(patch.notation ?? {}) },
   };
   if (patch.schema_version != null) next.schema_version = patch.schema_version;
   return next;

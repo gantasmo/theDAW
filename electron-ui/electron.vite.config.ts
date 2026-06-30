@@ -31,6 +31,16 @@ export default defineConfig({
       }
     },
     plugins: [react(), tailwindcss()],
+    // alphaTab resolves its Bravura font + worker via import.meta.url relative
+    // to its own dist/. Vite's dep pre-bundling rewrites that into .vite/deps/
+    // where the worker does NOT exist, which wedges the renderer ("alphaTab.
+    // worker.mjs does not exist in the optimize deps directory"). Excluding it
+    // (matching frontend/vite.config.ts) keeps it served from node_modules so
+    // the worker + font URLs stay valid. Without this, desktop mode hangs on
+    // "loading" and scores never render.
+    optimizeDeps: {
+      exclude: ['@coderline/alphatab'],
+    },
     resolve: {
       alias: { '@': resolve(__dirname, '../frontend') }
     },

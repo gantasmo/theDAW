@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Play, Scissors, Layers, Wand2, PenLine, Download, Trash2, Star, Shuffle, Cloud,
+  Play, Scissors, Layers, Wand2, PenLine, Download, Trash2, Star, Shuffle, Cloud, Repeat, ChevronLeft,
 } from 'lucide-react';
 import type { LibraryEntry } from '../state/libraryEntry';
 import { useLibraryStore } from '../state/libraryStore';
@@ -13,6 +13,8 @@ import {
 import { sunoActions } from '../suno/sunoActions';
 import { HoverTip } from '../components/ui/Tooltip';
 import { playCatalogueEntry } from './CatalogueList';
+import { loadConvertFormats, formatsForKind, convertLibraryEntry } from '../convert/convertClient';
+import type { ConvertFormat } from '../convert/convertClient';
 
 export interface CatalogueContextMenuState {
   x: number;
@@ -59,6 +61,29 @@ export const CatalogueContextMenu: React.FC<Props> = ({ menu, onClose }) => {
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
   const getAudioUrl = useLibraryStore((s) => s.getAudioUrl);
   const fetchAudioBlob = useLibraryStore((s) => s.fetchAudioBlob);
+
+  // Two-stage "Convert to…" — stays inside this menu (the root div stops click
+  // propagation, so switching to the format list doesn't dismiss the menu).
+  const [view, setView] = useState<'root' | 'convert'>('root');
+  const [formats, setFormats] = useState<ConvertFormat[] | null>(null);
+  const [convertMsg, setConvertMsg] = useState<string | null>(null);
+
+  const openConvert = () => {
+    setView('convert');
+    if (formats === null) {
+      // Catalogue entries are audio tracks; offer the audio source-kind targets.
+      loadConvertFormats()
+        .then((cat) => setFormats(formatsForKind(cat, 'audio')))
+        .catch(() => setFormats([]));
+    }
+  };
+
+  const doConvert = (f: ConvertFormat) => {
+    setConvertMsg(`Converting to ${f.label}…`);
+    convertLibraryEntry(entry.id, f, entry.title)
+      .then(() => onClose())
+      .catch((e) => setConvertMsg(`Convert failed: ${e instanceof Error ? e.message : String(e)}`));
+  };
 
   // Dismiss on outside click / Esc / blur.
   useEffect(() => {
@@ -108,9 +133,39 @@ export const CatalogueContextMenu: React.FC<Props> = ({ menu, onClose }) => {
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="px-3 py-1.5 text-[8px] uppercase tracking-widest text-zinc-600 border-b border-white/5 mb-0.5 truncate">
-        {entry.title}
+        {view === 'convert' ? `Convert · ${entry.title}` : entry.title}
       </div>
 
+      {view === 'convert' ? (
+        <>
+          <button
+            className="w-full text-left px-3 py-1.5 flex items-center gap-1.5 text-zinc-400 hover:bg-purple-500/15 hover:text-zinc-100"
+            onClick={() => { setView('root'); setConvertMsg(null); }}
+          >
+            <ChevronLeft className="w-3 h-3" /> Back
+          </button>
+          <div className="border-t border-white/5 my-0.5" />
+          {formats === null ? (
+            <div className="px-3 py-1.5 text-zinc-500">Loading formats…</div>
+          ) : formats.length === 0 ? (
+            <div className="px-3 py-1.5 text-zinc-500">No conversions available</div>
+          ) : (
+            formats.map((f) => (
+              <button
+                key={f.id}
+                className="w-full text-left px-3 py-1.5 flex items-center gap-1.5 text-zinc-200 hover:bg-purple-500/15"
+                onClick={() => doConvert(f)}
+              >
+                <Repeat className="w-3 h-3" /> {f.label}
+              </button>
+            ))
+          )}
+          {convertMsg && (
+            <div className="px-3 py-1 text-[9px] text-amber-300/90 border-t border-white/5 mt-0.5">{convertMsg}</div>
+          )}
+        </>
+      ) : (
+      <>
       <Item icon={Play} label="Play" tip="Play this track through the global player." onClick={run(() => playCatalogueEntry(entry))} />
       <Item icon={Scissors} label="Send to Editor (append)" tip="Append this audio to the tail of the first editor track." onClick={run(() => sendAudioToEditor(sendable, 'editor-first-track'))} />
       <Item icon={Layers} label="Send to Editor (new track)" tip="Add this audio as a brand-new track in the editor." onClick={run(() => sendAudioToEditor(sendable, 'editor-new-track'))} />
@@ -129,8 +184,11 @@ export const CatalogueContextMenu: React.FC<Props> = ({ menu, onClose }) => {
       <div className="border-t border-white/5 my-0.5" />
       <Item icon={Star} label={entry.favorite ? 'Unfavorite' : 'Favorite'} tip={entry.favorite ? 'Remove from favorites.' : 'Mark as a favorite (star).'} onClick={run(() => toggleFavorite(entry.id))} />
       <Item icon={Download} label="Download" tip="Download the original audio file to your computer." onClick={run(download)} />
+      <Item icon={Repeat} label="Convert to…" tip="Convert this track to another format (WAV, MP3, FLAC, OGG…) via FFmpeg and download it." onClick={openConvert} />
       <div className="border-t border-white/5 my-0.5" />
       <Item icon={Trash2} label="Delete" tip="Permanently delete this entry from the library. Cannot be undone." onClick={run(del)} danger />
+      </>
+      )}
     </div>
   );
 };

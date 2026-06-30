@@ -113,7 +113,7 @@ export function OwlPad({ params, onChange, idPrefix }: OwlPadProps) {
             name={programId}
             value={program}
             onChange={(e) => set('program', Number(e.target.value))}
-            className="bg-zinc-900 border border-white/20 rounded px-2 py-1 text-[11px] font-mono text-zinc-100 outline-none focus:border-purple-500/60 cursor-pointer"
+            className="form-select px-2 py-1 text-[11px] font-mono"
             style={{ colorScheme: 'dark' }}
           >
             {OWLPAD_PROGRAMS.map((label, i) => (

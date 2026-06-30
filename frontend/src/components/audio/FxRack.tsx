@@ -31,6 +31,9 @@ interface FxRackProps {
    *  at the current playhead, so a control's displayed value follows its lane.
    *  Display-only: edits still write the stored params. */
   displayParams?: (entryId: string) => Record<string, number> | undefined;
+  /** Hide the built-in "+ Add effect" select (the caller supplies its own add UI,
+   *  e.g. DRAW's colored effect palette). The chain rows still render. */
+  hideAdd?: boolean;
 }
 
 const fmtValue = (v: number, step: number, unit?: string): string => {
@@ -48,33 +51,36 @@ export function FxRack({
   onUpdateParams,
   projectBpm,
   displayParams,
+  hideAdd,
 }: FxRackProps) {
   const addId = `${idPrefix}-add`;
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <label htmlFor={addId} className="sr-only">Add insert effect</label>
-        <select
-          id={addId}
-          name={addId}
-          value=""
-          onChange={(e) => {
-            if (e.target.value) onAdd(e.target.value);
-          }}
-          className="bg-zinc-900 border border-white/20 rounded px-2 py-1 text-[11px] font-mono text-zinc-100 outline-none focus:border-purple-500/60 transition-colors cursor-pointer"
-          style={{ colorScheme: 'dark' }}
-          title="Add a psychoacoustic insert effect to this chain"
-        >
-          <option value="">+ Add effect…</option>
-          {RACK_EFFECTS.map((d) => (
-            <option key={d.id} value={d.id}>{d.label}</option>
-          ))}
-        </select>
-        {chain.length === 0 && (
-          <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-wider">no inserts</span>
-        )}
-      </div>
+      {!hideAdd && (
+        <div className="flex items-center gap-2">
+          <label htmlFor={addId} className="sr-only">Add insert effect</label>
+          <select
+            id={addId}
+            name={addId}
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onAdd(e.target.value);
+            }}
+            className="form-select px-2 py-1 text-[11px] font-mono"
+            style={{ colorScheme: 'dark' }}
+            title="Add a psychoacoustic insert effect to this chain"
+          >
+            <option value="">+ Add effect…</option>
+            {RACK_EFFECTS.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+          {chain.length === 0 && (
+            <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-wider">no inserts</span>
+          )}
+        </div>
+      )}
 
       {/* Effects tile and wrap (capped width) so they use horizontal space
           instead of one full-width column of stretched sliders. */}

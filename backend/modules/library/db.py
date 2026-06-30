@@ -677,6 +677,23 @@ class LibraryDB:
             cur.close()
             return dict(row) if row else None
 
+    def get_all_analysis(self) -> dict[str, dict[str, Any]]:
+        """Return ``{entry_id: analysis_row}`` for every analyzed entry in a
+        SINGLE query.
+
+        This is the batched sibling of :meth:`get_analysis`. The library list
+        endpoint enriches every entry with its analysis (so the Catalogue
+        inspector + library search can read ``entry.analysis``); doing that
+        with a per-entry ``get_analysis`` call would be an N+1 query storm on a
+        large library. One ``SELECT *`` + a dict keyed by ``entry_id`` keeps the
+        enrichment O(1) queries. Rows are returned verbatim (same shape as
+        ``get_analysis``); callers parse the ``*_json`` columns themselves."""
+        with self._writelock:
+            cur = self._conn.cursor()
+            rows = cur.execute("SELECT * FROM analysis").fetchall()
+            cur.close()
+            return {row["entry_id"]: dict(row) for row in rows}
+
     def add_stem(
         self,
         *,

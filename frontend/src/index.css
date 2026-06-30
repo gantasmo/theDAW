@@ -147,6 +147,14 @@
   .transport-play-active:hover {
     color: rgb(255, 255, 255);
   }
+
+  /* High-contrast <select> matching .compact-input. Carries no padding /
+     text-size so it composes with each control's own sizing classes
+     (px/py/text-*). color-scheme keeps the native option popup dark. */
+  .form-select {
+    @apply bg-black/40 border border-(--panel-border) rounded text-white outline-none focus:border-purple-500 cursor-pointer transition-colors;
+    color-scheme: dark;
+  }
 }
 
 @keyframes dj-eject-heartbeat {
@@ -208,6 +216,16 @@
     box-shadow: 0 0 7px rgba(34, 197, 94, 0.34), 0 0 16px rgba(22, 163, 74, 0.18);
     transform: scale(1);
   }
+}
+
+/* Native <select> popups render dark + legible everywhere (the browser
+   default is a white option list that clashes with theDAW's dark panels);
+   option rows take the panel palette so the open list matches the app. */
+select { color-scheme: dark; }
+select option,
+select optgroup {
+  background-color: var(--panel);
+  color: var(--text-primary);
 }
 
 @theme {

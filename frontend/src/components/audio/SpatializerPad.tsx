@@ -233,7 +233,7 @@ export function SpatializerPad({ params, onChange, idPrefix }: SpatializerPadPro
             name={motionId}
             value={motion}
             onChange={(e) => set('motion', Number(e.target.value))}
-            className="bg-zinc-900 border border-white/20 rounded px-2 py-1 text-[11px] font-mono text-zinc-100 outline-none focus:border-purple-500/60 cursor-pointer"
+            className="form-select px-2 py-1 text-[11px] font-mono"
             style={{ colorScheme: 'dark' }}
           >
             {SPATIAL_MOTIONS.map((label, i) => (

@@ -242,6 +242,13 @@ export const CatalogueInspector: React.FC<Props> = ({ entry }) => {
           <Field label="Size" value={formatSize(entry.fileSizeBytes)} />
           <Field label="Source" value={entry.source} />
           <Field label="Created" value={formatDate(entry.timestamp)} />
+          {/* Play analytics — already tracked per entry (persistent counter +
+              last-played stamp), just never surfaced in this inspector. */}
+          <Field label="Plays" value={entry.playCount ?? 0} />
+          <Field
+            label="Last played"
+            value={entry.lastPlayedAt ? formatDate(new Date(entry.lastPlayedAt * 1000).toISOString()) : '—'}
+          />
           <Field label="ID" value={<span className="text-[8px]">{entry.id.slice(0, 16)}…</span>} />
         </div>
 

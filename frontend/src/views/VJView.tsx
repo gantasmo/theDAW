@@ -14,6 +14,8 @@ import {
   Check,
   Camera,
   CameraOff,
+  Sliders,
+  Glasses,
 } from 'lucide-react';
 
 import { getAnalyser } from '../state/playerStore';
@@ -22,7 +24,7 @@ import { useLibraryStore } from '../state/libraryStore';
 import { subscribeToMidi } from '../state/midiBus';
 import { useMidiTriggerStore } from '../state/midiTriggerStore';
 import { getVjPlaybackState, registerVjPlaybackHandler, reportVjPlaybackState } from '../state/vjPlaybackBus';
-import { registerVjSetHandler } from '../state/vjSetBus';
+import { registerVjSetHandler, sendTrackToVj } from '../state/vjSetBus';
 import { ingestManifest, applyFromVj, registerControlSink } from '../state/controlSyncBus';
 import type { VisualControl } from '../state/slideStore';
 import { useAppUiStore } from '../state/appUiStore';
@@ -88,6 +90,11 @@ export const VJView: React.FC = () => {
   // when the source is changed from inside the VJ app.
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // True while a library media card is being dragged anywhere in the app. We
+  // flip a transparent drop layer over the iframe so the drop lands on US (the
+  // iframe would otherwise swallow the drag). Detected on the parent window
+  // while the cursor is still over parent content, before it reaches the iframe.
+  const [mediaDragActive, setMediaDragActive] = useState(false);
   const [questStatus, setQuestStatus] = useState<QuestCastStatus | null>(null);
   const [questBusy, setQuestBusy] = useState(false);
   const [questDetail, setQuestDetail] = useState('delinQuest status not loaded yet.');
@@ -223,6 +230,43 @@ export const VJView: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
+  // Detect a library media drag anywhere in the app so we can raise a drop
+  // layer over the iframe BEFORE the cursor reaches it (the iframe would
+  // otherwise swallow the drag and the parent never sees the drop).
+  useEffect(() => {
+    const hasMedia = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes('application/x-thedaw-media');
+    const onDragOver = (e: DragEvent) => { if (hasMedia(e)) setMediaDragActive(true); };
+    const clear = () => setMediaDragActive(false);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', clear);
+    window.addEventListener('dragend', clear);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', clear);
+      window.removeEventListener('dragend', clear);
+    };
+  }, []);
+
+  const handleMediaDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setMediaDragActive(false);
+    const raw = e.dataTransfer.getData('application/x-thedaw-media');
+    if (!raw) return;
+    try {
+      const m = JSON.parse(raw) as { id?: string; url?: string; kind?: string; name?: string };
+      sendTrackToVj({
+        entryId: m.id ?? null,
+        label: m.name ?? 'media',
+        url: m.url,
+        kind: m.kind === 'image' ? 'image' : 'video',
+      });
+      logInfo('vj', `Added "${m.name ?? 'media'}" to the VJ from a drag-and-drop.`);
+    } catch {
+      logError('vj', 'Could not read the dropped media.');
+    }
+  };
+
   // Fetch the VJ URL on mount. The backend will spawn the dev server
   // if it isn't already running — this can take ~30s on first launch
   // (npm install) and ~2-3s on subsequent launches.
@@ -304,6 +348,10 @@ export const VJView: React.FC = () => {
     const lowEnd = Math.floor(buf.length * 0.05);
     const midEnd = Math.floor(buf.length * 0.30);
     const highEnd = buf.length;
+    // 256-bin spectrogram column for the SPECTRA VJ source (downsampled FFT).
+    const SPEC_BINS = 256;
+    const specBlock = Math.max(1, Math.floor(buf.length / SPEC_BINS));
+    const spec = new Array<number>(SPEC_BINS);
 
     const tick = () => {
       // Hold off until the iframe has loaded the VJ app (avoid posting to about:blank).
@@ -323,8 +371,14 @@ export const VJView: React.FC = () => {
         const mid = midEnd - lowEnd > 0 ? (midSum / (midEnd - lowEnd)) / 255 : 0;
         const high = highEnd - midEnd > 0 ? (highSum / (highEnd - midEnd)) / 255 : 0;
         const volume = (bassSum + midSum + highSum) / (buf.length * 255);
+        for (let i = 0; i < SPEC_BINS; i++) {
+          let s = 0;
+          const start = i * specBlock;
+          for (let j = 0; j < specBlock; j++) s += buf[start + j] || 0;
+          spec[i] = Math.round(s / specBlock);
+        }
         try {
-          targetWin()?.postMessage({ type: 'sa3-vj/audio-levels', bass, mid, high, volume, t: now }, vjOrigin);
+          targetWin()?.postMessage({ type: 'sa3-vj/audio-levels', bass, mid, high, volume, spectrum: spec, t: now }, vjOrigin);
         } catch { /* target unavailable this frame — retry next tick */ }
         frameCount += 1;
         if (now - fpsTick > 1000) {
@@ -650,8 +704,8 @@ export const VJView: React.FC = () => {
           <InputChip
             active={vjInputs.mic}
             onToggle={() => toggleVjInput('mic')}
-            label="Mic"
-            icon={<Mic className="w-2.5 h-2.5" />}
+            name="Microphone input"
+            icon={<Mic className="w-3 h-3" />}
             activeLabel="Microphone capture is enabled — VJ iframe will request browser permission on first use."
             inactiveLabel="Microphone input is muted. Click to enable."
             disabled={vjInputs.mic && !vjInputs.audio && !vjInputs.midi}
@@ -659,8 +713,8 @@ export const VJView: React.FC = () => {
           <InputChip
             active={vjInputs.audio}
             onToggle={() => toggleVjInput('audio')}
-            label={bridgeFps > 0 ? `Audio ${bridgeFps}` : 'Audio'}
-            icon={<MusicIcon className="w-2.5 h-2.5" />}
+            name="Audio bridge"
+            icon={<MusicIcon className="w-3 h-3" />}
             activeLabel={
               bridgeFps > 0
                 ? `Audio bridge live — forwarding SA3 player levels @ ${bridgeFps}fps`
@@ -673,8 +727,8 @@ export const VJView: React.FC = () => {
           <InputChip
             active={vjInputs.midi}
             onToggle={() => toggleVjInput('midi')}
-            label="MIDI"
-            icon={<Piano className="w-2.5 h-2.5" />}
+            name="MIDI forwarding"
+            icon={<Piano className="w-3 h-3" />}
             activeLabel="MIDI events from your controller are forwarded into the VJ iframe."
             inactiveLabel="MIDI forwarding is off. Click to enable."
             disabled={vjInputs.midi && !vjInputs.mic && !vjInputs.audio}
@@ -701,9 +755,9 @@ export const VJView: React.FC = () => {
                 : 'Camera OFF — click to use the live webcam as the VJ source.'
             }
             aria-pressed={cameraOn}
+            aria-label="Camera source"
           >
-            {cameraOn ? <Camera className="w-2.5 h-2.5" /> : <CameraOff className="w-2.5 h-2.5" />}
-            Cam
+            {cameraOn ? <Camera className="w-3 h-3" /> : <CameraOff className="w-3 h-3" />}
           </button>
           <div className="flex items-center gap-0.5">
             <button
@@ -719,20 +773,17 @@ export const VJView: React.FC = () => {
                   ? 'border-sky-500/50 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20'
                   : 'border-white/10 text-zinc-500 hover:text-zinc-200 hover:border-white/20 hover:bg-white/5'
               }`}
-              title={`${questRunning ? 'Click to stop' : 'Click to start'} direct delinQuest ADB/scrcpy relay. This does not use the browser window picker. ${questDetail}`}
-              aria-label="Toggle delinQuest ADB video relay"
+              title={`delinQuest (Quest video relay) — ${questLabel}. ${questRunning ? 'Click to stop' : 'Click to start'} the direct ADB/scrcpy relay (no browser window picker). ${questDetail}`}
+              aria-label={`delinQuest Quest video relay — ${questLabel}`}
               aria-pressed={questRunning}
             >
               {questBusy ? (
-                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                <Loader2 className="w-3 h-3 animate-spin" />
               ) : questErrored ? (
-                <AlertCircle className="w-2.5 h-2.5" />
-              ) : questReady ? (
-                <Check className="w-2.5 h-2.5" />
+                <AlertCircle className="w-3 h-3" />
               ) : (
-                <Tv2 className="w-2.5 h-2.5" />
+                <Glasses className="w-3 h-3" />
               )}
-              delinQuest {questLabel}
             </button>
             <button
               type="button"
@@ -767,6 +818,19 @@ export const VJView: React.FC = () => {
           >
             <Piano className="w-2.5 h-2.5" />
             MIDI
+          </button>
+          {/* MIDI MAP — opens the VJ engine's controller-mapping panel (MIDI map
+              + audio-react routing) right inside the iframe. The mapper used to
+              live as a floating pill on the VJ canvas; it now opens from here. */}
+          <button
+            type="button"
+            onClick={() => postToIframe({ type: 'sa3-vj/open-midi-map' })}
+            disabled={status !== 'ready'}
+            className="p-1.5 rounded border border-white/5 hover:bg-white/5 text-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:pointer-events-none"
+            title="Open the VJ MIDI mapping + audio-react panel"
+            aria-label="Open VJ MIDI mapping panel"
+          >
+            <Sliders className="w-3.5 h-3.5" />
           </button>
           {/* Mobile link — exposes the LAN-reachable URL so a phone on
               the same Wi-Fi can open the VJ output. The Vite server is
@@ -952,32 +1016,52 @@ export const VJView: React.FC = () => {
             reusing the in-VJ decoded stream — so we no longer decode a second
             copy here (kills the double HW-decode of the 60fps feed). The host
             toolbar still controls the relay (start/stop/refresh). */}
+
+        {/* Media drop zone — appears while a library media card is being
+            dragged, so the user can drop a clip/image straight onto the VJ to
+            add it to the performance bucket (sendTrackToVj). It sits above the
+            iframe so the drop lands here instead of being swallowed. */}
+        {mediaDragActive && (
+          <div
+            className="absolute inset-0 z-30 flex items-center justify-center bg-fuchsia-500/10 border-2 border-dashed border-fuchsia-400/60 backdrop-blur-[1px]"
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+            onDrop={handleMediaDrop}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setMediaDragActive(false); }}
+          >
+            <div className="px-4 py-2 rounded-lg border border-fuchsia-400/60 bg-[#0a080f]/90 text-fuchsia-100 text-[11px] font-black uppercase tracking-widest flex items-center gap-2 pointer-events-none">
+              <Tv2 className="w-4 h-4" /> Drop to add to the VJ
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 /**
- * Tiny toggle chip for the VJ input row (Mic / Audio / MIDI). Lit
- * emerald when active; faded zinc when disabled. `disabled` true
- * means the chip can't be turned off because it's the last
- * remaining active input (min-1 invariant).
+ * Tiny icon-only toggle for the VJ input row (Mic / Audio / MIDI). Lit emerald /
+ * cyan when active; faded zinc when off. `disabled` true means the chip can't be
+ * turned off because it's the last remaining active input (min-1 invariant). The
+ * label moved to `aria-label` + `title`; a live dot rides the Audio chip when the
+ * bridge is streaming.
  */
 const InputChip: React.FC<{
   active: boolean;
   onToggle: () => void;
-  label: string;
+  name: string;
   icon: React.ReactNode;
   activeLabel: string;
   inactiveLabel: string;
   disabled?: boolean;
   indicator?: 'live' | null;
-}> = ({ active, onToggle, label, icon, activeLabel, inactiveLabel, disabled, indicator }) => (
+}> = ({ active, onToggle, name, icon, activeLabel, inactiveLabel, disabled, indicator }) => (
   <button
     type="button"
     onClick={onToggle}
     disabled={!!disabled && active}
-    className={`px-1.5 py-0.5 rounded border text-[8px] font-mono uppercase tracking-widest flex items-center gap-1 transition-colors ${
+    aria-pressed={active}
+    aria-label={name}
+    className={`relative px-1.5 py-1 rounded border flex items-center justify-center transition-colors ${
       active
         ? indicator === 'live'
           ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
@@ -986,13 +1070,19 @@ const InputChip: React.FC<{
     } disabled:cursor-not-allowed disabled:opacity-100`}
     title={
       disabled && active
-        ? `${activeLabel} — at least one input must stay enabled.`
+        ? `${name}: ${activeLabel} — at least one input must stay enabled.`
         : active
-        ? `${activeLabel} (click to mute)`
-        : inactiveLabel
+        ? `${name}: ${activeLabel} (click to mute)`
+        : `${name}: ${inactiveLabel}`
     }
   >
-    {icon} {label}
+    {icon}
+    {indicator === 'live' && active && (
+      <span
+        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.9)]"
+        aria-hidden="true"
+      />
+    )}
   </button>
 );
 

@@ -1,0 +1,10 @@
+{
+  "name": "vocal",
+  "label": "Vocal Engine",
+  "enabled": true,
+  "icon": "Mic",
+  "sidebar": false,
+  "api_prefix": "/api/vocal",
+  "backend": true,
+  "description": "Prerequisite vocal pipeline: capture, preprocessing and analysis, and a canonical metadata artifact that singing-synthesis models (SoulX and others) later consume. Composes existing isolation, cleanup, basic-pitch notes, F0, segments, and transcription. Singing synthesis and voice conversion stay deferred."
+}

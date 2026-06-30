@@ -132,3 +132,9 @@ export async function makeArrangement(
 export function notationArtifactUrl(artifactId: string): string {
   return `/api/notation/file/${encodeURIComponent(artifactId)}`;
 }
+
+/** Download a score as a zip of the source + a PDF (PDF when MuseScore is
+ *  installed; the MusicXML is always included). Use for musicxml sheets. */
+export function notationPackUrl(artifactId: string): string {
+  return `/api/notation/pack/${encodeURIComponent(artifactId)}`;
+}

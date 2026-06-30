@@ -33,6 +33,9 @@ interface StudioStoreState {
   setOutputFormat: (format: string) => void;
   setPendingAction: (effect: string, params: Record<string, number>) => void;
   processAudio: (payload: { effect: string; params: Record<string, number>; skipLibrary?: boolean }) => Promise<void>;
+  // VST3 chain stage: uploads the current audio + plugin path to
+  // /api/vst/process-file (mirrors processAudio) and returns processed audio.
+  processVst: (payload: { pluginPath: string; pluginName: string; params: Record<string, number>; skipLibrary?: boolean }) => Promise<void>;
   // Runs the enabled effects in useEffectChainStore in series over the
   // source in useAdvancedEditorSourceStore, then imports the final result
   // to the library, loads the player, and writes advancedEditorStore.outputUrl.
@@ -201,6 +204,81 @@ export const useStudioStore = create<StudioStoreState>()((set, get) => ({
     }
   },
 
+  processVst: async ({ pluginPath, pluginName, params, skipLibrary }) => {
+    const source = get().sourceFile;
+    if (!source) {
+      const message = 'Load a source audio file before processing.';
+      set({ error: message });
+      useStatusBarStore.getState().setText(`VST FAILED: ${message}`);
+      return;
+    }
+
+    const previous = get().outputUrl;
+    if (previous) URL.revokeObjectURL(previous);
+
+    set({ isProcessing: true, error: null, outputUrl: null });
+    useStatusBarStore.getState().setText(`VST PROCESS STARTED: ${pluginName}`);
+    logInfo('studio', `POST /api/vst/process-file — ${pluginName} (${pluginPath})`);
+
+    const form = new FormData();
+    form.append('audio', source);
+    form.append('plugin_path', pluginPath);
+    form.append('params', JSON.stringify(params || {}));
+
+    try {
+      const response = await fetchWithTimeout('/api/vst/process-file', {
+        method: 'POST',
+        body: form,
+      });
+      if (!response.ok) {
+        const detail = await parseErrorText(response);
+        logError('studio', `POST /api/vst/process-file → ${response.status} — ${detail}`);
+        throw new Error(detail);
+      }
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error('Backend returned HTML instead of audio. Is the backend running on port 8600?');
+      }
+
+      const blob = await response.blob();
+      const outputUrl = URL.createObjectURL(blob);
+      const nextEntry: StudioHistoryEntry = {
+        id: uuid(),
+        effect: pluginName,
+        format: get().outputFormat,
+        createdAt: Date.now(),
+      };
+      set((state) => ({
+        isProcessing: false,
+        outputUrl,
+        processHistory: [nextEntry, ...state.processHistory].slice(0, 8),
+        error: null,
+      }));
+      useStatusBarStore.getState().setText(`VST PROCESS COMPLETE: ${pluginName}`);
+
+      if (!skipLibrary) {
+        const fmt = get().outputFormat;
+        const title = `vst-${pluginName}.${fmt}`;
+        try {
+          const entry = await useLibraryStore.getState().importEntry({
+            blob,
+            filename: title,
+            mimeType: blob.type || 'audio/wav',
+            metadata: { title, prompt: `VST: ${pluginName}`, source: 'studio', tags: ['vst', pluginName] },
+          });
+          await usePlayerStore.getState().load(blob, { label: title, entryId: entry.id });
+        } catch (e) {
+          logError('studio', `VST library save failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'VST process failed.';
+      set({ isProcessing: false, error: message });
+      useStatusBarStore.getState().setText(`VST PROCESS FAILED: ${message}`);
+      logError('studio', `vst=${pluginName} FAILED — ${message}`);
+    }
+  },
+
   processChain: async () => {
     if (get().isProcessing || get().isChainProcessing) return;
 
@@ -221,7 +299,9 @@ export const useStudioStore = create<StudioStoreState>()((set, get) => ({
     }
 
     const fmt = get().outputFormat;
-    const chainLabel = enabled.map((e) => EFFECT_LABELS[e.effect] || e.effect).join(' → ');
+    const chainLabel = enabled
+      .map((e) => (e.vst ? e.vst.plugin_name : EFFECT_LABELS[e.effect] || e.effect))
+      .join(' → ');
     set({ isChainProcessing: true, error: null });
     useStatusBarStore.getState().setText(`MIX CHAIN STARTED: ${chainLabel}`);
     logInfo('studio', `Chain process: ${chainLabel} (${enabled.length} effects) format=${fmt}`);
@@ -233,12 +313,22 @@ export const useStudioStore = create<StudioStoreState>()((set, get) => ({
       let currentFile = source;
       for (const entry of enabled) {
         get().setSourceFile(currentFile);
-        await get().processAudio({ effect: entry.effect, params: entry.params, skipLibrary: true });
+        if (entry.vst) {
+          await get().processVst({
+            pluginPath: entry.vst.plugin_path,
+            pluginName: entry.vst.plugin_name,
+            params: entry.params,
+            skipLibrary: true,
+          });
+        } else {
+          await get().processAudio({ effect: entry.effect, params: entry.params, skipLibrary: true });
+        }
         const url = get().outputUrl;
-        // processAudio already set an error + status if this failed.
+        // The per-stage call already set an error + status if this failed.
         if (!url) return;
         const blob = await (await fetch(url)).blob();
-        currentFile = new File([blob], `chain-${entry.effect}.${fmt}`, { type: blob.type });
+        const stageName = entry.vst ? entry.vst.plugin_name : entry.effect;
+        currentFile = new File([blob], `chain-${stageName}.${fmt}`, { type: blob.type });
       }
 
       const finalUrl = get().outputUrl;
@@ -255,14 +345,18 @@ export const useStudioStore = create<StudioStoreState>()((set, get) => ({
           metadata: { title, prompt: chainLabel, source: 'studio', tags: ['effects-chain'] },
         });
         await usePlayerStore.getState().load(finalBlob, { label: title, entryId: entry.id });
+        useStatusBarStore.getState().setText(`MIX CHAIN COMPLETE: ${chainLabel}`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         logError('studio', `Chain library save failed: ${msg}`);
+        set({ error: `Library save failed: ${msg}` });
+        useStatusBarStore
+          .getState()
+          .setText(`MIX CHAIN LIBRARY SAVE FAILED — check Processing Log: ${msg}`);
         try {
           await usePlayerStore.getState().load(finalBlob, { label: title, entryId: `chain-fail-${Date.now()}` });
         } catch { /* swallow */ }
       }
-      useStatusBarStore.getState().setText(`MIX CHAIN COMPLETE: ${chainLabel}`);
     } finally {
       set({ isChainProcessing: false });
     }

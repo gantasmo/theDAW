@@ -49,7 +49,7 @@ export const InstrumentPicker: React.FC = () => {
         aria-label="MIDI instrument"
         value={value}
         onChange={onChange}
-        className="bg-zinc-900 border border-white/20 rounded px-2 py-1 text-xs text-zinc-100 max-w-44 outline-none focus:border-purple-500/60"
+        className="form-select px-2 py-1 text-xs max-w-44"
         style={{ colorScheme: 'dark' }}
       >
         <option value="basic">Basic (sawtooth)</option>

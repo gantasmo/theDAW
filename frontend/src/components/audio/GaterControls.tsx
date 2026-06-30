@@ -65,7 +65,7 @@ export function GaterControls({ params, onChange, idPrefix, projectBpm }: GaterC
               name={divId}
               value={div}
               onChange={(e) => set('div', Number(e.target.value))}
-              className="flex-1 bg-zinc-900 border border-white/20 rounded px-2 py-1 text-[11px] font-mono text-zinc-100 outline-none focus:border-purple-500/60 cursor-pointer"
+              className="flex-1 form-select px-2 py-1 text-[11px] font-mono"
               style={{ colorScheme: 'dark' }}
             >
               {GATER_DIVISIONS.map((label, i) => (

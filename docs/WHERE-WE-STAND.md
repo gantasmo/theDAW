@@ -5,11 +5,43 @@ and Claude. It is the fast answer to "what is built, what is in flight, what is
 next." For how a shipped feature actually works, use `docs/USER_GUIDE.md`; this
 file tracks state, not behavior.
 
-Last updated: 2026-06-21.
+Last updated: 2026-06-28.
 
 Status tags: **SHIPPED** = merged to `main`. **BUILT** = on a branch, not merged.
 **PENDING** = designed or queued, not built. **OPEN BUG**. **BLOCKED** = waiting
 on an external gate (hardware, a decision, disk).
+
+---
+
+## 0. Latest: VST3 hosting, DAW import, .tasmo projects, .gan plugins (BUILT)
+
+On `feat/sway-pose-control`, **BUILT** (not yet merged to `main`):
+
+- **VST3 hosting** (`backend/modules/vst/`) via [pedalboard](https://github.com/spotify/pedalboard):
+  scans the standard VST3 folders, lists built-in effects, and processes audio. VSTs
+  appear in the MIX effects browser/chain and process through `/api/vst/process-file`.
+- **DAW import** (`backend/modules/dawimport/`): parsers for Ableton `.als`, Reaper
+  `.rpp`, FL Studio `.flp`, Audacity, Audition, Bitwig, and Resolume, plus Logic /
+  Cubase / Pro Tools export hints. Surfaced by a header **DAW Import** modal.
+- **.tasmo projects** (`backend/modules/project/`): save/load whole sessions as a
+  ZIP + MsgPack bundle with optional round-trip audio embedding. Header **Project** modal.
+- **.gan web-plugins** (`backend/modules/plugin/`): a portable pseudo-VST format
+  (ZIP + manifest + web assets), an importer for VST Foundry exports, and a sidecar
+  packager. All `.gan`s are GANTASMO-attributed. Right-click a plugin to reveal its
+  `.gan` in the OS file manager.
+- **The Owl**: the HRTF spatializer's front-end, rebuilt over the "the OWL" artwork in
+  the MIX Effect Stage footprint. 4 SLIDE sliders (azimuth/elevation/distance/depth),
+  centre knob (rate), 12 mode buttons, the real Kaoss + spatial-room canvases driving
+  the live rack. Packaged as a sidecar `data/plugins/the-owl.gan`.
+- **EDIT LAYOUT** moved to the global top header (one flag drives design mode across
+  MIX/DJ/TRAIN). MIX play/pause/stop transport on the input/output rows. EDIT VSTs via
+  a master-bus freeze (Live / Frozen toggle).
+- **Dev backend launch fix**: electron now spawns the backend with the venv Python in
+  dev (was `uv run`, which fails when uv's cache is unavailable and left no backend on
+  :8600 — every `/api` call then read as 500 through Vite's proxy).
+
+PENDING: native JUCE/iPlug2 WebView VST3/CLAP shell (the "loads in a third-party DAW"
+path); MIX styling pass to match DJ; effect thumbnails as per-effect visualizer images.
 
 ---
 
@@ -89,7 +121,7 @@ the following is **SHIPPED** (merged via PRs #38-#42):
 ## 5. XR / Quest integrations
 
 These are the headset features. All **SHIPPED** to `main`, with the headset-side
-pieces living in the GANTASMO-MIDI Unity project. The point of the design is that
+pieces living in theDAW XR (the GANTASMO-MIDI Unity project). The point of the design is that
 none of them need Quest Link (PC tethering) or Meta Quest Developer Hub casting;
 they ride plain ADB (USB or wireless) with auto-started relays.
 

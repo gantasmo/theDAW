@@ -107,6 +107,39 @@ const DRAWERS: Record<string, Draw> = {
       ctx.fillText(labels[i], 11, by + 5);
     }
   },
+  // Psychoacoustic effect thumbnails, one per group, in the Studio canvas style.
+  'psy-spatial': (ctx, W, H) => {
+    const cx = W / 2, cy = H / 2;
+    for (let i = 3; i > 0; i--) {
+      ctx.beginPath(); ctx.arc(cx, cy, i * Math.min(W, H) * 0.13, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(171,71,188,${0.15 + i * 0.12})`; ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(232,121,249,.9)';
+    ctx.beginPath(); ctx.arc(cx + W * 0.18, cy - H * 0.12, 2.5, 0, Math.PI * 2); ctx.fill();
+  },
+  'psy-lowend': (ctx, W, H) => {
+    ctx.strokeStyle = 'rgba(245,158,11,.55)'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let x = 0; x < W; x++) { const v = Math.sin(x * 0.06) * H * 0.3; ctx.lineTo(x, H / 2 - v); }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(245,158,11,.2)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x < W; x++) { const v = Math.sin(x * 0.18) * H * 0.12; ctx.lineTo(x, H / 2 - v); }
+    ctx.stroke();
+  },
+  'psy-tone': (ctx, W, H) => {
+    ctx.strokeStyle = 'rgba(239,83,80,.4)'; ctx.lineWidth = 1;
+    for (let h = 1; h <= 6; h++) { ctx.beginPath(); for (let x = 0; x < W; x++) { const v = Math.sin(x * 0.08 * h) * 3 / h; ctx.lineTo(x, H / 2 + v); } ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(239,83,80,.5)'; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(0, H * 0.72); ctx.lineTo(W, H * 0.25); ctx.stroke(); ctx.setLineDash([]);
+  },
+  'psy-performance': (ctx, W, H) => {
+    const n = 8, bw = W / n;
+    for (let i = 0; i < n; i++) {
+      const on = i % 2 === 0;
+      ctx.fillStyle = on ? 'rgba(139,92,246,.55)' : 'rgba(139,92,246,.12)';
+      const bh = on ? H * 0.7 : H * 0.25;
+      ctx.fillRect(i * bw + 1, H - bh, bw - 2, bh);
+    }
+  },
   codec: (ctx, W, H) => {
     const segW = W / 16;
     for (let i = 0; i < 16; i++) {

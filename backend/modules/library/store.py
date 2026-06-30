@@ -567,6 +567,14 @@ class LibraryStore:
         record = self.get_entry(entry_id)
         if record is not None:
             self._sync_record_to_db(record, meta)
+        # Favoriting a track gives it the full treatment — stems, MIDI, and a
+        # score — so a starred track is always fully analyzed and notated. Each
+        # job is idempotent (skipped if the artifact exists) and runs on the
+        # idle-gated, serialized background queue (stems -> midi -> score).
+        if bool(patch.get("favorite")):
+            _maybe_enqueue_stems(self, entry_id, source="favorite", force=True)
+            _maybe_enqueue_midi(self, entry_id, source="favorite", force=True)
+            _maybe_enqueue_score(self, entry_id, source="favorite", force=True)
         return record
 
     def delete_entry(self, entry_id: str) -> bool:
@@ -649,6 +657,7 @@ class LibraryStore:
         _maybe_enqueue_analysis(self, entry_id, source="import")
         _maybe_enqueue_stems(self, entry_id, source="import")
         _maybe_enqueue_midi(self, entry_id, source="import")
+        _maybe_enqueue_score(self, entry_id, source="import")
         return record
 
     def register_reference(
@@ -929,10 +938,13 @@ def _maybe_enqueue_stems(
     entry_id: str,
     *,
     source: str,
+    force: bool = False,
 ) -> None:
     """If feature settings have ``stems.auto_on_<source>`` enabled, queue
     a background stem-separation job. Heavy work — relies on the
-    integration-package sidecar."""
+    integration-package sidecar. ``force`` bypasses the settings gate (used
+    when favoriting a track), but the job is still skipped when the entry
+    already has stems."""
     if store.db is None:
         return
     try:
@@ -944,11 +956,18 @@ def _maybe_enqueue_stems(
     try:
         settings = get_settings_store().get_section("stems")
     except Exception:
-        return
+        settings = {}
 
     key = f"auto_on_{source}"
-    if not settings.get(key, False):
+    if not force and not settings.get(key, False):
         return
+
+    # Idempotent: never re-separate an entry that already has stems.
+    try:
+        if store.db.list_stems(entry_id):
+            return
+    except Exception:
+        pass
 
     audio_path = store.get_audio_path(entry_id)
     entry_dir = store._dir_for(entry_id)
@@ -979,10 +998,13 @@ def _maybe_enqueue_midi(
     entry_id: str,
     *,
     source: str,
+    force: bool = False,
 ) -> None:
     """If feature settings have ``midi.auto_on_<source>`` enabled, queue
     a background MIDI-conversion job. Reads ``midi.from_stems`` to
-    decide whether to also convert each stem."""
+    decide whether to also convert each stem. ``force`` bypasses the settings
+    gate (used when favoriting), but the job is still skipped when the entry
+    already has MIDI."""
     if store.db is None:
         return
     try:
@@ -994,11 +1016,18 @@ def _maybe_enqueue_midi(
     try:
         settings = get_settings_store().get_section("midi")
     except Exception:
-        return
+        settings = {}
 
     key = f"auto_on_{source}"
-    if not settings.get(key, False):
+    if not force and not settings.get(key, False):
         return
+
+    # Idempotent: never re-transcribe an entry that already has MIDI.
+    try:
+        if store.db.list_midis(entry_id):
+            return
+    except Exception:
+        pass
 
     audio_path = store.get_audio_path(entry_id)
     entry_dir = store._dir_for(entry_id)
@@ -1028,3 +1057,90 @@ def _maybe_enqueue_midi(
         get_background_queue().enqueue(f"midi:{entry_id}", _run)
     except Exception as e:
         log.debug("library.store: failed to enqueue midi for %s: %s", entry_id, e)
+
+
+def _generate_score_for_entry(
+    store: "LibraryStore", entry_id: str, entry_dir: Path
+) -> None:
+    """Generate a MusicXML sheet from the entry's first MIDI, stamped with the
+    song title. No-op if the entry already has a sheet or has no MIDI. Runs in
+    a worker thread (music21 parse is CPU-bound)."""
+    if store.db is None:
+        return
+    try:
+        from backend.modules.notation.engine import (
+            midi_to_musicxml,
+            register_existing_midis,
+        )
+    except Exception:
+        return
+    try:
+        register_existing_midis(store.db, entry_id)
+        if store.db.list_notation_artifacts(entry_id, kind="musicxml"):
+            return  # already scored
+        target = None
+        for midi in store.db.list_midis(entry_id):
+            path = midi.get("midi_path") or ""
+            if path and Path(path).is_file():
+                target = midi
+                break
+        if target is None:
+            return  # nothing to score
+        record = store.get_entry(entry_id)
+        title = str(getattr(record, "title", "") or "")
+        midi_id = str(target.get("id") or "")
+        output = entry_dir / "notation" / f"{midi_id}.musicxml"
+        midi_to_musicxml(
+            store.db,
+            entry_id=entry_id,
+            midi_path=Path(target["midi_path"]),
+            output_path=output,
+            source_ref=midi_id,
+            artifact_id=f"{midi_id}__musicxml",
+            title=title,
+        )
+    except Exception as e:  # noqa: BLE001 - best-effort background work
+        log.debug("library.store: auto-score failed for %s: %s", entry_id, e)
+
+
+def _maybe_enqueue_score(
+    store: "LibraryStore",
+    entry_id: str,
+    *,
+    source: str,
+    force: bool = False,
+) -> None:
+    """Queue a background job that turns the entry's MIDI into a titled sheet.
+    Auto-score defaults ON (sheets are cheap music21 work and the job only acts
+    when a MIDI already exists and no sheet does). ``force`` bypasses the
+    settings gate (used when favoriting). Enqueued AFTER any MIDI job so the
+    serial idle queue runs MIDI first, then this finds its output."""
+    if store.db is None:
+        return
+    try:
+        from backend.core.background_workers import get_background_queue
+        from backend.modules.settings.router import get_store as get_settings_store
+    except ImportError:
+        return
+
+    if not force:
+        try:
+            settings = get_settings_store().get_section("notation")
+        except Exception:
+            settings = {}
+        if not settings.get(f"auto_on_{source}", True):
+            return
+
+    entry_dir = store._dir_for(entry_id)
+    if entry_dir is None:
+        return
+
+    async def _run() -> None:
+        import asyncio
+
+        await asyncio.to_thread(_generate_score_for_entry, store, entry_id, entry_dir)
+
+    try:
+        get_background_queue().enqueue(f"score:{entry_id}", _run)
+    except Exception as e:
+        log.debug("library.store: failed to enqueue score for %s: %s", entry_id, e)

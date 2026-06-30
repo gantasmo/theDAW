@@ -292,7 +292,12 @@ function computeLineage(
 const lineageOpacity = (onPath: boolean): number => (onPath ? 1 : 0.12);
 
 const LINEAGE_HOVER_INTENT_MS = 200;
-const LINEAGE_FADE_MS = 3000;
+
+// Genealogy grid geometry (px). Square cards; the gaps come from the sliders.
+const NODE_W = 140;
+const NODE_H = 140;
+const PAD = 24;
+const TOP_MARGIN = 8;
 
 const EDGE_COLOR_BY_KIND: Record<string, string> = {
   chimera_source_of: '#a78bfa',
@@ -329,6 +334,8 @@ export const LineageModal: React.FC<LineageModalProps> = ({ open, rootEntryId, o
   // Hydrated from localStorage so settings survive a reload.
   const [appearance, setAppearance] = useState<GraphAppearance>(loadStoredAppearance);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  // Genealogy Fit/Reset live in this header but operate on the GenealogyView.
+  const genControls = useRef<{ fit: () => void; reset: () => void } | null>(null);
 
   // Persist appearance changes to localStorage (debounced via the
   // natural batching of React state updates — each setAppearance flushes
@@ -431,6 +438,24 @@ export const LineageModal: React.FC<LineageModalProps> = ({ open, rootEntryId, o
             <TabButton active={tab === 'graph3d'} onClick={() => setTab('graph3d')} icon={<Workflow className="w-3 h-3" />}>
               3D graph
             </TabButton>
+            {tab === 'genealogy' && (
+              <>
+                <button
+                  onClick={() => genControls.current?.fit()}
+                  className="ml-1 flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono uppercase tracking-widest text-zinc-300 hover:text-purple-200 bg-purple-500/15 border border-purple-500/30 hover:border-purple-400/60"
+                  title="Fit the entire genealogy into the viewport"
+                >
+                  <Maximize className="w-2.5 h-2.5" /> Fit
+                </button>
+                <button
+                  onClick={() => genControls.current?.reset()}
+                  className="flex items-center px-2 py-1 rounded text-[9px] font-mono uppercase tracking-widest text-zinc-400 hover:text-zinc-200 bg-black/40 border border-white/10"
+                  title="Reset to native scale"
+                >
+                  Reset
+                </button>
+              </>
+            )}
             {tab === 'graph3d' && (
               <button
                 onClick={() => setAppearanceOpen((v) => !v)}
@@ -469,7 +494,7 @@ export const LineageModal: React.FC<LineageModalProps> = ({ open, rootEntryId, o
             <TrackTreeView root={rootEntryId} payload={perTrack} />
           )}
           {tab === 'genealogy' && libraryGraph && (
-            <GenealogyView payload={libraryGraph} appearance={appearance} />
+            <GenealogyView payload={libraryGraph} appearance={appearance} controlsRef={genControls} />
           )}
           {tab === 'graph3d' && libraryGraph && (
             <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-zinc-500">Loading 3D engine…</div>}>
@@ -500,8 +525,8 @@ export const LineageModal: React.FC<LineageModalProps> = ({ open, rootEntryId, o
           ))}
           {tab === 'genealogy' && (
             <div className="ml-auto flex items-center gap-4 normal-case">
-              <FooterRange label="Gen gap" value={appearance.colGap} min={40} max={320} step={5} onChange={(v) => setAppearance({ ...appearance, colGap: v })} />
-              <FooterRange label="Row gap" value={appearance.rowGap} min={4} max={200} step={2} onChange={(v) => setAppearance({ ...appearance, rowGap: v })} />
+              <FooterRange label="Gen gap" value={appearance.colGap} min={40} max={1200} step={5} onChange={(v) => setAppearance({ ...appearance, colGap: v })} />
+              <FooterRange label="Row gap" value={appearance.rowGap} min={4} max={800} step={2} onChange={(v) => setAppearance({ ...appearance, rowGap: v })} />
             </div>
           )}
         </div>
@@ -631,9 +656,10 @@ const Column: React.FC<{ title: string; nodes: GraphNode[]; accent: string; high
  *  flips re-render. This is what kills the per-hover lag and flash; the outer
  *  <g> (opacity/transform/handlers) stays in the parent and is cheap to diff. */
 const GenNodeBody = React.memo(function GenNodeBody({
-  n, sourceColor, strong, w, h,
+  n, title, sourceColor, strong, w, h,
 }: {
   n: GraphNode;
+  title: string;
   sourceColor: string;
   strong: boolean;
   w: number;
@@ -653,7 +679,7 @@ const GenNodeBody = React.memo(function GenNodeBody({
       />
       <rect width={w} height={4} rx={2} ry={2} fill={sourceColor} opacity={0.85} />
       <text x={10} y={24} fill="#f4f4f5" fontSize={12} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontWeight={700}>
-        {truncate(n.title ?? n.id, 21)}
+        {truncate(title, 18)}
       </text>
       <line x1={10} y1={31} x2={w - 10} y2={31} stroke="#ffffff" strokeOpacity={0.08} />
       {(
@@ -704,7 +730,12 @@ const GenEdgeBody = React.memo(function GenEdgeBody({
   );
 });
 
-const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearance }> = ({ payload, appearance }) => {
+const GenealogyView: React.FC<{
+  payload: GraphPayload;
+  appearance: GraphAppearance;
+  /** Lets the parent header drive Fit/Reset (moved out of the canvas corner). */
+  controlsRef?: React.MutableRefObject<{ fit: () => void; reset: () => void } | null>;
+}> = ({ payload, appearance, controlsRef }) => {
   // Hover lights up a node's full lineage (uniform brightness both ways).
   const [hovered, setHovered] = useState<string | null>(null);
   // Hover is smoothed: moving the cursor straight from one node to the next
@@ -742,6 +773,9 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
   }, [clearHoverIntent]);
   // Click opens the detail/analytics inspector for that node.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Viewport size — the grid uses the panel's aspect ratio to choose its row
+  // count so it fills the window (see fillRows).
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   // -- Filter to the connected subgraph --------------------------------
   const connected = useMemo(() => {
     const involved = new Set<string>();
@@ -862,82 +896,53 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
   }, [connected, nodeMap, layers, parentsOf, childrenOf]);
 
   // -- Step 3: coordinate assignment ----------------------------------
-  // Layout is LEFT→RIGHT: each generation is a vertical column of
-  // stacked sub-rows. When a generation has many nodes we split it
-  // across multiple SUB-COLUMNS (brick pattern) so a single generation
-  // doesn't run off the bottom of the modal. Alternating sub-columns
-  // are offset vertically by NODE_H/2 to stagger like the user's
-  // reference screenshot.
-  // Cards are a 4:3 landscape block (was a long 3.5:1 strip) so they can show
-  // more per-entry info without overlapping.
-  const NODE_W = 168;
-  const NODE_H = 126;
-  const COL_GAP = appearance.colGap;                          // gap between GENERATIONS
-  const SUBCOL_GAP = Math.max(8, Math.round(appearance.colGap * 0.31)); // sub-columns within a generation
-  const ROW_GAP = appearance.rowGap;                          // gap between stacked nodes in a sub-column
-  const PAD = 32;
-  const STAGGER_PX = NODE_H * 0.5;
-  const MAX_NODES_PER_SUBCOL = 14;
+  // Square cards pack into a grid that fills the panel; gaps come from sliders.
+  const ROW_GAP = appearance.rowGap;            // vertical gap between nodes
+  const SUBCOL_GAP = ROW_GAP;                    // uniform horizontal gap inside a generation
+  const GEN_GAP = appearance.colGap;            // larger gap BETWEEN generations
+
+  // Row count chosen so the layout's aspect ratio matches the panel's — that is
+  // what fills the window instead of leaving tall empty bands above and below.
+  // For N nodes in an A:1 panel with ~square cells the space-optimal grid is
+  // R = sqrt(N / A) rows × ~N/R columns (e.g. 144 nodes @ 16:9 → 9×16). Each
+  // generation packs its nodes column-major into R rows.
+  const fillRows = useMemo(() => {
+    const n = connected.nodes.length;
+    if (n <= 1) return 1;
+    const A = containerSize.w > 0 && containerSize.h > 0 ? containerSize.w / containerSize.h : 16 / 9;
+    const cellW = NODE_W + SUBCOL_GAP;
+    const cellH = NODE_H + ROW_GAP;
+    const r = Math.round(Math.sqrt((n * cellW) / (A * cellH)));
+    return Math.max(1, Math.min(n, r));
+  }, [connected.nodes.length, containerSize.w, containerSize.h, SUBCOL_GAP, ROW_GAP]);
 
   const generationLayouts = useMemo(() => {
-    type SubCol = { startX: number; ids: string[]; offset: number };
-    const layouts: Array<{
-      layer: number;
-      subCols: SubCol[];
-      genStartX: number;
-      genEndX: number;
-      colCount: number;
-    }> = [];
+    const layouts: Array<{ layer: number; ids: string[]; subColCount: number; genStartX: number; genEndX: number }> = [];
     let cursorX = PAD;
     orderedRows.forEach((row) => {
-      // Split row.ids across N sub-columns; brick-stagger alternating
-      // sub-columns by half a node height so neighbors don't form a
-      // perfect grid.
-      const nSub = Math.max(1, Math.ceil(row.ids.length / MAX_NODES_PER_SUBCOL));
-      const perSub = Math.ceil(row.ids.length / nSub);
-      const subCols: SubCol[] = [];
-      for (let s = 0; s < nSub; s += 1) {
-        const slice = row.ids.slice(s * perSub, (s + 1) * perSub);
-        subCols.push({
-          startX: cursorX + s * (NODE_W + SUBCOL_GAP),
-          ids: slice,
-          offset: s % 2 === 1 ? STAGGER_PX : 0,
-        });
-      }
-      const colCount = nSub;
+      const subColCount = Math.max(1, Math.ceil(row.ids.length / fillRows));
       const genStartX = cursorX;
-      const genEndX = cursorX + colCount * NODE_W + (colCount - 1) * SUBCOL_GAP;
-      layouts.push({ layer: row.layer, subCols, genStartX, genEndX, colCount });
-      cursorX = genEndX + COL_GAP;
+      const genEndX = genStartX + subColCount * NODE_W + (subColCount - 1) * SUBCOL_GAP;
+      layouts.push({ layer: row.layer, ids: row.ids, subColCount, genStartX, genEndX });
+      cursorX = genEndX + GEN_GAP;
     });
     return layouts;
-  }, [orderedRows, COL_GAP, SUBCOL_GAP]);
+  }, [orderedRows, fillRows, SUBCOL_GAP, GEN_GAP]);
 
   const positions = useMemo(() => {
     const pos: Record<string, { x: number; y: number }> = {};
-    // Vertical centering: find the tallest sub-column across the
-    // whole layout, then center smaller sub-columns to it.
-    let tallestPx = 0;
-    generationLayouts.forEach((g) =>
-      g.subCols.forEach((sc) => {
-        const px = sc.ids.length * NODE_H + (sc.ids.length - 1) * ROW_GAP;
-        if (px > tallestPx) tallestPx = px;
-      }),
-    );
     generationLayouts.forEach((g) => {
-      g.subCols.forEach((sc) => {
-        const colPx = sc.ids.length * NODE_H + (sc.ids.length - 1) * ROW_GAP;
-        const startY = PAD + (tallestPx - colPx) / 2 + sc.offset;
-        sc.ids.forEach((id, rowIdx) => {
-          pos[id] = {
-            x: sc.startX,
-            y: startY + rowIdx * (NODE_H + ROW_GAP),
-          };
-        });
+      g.ids.forEach((id, i) => {
+        const subcol = Math.floor(i / fillRows);
+        const r = i % fillRows;
+        pos[id] = {
+          x: g.genStartX + subcol * (NODE_W + SUBCOL_GAP),
+          y: TOP_MARGIN + PAD + r * (NODE_H + ROW_GAP),
+        };
       });
     });
     return pos;
-  }, [generationLayouts, ROW_GAP]);
+  }, [generationLayouts, fillRows, SUBCOL_GAP, ROW_GAP]);
 
   // -- Bounds for the SVG ---------------------------------------------
   const bounds = useMemo(() => {
@@ -964,6 +969,17 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
   const draggingRef = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const draggedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the panel size current so the grid can size itself to fill it.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Snap view + target together (Fit / Reset / autofit) — no animation.
   const setViewImmediate = React.useCallback((v: { x: number; y: number; k: number }) => {
@@ -1003,14 +1019,18 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
     const gw = bounds.maxX - bounds.minX;
     const gh = bounds.maxY - bounds.minY;
     if (cw <= 0 || ch <= 0 || gw <= 0 || gh <= 0) return;
-    const margin = 40;
+    // Reserve a top strip for the generation numbers, then scale to fill the
+    // rest. No 1.0 cap so a small graph zooms up; the grid layout already makes
+    // the aspect ratio match the panel, so both axes fill with little waste.
+    const margin = 12;
+    const topReserve = 34;
     const k = Math.min(
       (cw - margin) / gw,
-      (ch - margin) / gh,
-      1.0,
+      (ch - margin - topReserve) / gh,
+      4,
     );
     const x = (cw - gw * k) / 2 - bounds.minX * k;
-    const y = (ch - gh * k) / 2 - bounds.minY * k;
+    const y = topReserve + (ch - topReserve - gh * k) / 2 - bounds.minY * k;
     setViewImmediate({ x, y, k });
   }, [bounds, setViewImmediate]);
 
@@ -1019,6 +1039,13 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
     fitToView();
   }, [fitToView]);
 
+  // Publish Fit/Reset to the parent so they can live in the Lineage header.
+  useEffect(() => {
+    if (!controlsRef) return;
+    controlsRef.current = { fit: fitToView, reset: () => setViewImmediate({ x: 0, y: 0, k: 1 }) };
+    return () => { controlsRef.current = null; };
+  }, [controlsRef, fitToView, setViewImmediate]);
+
   // Esc closes the inspector.
   useEffect(() => {
     if (!selectedId) return;
@@ -1026,6 +1053,103 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedId]);
+
+  // Stems / MIDI nodes are titled "bass" / "piano" etc — show the TRACK they
+  // were derived from. Find a non-derived neighbor (the source track) and prefix
+  // its title.
+  const displayTitle = useCallback((n: GraphNode): string => {
+    const own = n.title ?? n.id;
+    const derived = (x?: GraphNode) =>
+      !!x && (x.source === 'stem' || x.source === 'midi' || x.kind === 'stem' || x.kind === 'midi');
+    if (!derived(n)) return own;
+    const nbrs = [...(parentsOf[n.id] ?? []), ...(childrenOf[n.id] ?? [])];
+    for (const id of nbrs) {
+      const src = nodeMap[id];
+      if (src && !derived(src) && src.title) return `${src.title} · ${own}`;
+    }
+    return own;
+  }, [parentsOf, childrenOf, nodeMap]);
+
+  // The whole SVG is memoized on graph/hover/selection/layout — NOT on `view`.
+  // Pan/zoom only updates the wrapper div's transform, so dragging/zooming no
+  // longer rebuilds hundreds of node/edge elements every frame (the old hot path).
+  const svgContent = useMemo(() => (
+    <svg
+      width={bounds.maxX - bounds.minX}
+      height={bounds.maxY - bounds.minY}
+      viewBox={`${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`}
+      style={{ display: 'block' }}
+    >
+      {/* Generation bands: plain alternating grey / darker-grey, full height.
+          The gen NUMBER lives in a screen-space strip above the nodes (below the
+          header) — not stamped here. */}
+      {generationLayouts.map((g) => (
+        <rect
+          key={`genbg-${g.layer}`}
+          x={g.genStartX - GEN_GAP / 2}
+          y={bounds.minY}
+          width={g.genEndX - g.genStartX + GEN_GAP}
+          height={bounds.maxY - bounds.minY}
+          fill={g.layer % 2 === 0 ? '#17171c' : '#0d0d11'}
+        />
+      ))}
+
+      {/* Edges under nodes. Hovering a node lights up its WHOLE lineage: the
+          lineage edges stay full and thicken, off-path edges fade — without
+          dimming any nodes. */}
+      {connected.edges.map((edge, i) => {
+        const from = positions[edge.from_id];
+        const to = positions[edge.to_id];
+        if (!from || !to) return null;
+        const x1 = from.x + NODE_W;
+        const y1 = from.y + NODE_H / 2;
+        const x2 = to.x;
+        const y2 = to.y + NODE_H / 2;
+        const dx = (x2 - x1) * 0.5;
+        const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+        const color = EDGE_COLOR_BY_KIND[edge.kind] ?? '#71717a';
+        const onPath = lineage.has(edge.from_id) && lineage.has(edge.to_id);
+        const eOp = !hovered ? 0.85 : onPath ? 1 : 0.07;
+        return (
+          <g key={i} opacity={eOp} style={{ transition: 'opacity 240ms ease' }}>
+            <GenEdgeBody d={d} color={color} x2={x2} y2={y2} strong={!!hovered && onPath} />
+          </g>
+        );
+      })}
+
+      {/* Nodes are never dimmed. Hovering glows the hovered node strongly and the
+          rest of its lineage softly, in each node's source color. */}
+      {connected.nodes.map((n) => {
+        const p = positions[n.id];
+        if (!p) return null;
+        const sourceColor = pickNodeColor(n);
+        const isHovered = hovered === n.id;
+        const isSelected = selectedId === n.id;
+        const inLineage = !!hovered && lineage.has(n.id);
+        const glow = isHovered
+          ? `drop-shadow(0 0 14px ${sourceColor}) drop-shadow(0 0 5px ${sourceColor})`
+          : inLineage
+            ? `drop-shadow(0 0 8px ${sourceColor})`
+            : undefined;
+        return (
+          <g
+            key={n.id}
+            transform={`translate(${p.x}, ${p.y})`}
+            style={{ cursor: 'pointer', filter: glow, transition: 'filter 160ms ease' }}
+            onMouseEnter={() => enterNode(n.id)}
+            onMouseLeave={leaveNode}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (draggedRef.current) return;
+              setSelectedId((cur) => (cur === n.id ? null : n.id));
+            }}
+          >
+            <GenNodeBody n={n} title={displayTitle(n)} sourceColor={sourceColor} strong={isHovered || isSelected || inLineage} w={NODE_W} h={NODE_H} />
+          </g>
+        );
+      })}
+    </svg>
+  ), [bounds, generationLayouts, GEN_GAP, connected, positions, lineage, hovered, selectedId, enterNode, leaveNode, displayTitle]);
 
   if (connected.nodes.length === 0) {
     return (
@@ -1106,21 +1230,22 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
       onPointerUp={onPointerUp}
       onClick={() => { if (!draggedRef.current) setSelectedId(null); }}
     >
-      <div className="absolute top-2 right-2 z-10 flex gap-1">
-        <button
-          onClick={fitToView}
-          className="text-[9px] font-mono uppercase tracking-widest text-zinc-300 hover:text-purple-200 bg-purple-500/15 border border-purple-500/30 hover:border-purple-400/60 px-2 py-1 rounded flex items-center gap-1"
-          title="Fit the entire genealogy into the viewport"
-        >
-          <Maximize className="w-2.5 h-2.5" /> Fit
-        </button>
-        <button
-          onClick={() => setViewImmediate({ x: 0, y: 0, k: 1 })}
-          className="text-[9px] font-mono uppercase tracking-widest text-zinc-400 hover:text-zinc-200 bg-black/40 border border-white/10 px-2 py-1 rounded"
-          title="Reset to native scale"
-        >
-          Reset
-        </button>
+      {/* Generation numbers — a screen-space strip just below the header that
+          tracks the canvas horizontally so each number floats above its
+          generation's column. Fit reserves the top margin so these stay clear. */}
+      <div className="absolute top-0 left-0 right-0 h-8 z-10 overflow-hidden pointer-events-none">
+        {generationLayouts.map((g) => {
+          const centerX = ((g.genStartX + g.genEndX) / 2) * view.k + view.x;
+          return (
+            <span
+              key={g.layer}
+              className="absolute top-2 -translate-x-1/2 text-[12px] font-mono font-bold tracking-widest text-zinc-300"
+              style={{ left: centerX }}
+            >
+              {g.layer}
+            </span>
+          );
+        })}
       </div>
 
       <div
@@ -1129,103 +1254,7 @@ const GenealogyView: React.FC<{ payload: GraphPayload; appearance: GraphAppearan
           transformOrigin: '0 0',
         }}
       >
-        <svg
-          width={bounds.maxX - bounds.minX}
-          height={bounds.maxY - bounds.minY}
-          viewBox={`${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`}
-          style={{ display: 'block' }}
-        >
-          {/* Per-generation background bands: a subtle, alternating shade behind
-              each generation's nodes so the gen-0 / gen-1 / … columns read as
-              distinct zones (gentle variations of the canvas color). */}
-          {generationLayouts.map((g) => (
-            <rect
-              key={`genbg-${g.layer}`}
-              x={g.genStartX - appearance.colGap / 2}
-              y={bounds.minY}
-              width={g.genEndX - g.genStartX + appearance.colGap}
-              height={bounds.maxY - bounds.minY}
-              fill={`hsl(258 38% ${3.4 + (g.layer % 2) * 2.4}%)`}
-            />
-          ))}
-
-          {/* Edges next so nodes paint on top. Flow is left-to-right:
-              parent on the left, child on the right of the next column. */}
-          {connected.edges.map((edge, i) => {
-            const from = positions[edge.from_id];
-            const to = positions[edge.to_id];
-            if (!from || !to) return null;
-            const x1 = from.x + NODE_W;          // parent's right edge
-            const y1 = from.y + NODE_H / 2;
-            const x2 = to.x;                      // child's left edge
-            const y2 = to.y + NODE_H / 2;
-            // Smooth cubic Bezier curving across the column gap.
-            const dx = (x2 - x1) * 0.5;
-            const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-            const color = EDGE_COLOR_BY_KIND[edge.kind] ?? '#71717a';
-            // Lineage hover: an edge is "on the path" when both endpoints are in
-            // the highlighted set; off-path edges fade right back.
-            const onPath = lineage.has(edge.from_id) && lineage.has(edge.to_id);
-            const eOp = !hovered ? 1 : onPath ? 1 : 0.06;
-            return (
-              <g key={i} opacity={eOp} style={{ transition: `opacity ${LINEAGE_FADE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)` }}>
-                <GenEdgeBody d={d} color={color} x2={x2} y2={y2} strong={!!hovered && onPath} />
-              </g>
-            );
-          })}
-
-          {/* Nodes. */}
-          {connected.nodes.map((n) => {
-            const p = positions[n.id];
-            if (!p) return null;
-            const sourceColor = pickNodeColor(n);
-            const onPath = lineage.has(n.id);
-            const nOp = !hovered ? 1 : lineageOpacity(onPath);
-            const isHovered = hovered === n.id;
-            const isSelected = selectedId === n.id;
-            return (
-              <g
-                key={n.id}
-                transform={`translate(${p.x}, ${p.y})`}
-                opacity={nOp}
-                style={{ cursor: 'pointer', transition: `opacity ${LINEAGE_FADE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)` }}
-                onMouseEnter={() => enterNode(n.id)}
-                onMouseLeave={leaveNode}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Suppress the click that ends a pan-drag.
-                  if (draggedRef.current) return;
-                  setSelectedId((cur) => (cur === n.id ? null : n.id));
-                }}
-              >
-                <GenNodeBody n={n} sourceColor={sourceColor} strong={isHovered || isSelected} w={NODE_W} h={NODE_H} />
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      {/* Generation column headers — each one spans its (possibly
-          multi-sub-column) generation width and follows the canvas in
-          screen-space so they don't pan/zoom with content. */}
-      <div className="absolute top-0 left-0 z-10 text-[9px] font-mono uppercase tracking-widest text-zinc-500 pointer-events-none">
-        {generationLayouts.map((g) => {
-          const centerWorldX = (g.genStartX + g.genEndX) / 2;
-          return (
-            <div
-              key={g.layer}
-              style={{
-                position: 'absolute',
-                left: centerWorldX * view.k + view.x,
-                top: 8,
-                transform: 'translateX(-50%)',
-              }}
-              className="bg-purple-500/20 border border-purple-500/40 rounded px-2 py-0.5 text-purple-200"
-            >
-              gen {g.layer}
-            </div>
-          );
-        })}
+        {svgContent}
       </div>
 
       {/* Help hint */}

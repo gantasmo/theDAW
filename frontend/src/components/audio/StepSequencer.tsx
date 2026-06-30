@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Play, Square, Layers, Target,
+  Play, Square, Target,
   Trash2, Sparkles, Plus, Activity,
   Download, Send, Music,
 } from 'lucide-react';
@@ -543,15 +543,10 @@ export const StepSequencer: React.FC = () => {
           if (key === 'bpm') setBpm(Math.round(value));
         }}
       />
-      <div className="flex items-center justify-between p-2 border-b border-white/5 bg-black/20">
+      {/* Extra right padding reserves space for the MIDI mapper pill (absolute
+          top-right) so it never covers the + / CLEAR controls. */}
+      <div className="flex items-center justify-between py-2 pl-2 pr-20 border-b border-white/5 bg-black/20">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="mono-label">Step Sequencer</span>
-          </div>
-
-          <div className="h-4 w-px bg-white/10" />
-
           <div className="flex items-center gap-4">
             <div className="flex flex-col">
               <span className="text-[7px] font-mono text-zinc-600 uppercase leading-none">Tempo (BPM)</span>

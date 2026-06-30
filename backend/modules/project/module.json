@@ -1,0 +1,10 @@
+{
+  "name": "project",
+  "label": "Project",
+  "enabled": true,
+  "icon": "Save",
+  "sidebar": false,
+  "api_prefix": "/api/project",
+  "backend": true,
+  "description": "Save/load theDAW projects as .tasmo files — hybrid MsgPack+ZIP format with optional audio embedding"
+}

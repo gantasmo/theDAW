@@ -12,6 +12,10 @@ data/library.db-*
 # Suno cloud-gen key/jobs + local session change logs (never committed)
 data/suno_api_key.json
 data/suno_jobs.json
+# Installed/built .gan plugins + their extracted runtime (regenerated on demand)
+data/plugins/
+# Machine-specific VST3 scan cache (regenerated on scan)
+backend/modules/vst/vst3_scan_cache.json
 CHANGES-LOGS/
 backend/rag_index/
 archive/
@@ -19,6 +23,8 @@ archive/
 !docs/UI/**/*.png
 !docs/guides/**/*.png
 !docs/readme/**/*.png
+# Bundled .gan plugin artwork (The Owl) — a required runtime asset, not a capture still
+!frontend/public/owl/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -152,6 +158,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Isolated runtime venv + filtered reqs for the faster-whisper transcription sidecar
+backend/modules/vocal/transcription/.whisper_venv/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -257,4 +266,7 @@ docs/*.pdf
 # Electron desktop shell — build artifacts + runtime logs (deps via node_modules/ above)
 electron-ui/out/
 electron-ui/release/
+# Bundled runtime binaries fetched at build time (uv.exe, ffmpeg.exe) — large,
+# downloaded from official sources by scripts/fetch-runtime-tools.mjs.
+electron-ui/resources/tools/
 logs/

@@ -6,7 +6,7 @@
  * separate Node bridge. Inbound Quest MIDI is republished on the global
  * `midiBus`, so every existing consumer (piano synth, VJ forwarder, MidiMapper,
  * the questControlStore) sees it exactly like a hardware controller. Return MIDI
- * (e.g. an audio-reactive feed for the GANTASMO Visor) goes back via
+ * (e.g. an audio-reactive feed for the headset MIDI Reactor) goes back via
  * `sendQuestMidi`.
  *
  * Same-origin URL so it rides the Vite dev proxy (ws:true) in development and is

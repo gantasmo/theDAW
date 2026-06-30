@@ -278,7 +278,7 @@ export const DetailsView: React.FC = () => {
         )}
         {analysis && analysis.embedded_tags_json && analysis.embedded_tags_json !== '{}' && (
           <details className="mt-2">
-            <summary className="text-[8px] font-mono uppercase tracking-widest text-zinc-500 cursor-pointer hover:text-zinc-300">
+            <summary className="text-[8px] font-mono uppercase tracking-widest text-zinc-300 cursor-pointer hover:text-purple-300">
               Embedded tags (ID3 / Vorbis / iTunes)
             </summary>
             <pre className="text-[9px] font-mono text-zinc-400 mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">
@@ -288,7 +288,7 @@ export const DetailsView: React.FC = () => {
         )}
         {analysis && analysis.ffprobe_json && analysis.ffprobe_json !== '{}' && (
           <details className="mt-1">
-            <summary className="text-[8px] font-mono uppercase tracking-widest text-zinc-500 cursor-pointer hover:text-zinc-300">
+            <summary className="text-[8px] font-mono uppercase tracking-widest text-zinc-300 cursor-pointer hover:text-purple-300">
               ffprobe summary
             </summary>
             <pre className="text-[9px] font-mono text-zinc-400 mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">

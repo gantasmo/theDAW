@@ -1,0 +1,10 @@
+{
+  "name": "akvj",
+  "label": "AKVJ Bridge",
+  "enabled": true,
+  "icon": "Camera",
+  "sidebar": false,
+  "api_prefix": "/api/akvj",
+  "backend": true,
+  "description": "Generic Unity-desktop -> VJ video bridge. A Unity app (e.g. Akvj, the Azure-Kinect depth VFX visualizer) JPEG-encodes its camera each frame and pushes the frames over a WebSocket to /api/akvj/ws/source; this module fans them out to every VJ viewer on /api/akvj/ws/view (MJPEG, no native encoder or codec license). The transport is frame-agnostic, so the same bridge serves any Unity desktop visual and could carry H.264 later without backend changes. Disable to skip it."
+}

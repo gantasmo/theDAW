@@ -5,9 +5,10 @@ import {
   LayoutGrid, List as ListIcon, Activity, Scissors, Layers, Wand2, PenLine,
   Package, Network, FileMusic, Loader2, Mic, Piano, ListOrdered,
   CheckSquare, Square, MoreHorizontal, Combine, Paintbrush, FileText, ChevronDown, Maximize2,
-  Film, Image as ImageIcon, Upload,
+  Film, Image as ImageIcon, Upload, RefreshCw, Tv2, Repeat,
 } from 'lucide-react';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../components/ui/ContextMenu';
+import { useConvertMenu } from '../convert/ConvertMenu';
 import { LineageModal } from '../components/library/LineageModal';
 import { SuggestPlaylistModal } from '../components/library/SuggestPlaylistModal';
 import { StemsRunModal, type StemsRunOptions } from '../components/library/StemsRunModal';
@@ -26,6 +27,8 @@ import { listMedia, importMedia, deleteMedia, MEDIA_ACCEPT } from '../lib/mediaL
 import { setAudioDragData } from '../lib/audioDnD';
 import { renderMidiBufferToBlob } from '../lib/midiSynth';
 import { fetchMidiBytesWithRetry, fetchBlobWithRetry } from '../lib/fetchRetry';
+import { notationArtifactUrl, notationPackUrl } from '../lib/notationClient';
+import { sendTrackToVj } from '../state/vjSetBus';
 import {
   loadMidiIntoPianoRoll,
   midiIdToSendable,
@@ -71,7 +74,7 @@ const downloadEntry = (entry: LibraryEntry, url: string) => {
 
 export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpand?: () => void }> = ({ onSwitchTab, onExpand }) => {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [subTab, setSubTab] = useState<'tracks' | 'stems' | 'midi' | 'video'>('tracks');
+  const [subTab, setSubTab] = useState<'tracks' | 'stems' | 'midi' | 'video' | 'score'>('tracks');
   const [lineageOpen, setLineageOpen] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
@@ -81,8 +84,19 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
   // automatically). Payload carries the entryId of the right-clicked
   // row so the menu's items can read it without re-finding the row.
   const entryMenu = useContextMenu<{ entryId: string }>();
+  // Second-stage "Convert to..." format picker (FFmpeg). Shared by the audio
+  // context menu below; opened at the same spot the parent menu was.
+  const convertMenu = useConvertMenu({
+    onStart: (m) => logInfo('library', m),
+    onError: (m) => logError('library', m),
+  });
   const [allStems, setAllStems] = useState<Array<Record<string, unknown>> | null>(null);
   const [allMidis, setAllMidis] = useState<Array<Record<string, unknown>> | null>(null);
+  // SCORE library tab: every notation/sheet artifact across all entries,
+  // joined to its parent track's title. Fetched lazily when the SCORE tab
+  // opens (notation is per-entry server-side, so this uses the aggregate
+  // /_all/scores route, mirroring stems/midi).
+  const [allScores, setAllScores] = useState<Array<Record<string, unknown>> | null>(null);
   // VJ video library: video + image entries live outside the audio store
   // (the default /entries list is audio-only). Fetched lazily when the
   // VIDEO tab opens and re-fetched after an import / delete.
@@ -301,7 +315,13 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           setMediaEntries([]);
         });
     }
-  }, [subTab, allStems, allMidis, mediaEntries]);
+    if (subTab === 'score' && allScores === null) {
+      void fetch('/api/library/_all/scores')
+        .then((r) => r.json())
+        .then((j) => setAllScores(j.scores || []))
+        .catch(() => setAllScores([]));
+    }
+  }, [subTab, allStems, allMidis, mediaEntries, allScores]);
 
   const refreshMedia = React.useCallback(async () => {
     try {
@@ -332,6 +352,15 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
     }
   }, []);
 
+  const refreshScores = React.useCallback(async () => {
+    try {
+      const j = await fetch('/api/library/_all/scores').then((r) => r.json());
+      setAllScores(j.scores || []);
+    } catch (e) {
+      logError('library', `Failed to refresh scores: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
   const stemsByParent = useMemo(() => {
     const map: Record<string, Array<Record<string, unknown>>> = {};
     (allStems || []).forEach((s) => {
@@ -351,6 +380,16 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
     });
     return map;
   }, [allMidis]);
+
+  const scoresByParent = useMemo(() => {
+    const map: Record<string, Array<Record<string, unknown>>> = {};
+    (allScores || []).forEach((s) => {
+      const pid = String(s.parent_id ?? '');
+      if (!map[pid]) map[pid] = [];
+      map[pid].push(s);
+    });
+    return map;
+  }, [allScores]);
 
   const entries = useLibraryStore((s) => s.entries);
   const loaded = useLibraryStore((s) => s.loaded);
@@ -661,15 +700,16 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
   const favCount = entries.filter((e) => e.favorite).length;
 
   return (
-    // h-full + overflow-y-auto on the outer scroll container ensures
-    // the Library is ALWAYS fully scrollable inside the right rail —
-    // never clipped behind the always-on Log section that pins to the
-    // rail's bottom. min-h-0 lets the flex parent collapse properly.
-    <div className="flex flex-col gap-2 h-full min-h-0 overflow-y-auto text-[11px] pb-2 px-2 pt-2">
+    // The panel itself does NOT scroll (overflow-hidden); the upper region
+    // (stats + LIBRARY header + search + filters + sub-tabs) stays pinned and
+    // ONLY the per-tab list region scrolls (see the scroll wrapper below).
+    // h-full + min-h-0 let the flex parent collapse so the fill chain works
+    // inside the right rail without clipping the always-on Log section.
+    <div className="flex flex-col gap-2 h-full min-h-0 overflow-hidden text-[11px] pb-2 px-2 pt-2">
 
       {/* Top stats strip — compact "features" version of the old
           LIBRARY ANALYSIS section. */}
-      <div className="flex items-center gap-1 flex-wrap text-[8px] font-mono uppercase tracking-widest text-zinc-500 pb-1 border-b border-white/5">
+      <div className="shrink-0 flex items-center gap-1 flex-wrap text-[8px] font-mono uppercase tracking-widest text-zinc-500 pb-1 border-b border-white/5">
         <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
           <span className="text-zinc-300">{entries.length}</span> entries
         </span>
@@ -741,7 +781,7 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
         }}
       />
 
-      <Section title="LIBRARY" icon={Database} defaultOpen={true} resizable={false} collapsible={false} maxContentHeight={null} rightNode={
+      <Section title="LIBRARY" icon={Database} defaultOpen={true} resizable={false} collapsible={false} fill maxContentHeight={null} rightNode={
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <span className="text-[8px] font-mono text-zinc-600">{entries.length} TRACKS</span>
           {/* Mic-in toggle removed per spec — the MicRecorder lives
@@ -778,7 +818,7 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           </div>
         )}
 
-        <div className="flex flex-col gap-2 mb-2">
+        <div className="shrink-0 flex flex-col gap-2 mb-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-600" />
             <input
@@ -818,10 +858,11 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           </div>
         </div>
 
-        {/* Sub-tabs: Tracks / Stems / MIDI — text-only per spec, no
-            icons; GRAPH button removed (use the LEARN tab for the
-            lineage graph instead). */}
-        <div className="flex items-center gap-1 mb-2 border-b border-white/5 pb-1">
+        {/* Sub-tabs: Tracks / Stems / MIDI / Video / Score — text-only per
+            spec, no icons; GRAPH button removed (use the LEARN tab for the
+            lineage graph instead). overflow-x-auto so the row never wraps and
+            stays a single sticky strip above the scrolling lists. */}
+        <div className="shrink-0 flex items-center gap-1 mb-2 border-b border-white/5 pb-1 overflow-x-auto no-scrollbar">
           <SubTabButton active={subTab === 'tracks'} onClick={() => setSubTab('tracks')}>
             Tracks ({entries.length})
           </SubTabButton>
@@ -834,7 +875,14 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           <SubTabButton active={subTab === 'video'} onClick={() => setSubTab('video')}>
             Video ({mediaEntries?.length ?? '…'})
           </SubTabButton>
+          <SubTabButton active={subTab === 'score'} onClick={() => setSubTab('score')}>
+            Score ({allScores?.length ?? '…'})
+          </SubTabButton>
         </div>
+
+        {/* THE scroll region: only the per-tab lists scroll; everything
+            above (stats / search / filters / sub-tab strip) stays pinned. */}
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col">
 
         {subTab === 'tracks' && (<>
         {/* Icon-only top-level actions toolbar (user request 2026-05-28).
@@ -1068,11 +1116,26 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
             onChanged={refreshMedia}
           />
         )}
+        {subTab === 'score' && (
+          <ScoreList
+            byParent={scoresByParent}
+            parentTitles={Object.fromEntries(entries.map((e) => [e.id, e.title]))}
+            placeholder={allScores === null
+              ? 'Loading scores…'
+              : 'No scores yet. Open a track → Score and use MAKE SHEET / MAKE TABS / ARRANGE.'}
+            onOpen={openScoreForEntry}
+            onRefresh={refreshScores}
+          />
+        )}
+        </div>
       </Section>
 
       {(() => {
         const ctxEntryId = entryMenu.payload?.entryId;
         if (!ctxEntryId) return null;
+        // Captured while the parent menu is open; the convert picker reopens here
+        // (onSelect runs after the parent menu has already closed itself).
+        const ctxPos = entryMenu.position;
         const isRunning = (k: 'analysis' | 'stems' | 'midi') =>
           runningKind?.id === ctxEntryId && runningKind?.kind === k;
         const items: ContextMenuItem[] = [
@@ -1128,9 +1191,34 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           { type: 'separator' },
           {
             type: 'item',
+            label: 'Download audio',
+            icon: <Download className="w-3 h-3" />,
+            hint: 'file',
+            onSelect: () => {
+              const title = entries.find((e) => e.id === ctxEntryId)?.title ?? ctxEntryId;
+              const a = document.createElement('a');
+              a.href = `/api/library/${ctxEntryId}/audio`;
+              a.download = title;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            },
+          },
+          {
+            type: 'item',
+            label: 'Convert to…',
+            icon: <Repeat className="w-3 h-3" />,
+            hint: 'ffmpeg',
+            onSelect: () => {
+              const title = entries.find((e) => e.id === ctxEntryId)?.title ?? ctxEntryId;
+              if (ctxPos) convertMenu.openAt(ctxPos, { entryId: ctxEntryId, title, kind: 'audio' });
+            },
+          },
+          {
+            type: 'item',
             label: 'Download bundle',
             icon: <Package className="w-3 h-3" />,
-            hint: '.zip',
+            hint: '.zip+scores',
             onSelect: () => {
               const a = document.createElement('a');
               a.href = `/api/library/${ctxEntryId}/bundle`;
@@ -1158,6 +1246,8 @@ export const LibraryView: React.FC<{ onSwitchTab?: (tab: string) => void; onExpa
           />
         );
       })()}
+
+      {convertMenu.element}
 
       <LineageModal
         open={lineageOpen !== null}
@@ -1458,6 +1548,11 @@ const MediaGrid: React.FC<{
 }> = ({ entries, onChanged }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const mediaMenu = useContextMenu<LibraryEntry>();
+  const convertMenu = useConvertMenu({
+    onStart: (m) => logInfo('library', m),
+    onError: (m) => logError('library', m),
+  });
 
   const onPick = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -1486,6 +1581,77 @@ const MediaGrid: React.FC<{
       logError('library', `Media delete failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+
+  const sendToVj = (entry: LibraryEntry) => {
+    sendTrackToVj({
+      entryId: entry.id,
+      label: entry.title,
+      url: entry.mediaUrl ?? entry.audioUrl,
+      kind: entry.kind === 'image' ? 'image' : 'video',
+    });
+    logInfo('library', `Sent "${entry.title}" to the VJ.`);
+  };
+
+  const ctxEntry = mediaMenu.payload;
+  const ctxPos = mediaMenu.position;
+  const menuItems: ContextMenuItem[] = ctxEntry
+    ? [
+        {
+          type: 'item',
+          label: 'Send to VJ',
+          icon: <Film className="w-3 h-3" />,
+          hint: 'live visuals',
+          onSelect: () => sendToVj(ctxEntry),
+        },
+        { type: 'separator' },
+        {
+          type: 'item',
+          label: 'Download',
+          icon: <Download className="w-3 h-3" />,
+          onSelect: () => {
+            const a = document.createElement('a');
+            a.href = ctxEntry.mediaUrl ?? ctxEntry.audioUrl;
+            a.download = ctxEntry.title;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          },
+        },
+        {
+          type: 'item',
+          label: 'Convert to…',
+          icon: <Repeat className="w-3 h-3" />,
+          hint: 'ffmpeg',
+          onSelect: () => {
+            if (ctxPos) {
+              convertMenu.openAt(ctxPos, {
+                entryId: ctxEntry.id,
+                title: ctxEntry.title,
+                kind: ctxEntry.kind ?? 'video',
+              });
+            }
+          },
+        },
+        {
+          type: 'item',
+          label: 'Copy media link',
+          icon: <FileText className="w-3 h-3" />,
+          onSelect: () => {
+            void navigator.clipboard?.writeText(
+              new URL(ctxEntry.mediaUrl ?? ctxEntry.audioUrl, window.location.origin).toString(),
+            );
+          },
+        },
+        { type: 'separator' },
+        {
+          type: 'item',
+          label: 'Delete',
+          icon: <Trash2 className="w-3 h-3" />,
+          danger: true,
+          onSelect: () => { void onRemove(ctxEntry); },
+        },
+      ]
+    : [];
 
   return (
     <div className="px-1">
@@ -1526,24 +1692,46 @@ const MediaGrid: React.FC<{
       ) : (
         <div className="grid grid-cols-2 gap-2">
           {entries.map((entry) => (
-            <MediaCard key={entry.id} entry={entry} onRemove={() => onRemove(entry)} />
+            <MediaCard
+              key={entry.id}
+              entry={entry}
+              onRemove={() => onRemove(entry)}
+              onSendToVj={() => sendToVj(entry)}
+              onContextMenu={(e) => mediaMenu.open(e, entry)}
+            />
           ))}
         </div>
       )}
+
+      <ContextMenu
+        position={mediaMenu.position}
+        onClose={mediaMenu.close}
+        items={menuItems}
+        title={ctxEntry ? ctxEntry.title : ''}
+      />
+      {convertMenu.element}
     </div>
   );
 };
 
-const MediaCard: React.FC<{ entry: LibraryEntry; onRemove: () => void }> = ({ entry, onRemove }) => {
+const MediaCard: React.FC<{
+  entry: LibraryEntry;
+  onRemove: () => void;
+  onSendToVj: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}> = ({ entry, onRemove, onSendToVj, onContextMenu }) => {
   const isVideo = entry.kind === 'video';
   const mediaUrl = entry.mediaUrl ?? entry.audioUrl;
   return (
     <div
       className="group relative rounded-lg overflow-hidden border border-white/8 bg-black/40"
       draggable
+      onContextMenu={onContextMenu}
+      title="Drag onto the VJ tab to add it · right-click for actions"
       onDragStart={(e) => {
-        // Stable URL so a drop target (VJ bridge in B3, or any consumer)
-        // can reference the persisted file rather than a session blob.
+        // Stable URL so a drop target (the VJ tab's drop zone, or any
+        // consumer) can reference the persisted file rather than a session blob.
+        e.dataTransfer.effectAllowed = 'copy';
         e.dataTransfer.setData('text/uri-list', mediaUrl);
         e.dataTransfer.setData(
           'application/x-thedaw-media',
@@ -1587,23 +1775,49 @@ const MediaCard: React.FC<{ entry: LibraryEntry; onRemove: () => void }> = ({ en
           </span>
         )}
       </div>
+
+      {/* Action buttons — top-right corner so they never sit under the
+          duration badge (bottom-right). Hover-revealed; dark pill so the
+          icons read over any thumbnail. */}
+      <div className="absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/70 px-0.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onSendToVj(); }}
+          aria-label={`Send ${entry.title} to the VJ`}
+          title="Send to VJ"
+          className="p-0.5 rounded text-fuchsia-300 hover:text-fuchsia-100 hover:bg-white/10"
+        >
+          <Tv2 size={12} />
+        </button>
+        <a
+          href={mediaUrl}
+          download={entry.title}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Download ${entry.title}`}
+          title="Download"
+          className="p-0.5 rounded text-zinc-300 hover:text-white hover:bg-white/10"
+        >
+          <Download size={12} />
+        </a>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          aria-label={`Remove ${entry.title} from the media library`}
+          className="p-0.5 rounded text-zinc-300 hover:text-red-400 hover:bg-white/10"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+
       {isVideo && entry.duration > 0 && (
         <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-[8px] font-mono text-zinc-300">
           {formatDuration(entry.duration)}
         </span>
       )}
 
-      {/* Footer: title + remove */}
-      <div className="flex items-center justify-between gap-1 px-1.5 py-1">
-        <span className="text-[9px] text-zinc-300 truncate" title={entry.title}>{entry.title}</span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remove ${entry.title} from the media library`}
-          className="shrink-0 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 size={12} />
-        </button>
+      {/* Footer: title */}
+      <div className="px-1.5 py-1">
+        <span className="text-[9px] text-zinc-300 truncate block" title={entry.title}>{entry.title}</span>
       </div>
     </div>
   );
@@ -1945,6 +2159,108 @@ const SubTabList: React.FC<SubTabListProps> = ({ byParent, parentTitles, kind, p
         items={menuItems}
         title={menuTitle}
       />
+    </div>
+  );
+};
+
+
+/* ═══════════════════════════════ ScoreList ═══════════════════════════════ */
+
+const SCORE_KIND_LABEL: Record<string, string> = {
+  musicxml: 'Sheet',
+  alphatex: 'Tab',
+  abc: 'ABC',
+  pdf: 'PDF',
+  svg: 'SVG',
+  guitarpro: 'GP',
+};
+
+/** SCORE library tab: every sheet / tab / arrangement across the library,
+ *  grouped by parent track. A row opens the Score viewer for that track and
+ *  downloads the artifact (the backend names the file after the originating
+ *  song). Scores are created elsewhere (the bottom Score panel), so a manual
+ *  refresh is offered since this list is cached on first open. */
+const ScoreList: React.FC<{
+  byParent: Record<string, Array<Record<string, unknown>>>;
+  parentTitles: Record<string, string>;
+  placeholder: string;
+  onOpen: (entryId: string) => void;
+  onRefresh: () => void | Promise<void>;
+}> = ({ byParent, parentTitles, placeholder, onOpen, onRefresh }) => {
+  const parentIds = Object.keys(byParent);
+
+  const downloadScore = (id: string, kind: string) => {
+    const a = document.createElement('a');
+    // Sheets come down as a MusicXML + PDF zip; tabs/others as the raw file.
+    a.href = kind === 'musicxml' ? notationPackUrl(id) : notationArtifactUrl(id);
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const refreshBtn = (
+    <div className="flex justify-end">
+      <button
+        onClick={() => void onRefresh()}
+        className="p-1 rounded text-zinc-500 hover:text-purple-300"
+        title="Refresh scores"
+        aria-label="Refresh scores"
+      >
+        <RefreshCw className="w-3 h-3" />
+      </button>
+    </div>
+  );
+
+  if (parentIds.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        {refreshBtn}
+        <p className="text-[10px] text-zinc-500 italic py-4 text-center">{placeholder}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {refreshBtn}
+      {parentIds.map((pid) => (
+        <div key={pid} className="border border-white/5 rounded p-2 bg-white/3">
+          <div className="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-1 truncate">
+            {parentTitles[pid] ?? pid}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {byParent[pid].map((row, idx) => {
+              const id = String(row.id ?? '');
+              const kind = String(row.kind ?? '');
+              const label = SCORE_KIND_LABEL[kind] ?? kind.toUpperCase();
+              const engine = String(row.engine ?? '');
+              return (
+                <div
+                  key={id || idx}
+                  className="group flex items-center gap-1 text-[10px] font-mono text-zinc-300 px-1 py-0.5 hover:bg-white/5 rounded cursor-pointer"
+                  onClick={() => onOpen(pid)}
+                  title="Open in the Score viewer"
+                >
+                  <span className="shrink-0 px-1 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[8px] font-black uppercase tracking-widest">
+                    {label}
+                  </span>
+                  <span className="truncate flex-1 min-w-0">{engine || kind}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => { e.stopPropagation(); downloadScore(id, kind); }}
+                    title={kind === 'musicxml' ? 'Download MusicXML + PDF' : 'Download score'}
+                    aria-label={`Download ${label} score`}
+                  >
+                    <Download className="w-2.5 h-2.5 text-zinc-500 hover:text-white" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

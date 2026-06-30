@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -28,6 +29,11 @@ from .weave import (
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Cap on how many ffmpeg / librosa workers run at once during a mashup. ffmpeg
+# is itself multi-threaded, so a small cap parallelizes the per-clip decode /
+# stretch / detect without thrashing the box.
+_MASHUP_CONCURRENCY = 3
 
 
 @router.get("/probe")
@@ -222,44 +228,62 @@ async def chimera_mashup(
     with tempfile.TemporaryDirectory(prefix="chimera_") as tmpdir:
         tmp = Path(tmpdir)
 
-        norm_paths: list[Path] = []
+        n_files = len(files)
+        sem = asyncio.Semaphore(max(1, min(_MASHUP_CONCURRENCY, n_files)))
+
+        # 1) Read each upload to disk (sequential async I/O — fast), then
+        #    decode/normalize them CONCURRENTLY (each ffmpeg call runs in a
+        #    worker thread so they no longer block the event loop one-by-one).
+        raw_info: list[tuple[Path, str]] = []
         for i, upload in enumerate(files):
             suffix = Path(upload.filename or "").suffix or ".bin"
             raw_path = tmp / f"raw_{i}{suffix}"
             with open(raw_path, "wb") as f:
                 while chunk := await upload.read(1 << 20):
                     f.write(chunk)
+            raw_info.append((raw_path, upload.filename or f"clip {i}"))
 
-            norm_path = tmp / f"norm_{i}.wav"
-            try:
-                normalize_to_target(
-                    raw_path, norm_path, target_sr=out_sr, target_channels=2
-                )
-            except RuntimeError as e:
-                raise HTTPException(
-                    400, f"could not decode {upload.filename!r}: {e}"
-                ) from e
-            norm_paths.append(norm_path)
+        norm_paths: list[Path] = [tmp / f"norm_{i}.wav" for i in range(n_files)]
 
-        # Use client-supplied analysis (from analyze-on-add) when present and
-        # only run the detector on clips without it — duration always comes
-        # from the normalized file on disk, never the client.
-        detections = []
-        for i, p in enumerate(norm_paths):
+        async def _normalize(i: int) -> None:
+            async with sem:
+                try:
+                    await asyncio.to_thread(
+                        normalize_to_target,
+                        raw_info[i][0],
+                        norm_paths[i],
+                        target_sr=out_sr,
+                        target_channels=2,
+                    )
+                except RuntimeError as e:
+                    raise HTTPException(
+                        400, f"could not decode {raw_info[i][1]!r}: {e}"
+                    ) from e
+
+        await asyncio.gather(*(_normalize(i) for i in range(n_files)))
+
+        # 2) Use client-supplied analysis (from analyze-on-add) when present and
+        #    only run the detector on clips without it, CONCURRENTLY — duration
+        #    always comes from the normalized file on disk, never the client.
+        detections: list[dict[str, Any]] = [None] * n_files  # type: ignore[list-item]
+
+        async def _detect(i: int) -> None:
+            p = norm_paths[i]
             ka = known_list[i]
             if ka is not None:
                 info = sf.info(str(p))
-                detections.append(
-                    {
-                        "bpm": float(ka["bpm"]),
-                        "beats": [float(b) for b in ka["beats"]],
-                        "confidence": 1.0,
-                        "samplerate": int(info.samplerate),
-                        "duration_sec": float(info.frames) / float(info.samplerate),
-                    }
-                )
+                detections[i] = {
+                    "bpm": float(ka["bpm"]),
+                    "beats": [float(b) for b in ka["beats"]],
+                    "confidence": 1.0,
+                    "samplerate": int(info.samplerate),
+                    "duration_sec": float(info.frames) / float(info.samplerate),
+                }
             else:
-                detections.append(detect_tempo_and_beats(p))
+                async with sem:
+                    detections[i] = await asyncio.to_thread(detect_tempo_and_beats, p)
+
+        await asyncio.gather(*(_detect(i) for i in range(n_files)))
         detected_bpms: list[Optional[float]] = [d["bpm"] for d in detections]
 
         target_bpm_used, target_bpm_source = _resolve_target_bpm(
@@ -268,20 +292,29 @@ async def chimera_mashup(
         if target_bpm_source == "fallback":
             warnings.append("No clip had a detectable BPM; using 120 as fallback.")
 
-        stretched_paths: list[Path] = []
-        stretch_meta: list[dict[str, Any]] = []
-        for i, (norm_path, det) in enumerate(zip(norm_paths, detections)):
+        # 3) Time-stretch every clip to the target BPM, CONCURRENTLY.
+        stretched_paths: list[Path] = [
+            tmp / f"stretched_{i}.wav" for i in range(n_files)
+        ]
+        stretch_meta: list[dict[str, Any]] = [None] * n_files  # type: ignore[list-item]
+
+        async def _stretch(i: int) -> None:
+            det = detections[i]
             if det["bpm"] is None or det["bpm"] <= 0:
                 ratio = 1.0
             else:
                 ratio = target_bpm_used / det["bpm"]
-            out_path = tmp / f"stretched_{i}.wav"
-            try:
-                result = stretch_audio(norm_path, out_path, ratio)
-            except RuntimeError as e:
-                raise HTTPException(500, f"stretch failed for clip {i}: {e}") from e
-            stretched_paths.append(out_path)
-            stretch_meta.append(result)
+            async with sem:
+                try:
+                    stretch_meta[i] = await asyncio.to_thread(
+                        stretch_audio, norm_paths[i], stretched_paths[i], ratio
+                    )
+                except RuntimeError as e:
+                    raise HTTPException(500, f"stretch failed for clip {i}: {e}") from e
+
+        await asyncio.gather(*(_stretch(i) for i in range(n_files)))
+
+        for i, result in enumerate(stretch_meta):
             if result["engine"] == "atempo" and tools["librubberband"]:
                 warnings.append(
                     f"Clip {i}: rubberband unavailable at stretch time; used atempo."

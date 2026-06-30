@@ -19,6 +19,9 @@ interface PathInputProps {
   inline?: boolean;
   /** Move the description into a hover tooltip instead of a visible paragraph. */
   descriptionHover?: boolean;
+  /** OpenFileDialog filter for kind='file' (e.g. project/audio types). Defaults
+   *  to all files on the backend when omitted. */
+  fileFilter?: string;
 }
 
 export const PathInput: React.FC<PathInputProps> = ({
@@ -36,6 +39,7 @@ export const PathInput: React.FC<PathInputProps> = ({
   className = '',
   inline = false,
   descriptionHover = false,
+  fileFilter,
 }) => {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +49,10 @@ export const PathInput: React.FC<PathInputProps> = ({
     setPicking(true);
     setError(null);
     try {
-      const result = kind === 'folder' ? await pickFolder() : await pickFile();
+      const result =
+        kind === 'folder'
+          ? await pickFolder()
+          : await pickFile(fileFilter ? { filter: fileFilter } : undefined);
       if (!result.cancelled && result.path) onChange(result.path);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

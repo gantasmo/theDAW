@@ -1,12 +1,15 @@
 /**
- * Floating Design-Mode toolbar (generalized from the DJ DesignToolbar). Out of
- * Design Mode it's a single "Edit Layout" button; in Design Mode it offers Add
- * Panel, Copy (layout JSON to clipboard, to bake a new default), Reset, and
- * Done. Reads/writes the surface's own store instance through context.
+ * Floating Design-Mode toolbar (generalized from the DJ DesignToolbar). Entering
+ * Design Mode is now driven by the global top-header "Edit Layout" button, so
+ * out of Design Mode this renders nothing. In Design Mode it offers Add Panel,
+ * Copy (layout JSON to clipboard, to bake a new default), Reset, and Done.
+ * Reads/writes the surface's own store instance through context; Done clears the
+ * global edit-layout flag (the single source of truth) which mirrors back here.
  */
 import React, { useState } from 'react';
-import { LayoutGrid, Plus, Copy, RotateCcw, Check, Move, Undo2, Redo2, Save, Crosshair, FlipHorizontal2 } from 'lucide-react';
+import { Plus, Copy, RotateCcw, Check, Move, Undo2, Redo2, Save, Crosshair, FlipHorizontal2 } from 'lucide-react';
 import { useSurface } from './surfaceContext';
+import { useEditLayoutStore } from '../../state/editLayoutStore';
 
 export const SurfaceToolbar: React.FC = () => {
   const { store } = useSurface();
@@ -33,17 +36,7 @@ export const SurfaceToolbar: React.FC = () => {
     }
   };
 
-  if (!design) {
-    return (
-      <button
-        onClick={() => store.getState().setDesignMode(true)}
-        title="Edit Layout — drag controls and panels to move them, drag borders to resize"
-        className="absolute top-1.5 right-2 z-60 flex items-center gap-1 px-2 py-1 rounded border border-white/10 bg-black/60 text-zinc-400 hover:text-purple-200 hover:border-purple-400/50 text-[9px] font-black uppercase tracking-widest transition-colors"
-      >
-        <LayoutGrid className="w-3 h-3" /> Edit Layout
-      </button>
-    );
-  }
+  if (!design) return null;
 
   return (
     <div className="absolute top-1.5 right-2 z-60 flex items-center gap-1.5 px-2 py-1 rounded border border-purple-400/50 bg-[#150f22]/95 shadow-xl">
@@ -123,7 +116,7 @@ export const SurfaceToolbar: React.FC = () => {
         <RotateCcw className="w-3 h-3" /> Reset
       </button>
       <button
-        onClick={() => store.getState().setDesignMode(false)}
+        onClick={() => useEditLayoutStore.getState().setActive(false)}
         className="flex items-center gap-1 px-2 py-0.5 rounded border border-emerald-400/50 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 text-[8px] font-black uppercase tracking-wider"
         title="Exit Design Mode"
       >

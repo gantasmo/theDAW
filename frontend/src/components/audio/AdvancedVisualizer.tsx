@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Zap, Target, Settings2, Maximize2 } from 'lucide-react';
 import { getAnalyser, getEngineCtx, samplePeakAndRMS } from '../../state/playerStore';
+import { QuantumLatticeView } from './QuantumLatticeView';
 
-type Mode = 'oscilloscope' | 'spectrum' | 'radial';
+type Mode = 'oscilloscope' | 'spectrum' | 'radial' | 'quantum';
 
 const OVERLAY_RESERVE_HEIGHT = 18;
 
@@ -95,7 +96,7 @@ export const AdvancedVisualizer: React.FC = () => {
           ctx2d.fillStyle = grad;
           ctx2d.fillRect(x + 0.5, floor - barH, Math.max(1, barWidth - 1), barH);
         }
-      } else {
+      } else if (mode === 'radial') {
         analyser.getByteFrequencyData(freqBuf);
         const cx = w / 2;
         const cy = h / 2;
@@ -134,8 +135,8 @@ export const AdvancedVisualizer: React.FC = () => {
     return () => cancelAnimationFrame(rafRef.current);
   }, [mode]);
 
-  const modeLabels: Record<Mode, string> = { oscilloscope: 'O', spectrum: 'S', radial: 'R' };
-  const modeTitles: Record<Mode, string> = { oscilloscope: 'Oscilloscope', spectrum: 'Spectrum', radial: 'Radial' };
+  const modeLabels: Record<Mode, string> = { oscilloscope: 'O', spectrum: 'S', radial: 'R', quantum: 'Q' };
+  const modeTitles: Record<Mode, string> = { oscilloscope: 'Oscilloscope', spectrum: 'Spectrum', radial: 'Radial', quantum: 'Quantum Lattice' };
 
   return (
     <div className="hardware-card h-full flex flex-col bg-black/40 relative overflow-hidden group">
@@ -152,9 +153,12 @@ export const AdvancedVisualizer: React.FC = () => {
       <div ref={wrapperRef} className="flex-1 min-h-0 relative">
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-        {/* O / S / R mode buttons — vertical column, top-left */}
+        {/* Quantum Lattice WebGL mode overlays the 2D canvas when selected */}
+        {mode === 'quantum' && <QuantumLatticeView />}
+
+        {/* O / S / R / Q mode buttons — vertical column, top-left */}
         <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-          {(['oscilloscope', 'spectrum', 'radial'] as const).map((m) => (
+          {(['oscilloscope', 'spectrum', 'radial', 'quantum'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}

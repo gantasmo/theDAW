@@ -45,6 +45,7 @@ import {
   profileKindCount,
   detectProfileFromNames,
   GANTASMO_WORLDS_COLLIDE_ID,
+  AUDIMA_SWAY_ID,
   type ControlKind,
 } from '../../state/controllerProfiles';
 import { useEditorStore } from '../../state/editorStore';
@@ -961,6 +962,13 @@ export const SlidePanel: React.FC = () => {
               <option value={p.id}>{p.name} · {profileControlCount(p)}</option>
             </optgroup>
           ))}
+          {/* Audima Sway — pinned second so the 6-dimension motion surface sits
+              one click below the GANTASMO twin. */}
+          {CONTROLLER_PROFILES.filter((p) => p.id === AUDIMA_SWAY_ID).map((p) => (
+            <optgroup key="sway" label="SWAY">
+              <option value={p.id}>{p.name} · {profileControlCount(p)}</option>
+            </optgroup>
+          ))}
           {learnedProfiles.length > 0 && (
             <optgroup label="LEARNED (your devices)">
               {learnedProfiles
@@ -973,7 +981,7 @@ export const SlidePanel: React.FC = () => {
           )}
           {(['dj', 'pad', 'mixer', 'keys', 'generic'] as const).map((cat) => {
             const inCat = CONTROLLER_PROFILES
-              .filter((p) => (p.category ?? 'generic') === cat && p.id !== GANTASMO_WORLDS_COLLIDE_ID)
+              .filter((p) => (p.category ?? 'generic') === cat && p.id !== GANTASMO_WORLDS_COLLIDE_ID && p.id !== AUDIMA_SWAY_ID)
               .sort((a, b) => a.name.localeCompare(b.name)); // alpha within each group
             if (inCat.length === 0) return null;
             return (

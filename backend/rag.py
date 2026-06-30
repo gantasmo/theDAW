@@ -20,6 +20,11 @@ RAG_INDEX_DIR = PROJECT_ROOT / "backend" / "rag_index"
 
 DOC_PATHS = [
     PROJECT_ROOT / "CLAUDE.md",
+    # User-facing project overview for the assistant. Lives under docs/ so it is
+    # shipped in the packaged desktop build (which bundles docs/**/*.md but not
+    # the repo-root CLAUDE.md), keeping the assistant's project framing intact
+    # without exposing internal dev guidance to end users.
+    PROJECT_ROOT / "docs" / "guides" / "about-thedaw.md",
     PROJECT_ROOT / "docs" / "SHOWCASE.md",
     PROJECT_ROOT / "docs" / "USER_GUIDE.md",
     PROJECT_ROOT / "docs" / "DESIGN_PRINCIPLES.md",

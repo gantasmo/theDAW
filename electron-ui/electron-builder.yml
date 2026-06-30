@@ -1,14 +1,87 @@
 appId: com.gantasmo.thedaw
 productName: theDAW
+copyright: Copyright (c) 2026 GANTASMO
 directories:
   output: release
   buildResources: resources
-win:
-  target: nsis
-mac:
-  target: dmg
-linux:
-  target: AppImage
+
+# The Electron shell itself ships only the built renderer + main/preload bundles.
+# Everything Python lives beside the app under resources/ (see extraResources)
+# and is installed on first launch by the bundled uv. Keeping the Python source
+# out of the asar keeps it on a real filesystem path that uv + the spawned
+# backend can read and write (the venv is created next to pyproject.toml).
 files:
   - out/**/*
-  - "!node_modules"
+
+# Thin-bootstrap payload. None of this is a virtualenv or model weights; it is
+# the source tree plus the two native binaries the first-run bootstrap needs.
+# uv pulls a managed CPython 3.10 and every dependency itself, so the target
+# machine needs nothing pre-installed.
+extraResources:
+  - from: ../backend
+    to: python/backend
+    filter:
+      - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.py[cod]"
+      - "!rag_index/**"
+  - from: ../stable_audio_3
+    to: python/stable_audio_3
+    filter:
+      - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.py[cod]"
+  - from: ../pyproject.toml
+    to: python/pyproject.toml
+  - from: ../uv.lock
+    to: python/uv.lock
+  - from: ../.python-version
+    to: python/.python-version
+  - from: ../README.md
+    to: python/README.md
+  - from: ../docs
+    to: python/docs
+    filter:
+      - "**/*.md"
+  - from: ../frontend/public/USER_GUIDE.md
+    to: python/frontend/public/USER_GUIDE.md
+  # uv.exe + ffmpeg.exe, downloaded by scripts/fetch-runtime-tools.mjs before
+  # the build. Prepended to the spawned backend's PATH at runtime.
+  - from: resources/tools
+    to: tools
+    filter:
+      - "**/*"
+  # Explorer right-click "Convert with theDAW" helper (registered by
+  # resources/installer.nsh). Lands at <install>\resources\convert-with-thedaw.ps1
+  # and resolves the bundled ffmpeg at .\tools\ffmpeg.exe.
+  - from: resources/convert-with-thedaw.ps1
+    to: convert-with-thedaw.ps1
+
+win:
+  target:
+    - nsis
+  # artifactName keeps the installer name stable for release uploads.
+  artifactName: theDAW-Setup-${version}.${ext}
+
+nsis:
+  # Per-user install (no elevation). Lands under %LOCALAPPDATA%\Programs\theDAW,
+  # which is writable, so uv can build the venv there and the backend can write
+  # its data/ tree without admin rights.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # The first launch downloads ~3-5 GB of Python + CUDA wheels and the model
+  # weights, so the uninstaller leaves user data in place unless asked.
+  deleteAppDataOnUninstall: false
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.music
+
+linux:
+  target:
+    - AppImage
+  category: Audio

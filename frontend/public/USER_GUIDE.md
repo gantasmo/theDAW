@@ -571,7 +571,7 @@ A floating **Edit Layout** control turns on Design Mode. In Design Mode, panels 
 
 ### Purpose
 
-The VJ tab (`VJView`) embeds the GANTASMO-LIVE-VJ visual engine as a live, audio-reactive instrument. The backend `vj` module serves the engine lazily as a production build (it rebuilds automatically when the engine's source is newer than the build, and `theDAW_VJ_DEV=1` forces the HMR dev server for engine development), and the tab fetches its live URL from `/api/vj/url`, so the port is never hardcoded. First launch runs `npm install` plus a one-time build in the VJ project and can take a minute; later launches are fast.
+The VJ tab (`VJView`) embeds VJ-9000 (the GANTASMO-LIVE-VJ engine) as a live, audio-reactive instrument. Its default visual is a glowing 3D reactive terrain that displaces and lights with the bass, mid, high, and volume bands derived from the audio. The backend `vj` module serves the engine lazily as a production build (it rebuilds automatically when the engine's source is newer than the build, and `theDAW_VJ_DEV=1` forces the HMR dev server for engine development), and the tab fetches its live URL from `/api/vj/url`, so the port is never hardcoded. First launch runs `npm install` plus a one-time build in the VJ project and can take a minute; later launches are fast.
 
 ### 10.1 Inputs
 
@@ -600,6 +600,9 @@ Beyond the browser-camera path above, the VJ source selector offers sources the 
 - **STITCH** streams only the Quest's clean stitched passthrough (the real-world composite, without the performer's overlay) as a separate source. See §34.2.
 - **Cymatics** renders a procedural, audio-reactive cymatics scene as the source, with plate, orb, landscape, sphere, and plasma modes, mixable against the other sources on the source crossfader.
 - **Screen or window capture** picks a monitor or an application window through the browser's `getDisplayMedia` and feeds it as the source.
+- **Shader** runs a generic GLSL source on the atzedent uniform convention with five scenes: a Menger flythrough plus Mandelbulb, Julia, Mandelbox, and kaleidoscopic-IFS fractals. Each scene exposes editable, audio-mappable float params and a Hue control, and a global Material picker reshades it through eight styles (Neon, Chrome, Matte, Glass, Gold, Iridescent, Velvet, Plasma). It mixes against the other sources on the crossfader.
+- **Depth cloud** renders a live point cloud from the `akvj` bridge (§10.3), which fans an Azure-Kinect depth-and-color stream from a Unity app into the engine.
+- **Spectra** is an audio-reactive generative source, distinct from the §16.1 spectral analyzer, mixable on the source crossfader.
 
 ### 10.2 Pop-out and Mobile
 
@@ -614,6 +617,7 @@ The tab wires several bridges to the engine through `postMessage`:
 - **Control sync**: the engine publishes its control manifest, which appears as glass-capsule faders in the SLIDE bottom-panel tab. Moving a SLIDE fader updates the engine, and a move inside the engine updates SLIDE, in both directions.
 - **Track metadata**: the current track title, model, source, duration, and play state are posted so the engine can sync its own readouts.
 - **Visibility**: when the tab is hidden, the engine parks its render loop, so a warm but backgrounded VJ tab costs close to 0% GPU.
+- **akvj depth**: the `akvj` module (`/api/akvj`, with `/ws/source` and `/ws/view` WebSockets) fans an Azure-Kinect depth-and-color stream from a Unity app into the engine, feeding the Depth cloud source in §10.1.
 
 ### 10.4 Export
 
@@ -626,6 +630,18 @@ A WebRTC signaling module (`/api/broadcast`) backs a live watch-link of the VJ o
 ### 10.6 Autopilot visual effects
 
 The VJ engine includes an Autopilot that layers audio-reactive visual effects, such as feedback wash, glitch, and waveform warp, each with its own probability, under a single Autopilot toggle. Turning it on lets the visuals evolve hands-free in time with the audio.
+
+### 10.7 Source banks
+
+Any source snapshots into a bank slot for instant recall during a set. Clicking an empty slot opens a place menu (clip, source, or local file) anchored at the click point, and the bank grid recalls a slot with one click.
+
+### 10.8 Effect chain
+
+Separate from Autopilot (§10.6), the operator stacks effects on the output as a composable, source-agnostic, MIDI-mappable chain, with a SOLO mode that isolates one effect for setup. The families are color and optics (hue, saturation, contrast, invert, edge detect), geometry (mirror, kaleidoscope, radial mirror, tiling, equirectangular 360, stereo split), generative (reaction-diffusion, SDF raymarch portal, isolines, fluid displacement), depth (fog, tilt-shift, plane splits, depth-edge outline), distortion and glitch (feedback, RGB split, chromatic aberration, strobe, pixelate, wave warp), time (speed, reverse, echo trails, slit-scan), and post (scanlines, vignette, CRT). The ASCII effect is a post pass that renders the output through a glyph atlas.
+
+### 10.9 BPM sync and pose control
+
+The visuals lock to a BPM taken from the audio bridge or a DJ deck, driving time-based effects and Autopilot transitions in tempo. A Sway pose control bus drives mapped parameters from camera-tracked motion, alongside the MIDI and SLIDE control paths in §10.3.
 
 ![VJ tab panel loading state](screenshots/08-vj-tab-loading__vj-panel.png)
 
@@ -784,7 +800,7 @@ The LEARN tab visualizes this graph in 2D and 3D, with appearance options, fit a
 
 ### 13.6 Stem Separation
 
-The stems module mounts at `/api/stems` and runs a sidecar-backed separation pipeline. Library entries can split into 2, 4, 6, or 12 stems; progress is persisted in the library database, and stem audio is served through `GET /api/library/stems/{stem_id}/audio` for editor, init, and inpaint routing.
+The stems module mounts at `/api/stems` and runs a sidecar-backed separation pipeline. The 2, 4, and 6-stem splits run **Demucs** (`htdemucs`), the same engine behind the DJ live stems (§9.4); the 12-stem mode layers **LARSNET** on the Demucs base to separate the drum bus into kick, snare, toms, hi-hat, and cymbals, and it needs pretrained `.pth` weights (`pretrained_larsnet_models/`), so 12-stem can be unavailable when those are missing. Progress is persisted in the library database, and stem audio is served through `GET /api/library/stems/{stem_id}/audio` for editor, init, and inpaint routing. The same engine is also packaged as a standalone drop-in backend in `integration-package/`.
 
 Important endpoints:
 - `GET /api/stems/probe` checks tool availability without spawning the sidecar.
@@ -816,6 +832,10 @@ Important endpoints:
 - `GET /api/library/media/{id}/thumb` serves the poster thumbnail.
 
 This media library backs the VJ tab: clips loaded there are saved as stable library entries, so a VJ cue survives a reload, and alpha-capable media can drive overlays.
+
+### 13.9 Format Conversion
+
+The `convert` module (`/api/convert`) performs generic FFmpeg format conversion behind the Library's right-click **Convert to...**: audio to audio, video to video, video-to-audio extraction, video to GIF, and image to image. It is distinct from the MIDI conversion in §13.7, which transcribes audio into notes.
 
 ### 13.9 Library Analysis
 
@@ -1501,6 +1521,8 @@ set_lora_strength(pipe.model, 0.5)                  # all LoRAs
 set_lora_strength(pipe.model, 1.0, lora_index=0)    # first LoRA only
 ```
 
+Beyond runtime strength, each LoRA can be gated to a sigma interval, so it acts only across part of the denoising trajectory, and filtered to a subset of layers, so it acts only on specific blocks. Adapters stack additively. The exact parameters are in [workflows/lora.md](workflows/lora.md).
+
 ### 20.6 Advanced Generation Parameters
 
 ```python
@@ -1540,6 +1562,8 @@ Nothing downloads at startup. The backend boots without touching a checkpoint, a
 1. **Local model folders** — any directory listed in `local_models.txt` at the repo root or in the `SA3_LOCAL_MODELS_DIR` environment variable, plus a `models/` folder in the repo if present. Each folder holds subfolders named after the HF repo (for example `stable-audio-3-medium/`).
 2. **The Hugging Face cache** — anything a previous session already downloaded.
 3. **A one-time download** from the model's HF repo, only when neither local source has the files.
+
+The one-time download runs through the `modeldl` module (`/api/models`), which streams the weights with a live progress registry surfaced in the Settings download dock, so a first fetch shows progress instead of blocking silently.
 
 The **Models** section sits directly below the pinned Restart/Shutdown controls in Settings, with Layout Settings right under it and the backend modules as compact tiles below that. It puts the whole model story on screen:
 
@@ -1921,7 +1945,7 @@ The sidecar's `/health` carries an identity field (`app: "mrt2-extended"`), and 
 
 theDAW ships the first non-Mac port of Magenta RealTime 2, vendored as the `sidecars/magenta-rt2-nvidia` submodule. A build-system guard in upstream MRT2's CMake locks the C++ inference engine to macOS through the line `if(NOT APPLE) FATAL_ERROR "magenta-rt-v2's C++ build is macOS-only"`. The port's `port/patch_cmake.py` removes that guard, with an anchor check that aborts if upstream drifts, and flips the related switches. The port works because the inference core uses only the portable MLX C++ API, MLX now provides a native CUDA backend (`-DMLX_BUILD_CUDA=ON`), and the single piece of Apple-specific code is an autorelease-pool shim already gated behind `#if defined(__APPLE__)`.
 
-The result runs on Windows through WSL2 with NVIDIA, on native Linux with NVIDIA, and on RunPod cloud GPUs, which extends MRT2 to platforms beyond its macOS origin. The shipped runtime uses the JAX and CUDA backend (`magenta-rt` 2.x) loading `mrt2_small`. The submodule also includes a streaming WebSocket jam server and a RunPod-serverless path for the larger `mrt2_base`. `sidecars/magenta-rt2-nvidia/port/README.md` has the build details.
+The result runs on Windows through WSL2 with NVIDIA, on native Linux with NVIDIA, and on RunPod cloud GPUs, which extends MRT2 to platforms beyond its macOS origin. The shipped runtime uses the JAX and CUDA backend (`magenta-rt` 2.x) loading `mrt2_small`, the model behind the MAKE dropdown's `magenta-small` engine key. The submodule also includes a streaming WebSocket jam server and a RunPod-serverless path for the larger `mrt2_base`. `sidecars/magenta-rt2-nvidia/port/README.md` has the build details.
 
 ---
 
@@ -1976,7 +2000,7 @@ Imported tracks are first-class Library entries: they can be sent to the editor,
 
 ## 31. Controller Vision
 
-The `controllervision` module (`/api/controllervision`) maps a hardware MIDI controller from an image of it, complementing the profile library and learn-by-capture flows. It provides three capabilities.
+theDAW recognizes a controller across three tiers: a built-in library of roughly 110 device profiles, a scored auto-detect that matches an unknown rig to the closest profile on connect, and a learn-by-capture mode that binds a control the moment it moves. The `controllervision` module (`/api/controllervision`) adds a vision-based path on top, mapping a hardware MIDI controller from an image of it. It provides three capabilities.
 
 - **Detect** (`POST /detect`, `/detect-by-name`) runs OpenCV control detection that finds knobs, faders, and pads in an image of a controller.
 - **Identify** (`POST /identify`) runs a vision-LLM pass that names the device and infers its layout from a photo.
@@ -2011,6 +2035,8 @@ Operational endpoints used by the Settings modal and shell.
 | `POST /api/assistant/keys/{provider}/ingest` | Add one or more keys to a provider's pool. |
 | `DELETE /api/assistant/keys/{provider}/{hash}` · `DELETE /api/assistant/keys/{provider}` | Remove one key / clear a provider's pool. |
 | `GET /api/assistant/keys/{provider}/raw` | Return raw keys for local-trust convenience, where the backend operates as a trusted-local service. |
+
+The assistant streams chat from any configured provider: Claude Code over the CLI, Gemini, Anthropic, OpenAI, Grok, Groq, OpenRouter, Ollama, LM Studio, llama.cpp, and vLLM. Each provider draws from the hashed multi-key pool above with round-robin distribution and failover, exposes live model lists and attachments, and grounds answers in a ChromaDB RAG index over these docs.
 
 ---
 
@@ -2072,7 +2098,7 @@ GET  /api/analysis/{entry_id}/prompt
 
 ## 34. Quest and XR Integrations
 
-theDAW drives a Meta Quest headset for live performance without Quest Link (PC tethering) or Meta Quest Developer Hub casting. Each integration rides plain ADB over USB or a wireless pairing, and the backend starts the relay it needs on demand. The headset-side components live in the GANTASMO-MIDI Unity project.
+theDAW drives a Meta Quest headset for live performance without Quest Link (PC tethering) or Meta Quest Developer Hub casting. Each integration rides plain ADB over USB or a wireless pairing, and the backend starts the relay it needs on demand. The headset-side app is theDAW-XR, a standalone Quest 3 build (the GANTASMO-MIDI Unity project).
 
 ### 34.1 delinQuest: Quest video into the VJ
 
@@ -2090,15 +2116,19 @@ QuestMidiBridge carries MIDI both ways between the headset and the DAW over an A
 
 ### 34.4 Hand-tracked control of theDAW
 
-The headset works as a hands-only controller for theDAW. A floating 3D control surface (faders, knobs, buttons, and a crossfader) sits in front of the performer, and grabbing or poking a control sends its MIDI over the bridge. Hand microgestures (swipes and a thumb tap) send their own momentary MIDI alongside the surface. Every message lands on theDAW's global MIDI bus, so MIDI-learn maps any of it to DJ, VJ, MAKE, or EDIT controls, the same as a hardware controller. The surface layout is data-driven and editable in VR, so the performer can move, scale, and rearrange it on the headset.
+The headset works as a hands-only controller for theDAW. A floating 3D control surface (faders, knobs, buttons, and a crossfader) sits in front of the performer, and grabbing or poking a control sends its MIDI over the bridge. Hand microgestures (swipes and a thumb tap) send their own momentary MIDI alongside the surface. Every message lands on theDAW's global MIDI bus, so MIDI-learn maps any of it to DJ, VJ, MAKE, or EDIT controls, the same as a hardware controller. The surface layout is data-driven and editable in VR, so the performer can move, scale, and rearrange it on the headset. Alongside the MIDI path, the `xrcontrol` module (`/api/xr/control`) relays a control manifest with control-set and control-changed messages, so XR spatial controls can drive theDAW setters directly without passing through MIDI.
 
 ### 34.5 Quest colocation
 
-Several headsets in one room can share a single world frame, so the control surface and visuals lock to the same physical spot for everyone and each performer sees the others as lightweight head-and-hands presence. A one-click setup wizard in the GANTASMO-MIDI project installs and wires the pieces: shared spatial anchors, Meta Colocation Discovery for alignment, and Netcode for GameObjects over a LAN-direct transport with no cloud relay. The only manual steps are the Meta platform gates, which are Enhanced Spatial Services on each headset, a verified developer account, and all headsets on the same Wi-Fi.
+Several headsets in one room can share a single world frame, so the control surface and visuals lock to the same physical spot for everyone and each performer sees the others as lightweight head-and-hands presence. A one-click setup wizard in theDAW-XR installs and wires the pieces: shared spatial anchors, Meta Colocation Discovery for alignment, and Netcode for GameObjects over a LAN-direct transport with no cloud relay. The only manual steps are the Meta platform gates, which are Enhanced Spatial Services on each headset, a verified developer account, and all headsets on the same Wi-Fi.
 
 ### 34.6 Setup notes
 
 Each integration needs USB debugging enabled on the Quest, or a wireless ADB pairing. The backend auto-detects ADB and starts the relay when the source is selected; the relay ports are configurable through environment variables (`theDAW_QUESTCAST_PORT`, `theDAW_QUESTSTITCH_PORT`). No Quest Link session and no Meta Quest Developer Hub are required at any point.
+
+### 34.7 MIDI Reactor
+
+The MIDI Reactor is the headset-side visualizer fed by theDAW's return MIDI over the `questmidi` bridge (§34.3). Head-mounted reactive chrome responds to the incoming note and control messages, so the performer sees the DAW's state reflected in the spatial scene. It installs from theDAW-XR's GANTASMO menu.
 
 ---
 

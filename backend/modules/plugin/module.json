@@ -1,0 +1,10 @@
+{
+  "name": "plugin",
+  "label": "Plugins",
+  "enabled": true,
+  "icon": "Plug",
+  "sidebar": false,
+  "api_prefix": "/api/plugin",
+  "backend": true,
+  "description": "Import and run .gan web plugins (pseudo-VSTs). Imports VST Foundry exports, serves the plugin UI to an iframe, and relays its control output to theDAW targets."
+}

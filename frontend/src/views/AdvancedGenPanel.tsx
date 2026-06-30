@@ -4,7 +4,7 @@ import {
   Scissors, Mic2, Search, ChevronDown,
   LayoutList, AudioWaveform, Volume2, Sliders,
   Wand2, Loader2, BookOpen, Layers, Sparkles, Download,
-  Music2, Dice5, Repeat,
+  Music2, Dice5, Repeat, Aperture,
 } from 'lucide-react';
 import { useGenerateParamsStore, type GenerateParamsState } from '../state/generateParamsStore';
 import { useGenerateStore } from '../state/generateStore';
@@ -356,8 +356,9 @@ export const AdvancedGenPanel: React.FC<{
   const [spectrograms, setSpectrograms] = useState<{mel:string,stft:string,chromagram:string,cqt:string}|null>(null);
   const [specLoading, setSpecLoading] = useState(false);
 
-  // Center hero tab — Chimera (setup) ↔ Compare (post-gen inspection).
-  const [heroTab, setHeroTab] = useState<'chimera' | 'compare'>('chimera');
+  // Center hero tab — Chimera (setup) ↔ Compare (post-gen inspection) ↔
+  // Synesteez (image → spectrogram audio composer).
+  const [heroTab, setHeroTab] = useState<'chimera' | 'compare' | 'synesteez'>('chimera');
   const prevAudioRef = useRef<string | null>(null);
   useEffect(() => {
     if (lastAudioUrl && lastAudioUrl !== prevAudioRef.current) setHeroTab('compare');
@@ -795,6 +796,9 @@ export const AdvancedGenPanel: React.FC<{
             <button onClick={() => setHeroTab('chimera')} className={`relative z-10 ${tabBtn(heroTab === 'chimera')}`}>
               <Layers className="w-3 h-3" /> Chimera
             </button>
+            <button onClick={() => setHeroTab('synesteez')} className={`relative z-10 ${tabBtn(heroTab === 'synesteez')}`}>
+              <Aperture className="w-3 h-3" /> Synesteez
+            </button>
             <button onClick={() => lastAudioUrl && setHeroTab('compare')} disabled={!lastAudioUrl}
               className={`relative z-10 ${tabBtn(heroTab === 'compare')} disabled:opacity-30 disabled:cursor-not-allowed`}>
               <AudioWaveform className="w-3 h-3" /> Compare
@@ -813,6 +817,18 @@ export const AdvancedGenPanel: React.FC<{
               <div className="flex-1 px-1 min-h-0 overflow-y-auto" data-chimera-anchor="init-audio">
                 <ChimeraStack />
               </div>
+            </div>
+          )}
+
+          {/* SYNESTEEZ tab — image → spectrogram audio composer, a self-contained
+              same-origin app vendored under /synesteez (Composer/Sequence/Meta). */}
+          {heroTab === 'synesteez' && (
+            <div className="relative z-10 flex-1 min-h-0 overflow-hidden rounded-lg border border-white/5 bg-[#0d0d0f]">
+              <iframe
+                src="/synesteez/index.html"
+                title="Synesteez — image to spectrogram audio"
+                className="w-full h-full border-0 block"
+              />
             </div>
           )}
 

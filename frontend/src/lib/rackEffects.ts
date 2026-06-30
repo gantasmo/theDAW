@@ -1112,7 +1112,7 @@ export const RACK_EFFECTS: readonly RackEffectDef[] = [
   },
   {
     id: 'spatializer',
-    label: 'HRTF Spatializer',
+    label: 'The Owl',
     group: 'Spatial',
     description: 'Positions the track in 3D around the head, with motion presets.',
     params: [

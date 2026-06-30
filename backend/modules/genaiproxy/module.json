@@ -1,0 +1,1 @@
+{"name":"genaiproxy","description":"Gemini API proxy (injects GEMINI_API_KEY) for the vocal2midi suite","enabled":true,"api_prefix":"/api/genai-proxy"}

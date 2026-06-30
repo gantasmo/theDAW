@@ -68,16 +68,26 @@ export const EFFECT_LABELS: Record<string, string> = {
   export_opus: 'Export Opus',
 };
 
+/** Identity of a VST3 plugin node in the chain. Present only on VST entries;
+ *  FFmpeg/built-in effects leave it undefined. */
+export interface VstNode {
+  plugin_path: string;
+  plugin_name: string;
+}
+
 export interface ChainEntry {
   id: string;
   effect: string;
   params: Record<string, number>;
   enabled: boolean;
+  /** Set when this entry is a hosted VST3 plugin (effect === 'vst3'). */
+  vst?: VstNode;
 }
 
 interface EffectChainState {
   chain: ChainEntry[];
   addEffect: (effect: string) => void;
+  addVst: (plugin: VstNode) => void;
   removeEffect: (id: string) => void;
   updateParams: (id: string, params: Record<string, number>) => void;
   toggleEnabled: (id: string) => void;
@@ -92,6 +102,10 @@ export const useEffectChainStore = create<EffectChainState>()(
       addEffect: (effect) =>
         set((s) => ({
           chain: [...s.chain, { id: uuid(), effect, params: { ...(EFFECT_DEFAULTS[effect] || {}) }, enabled: true }],
+        })),
+      addVst: (plugin) =>
+        set((s) => ({
+          chain: [...s.chain, { id: uuid(), effect: 'vst3', params: {}, enabled: true, vst: plugin }],
         })),
       removeEffect: (id) => set((s) => ({ chain: s.chain.filter((e) => e.id !== id) })),
       updateParams: (id, params) =>

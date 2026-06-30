@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, BookOpen, Smartphone, X, Copy, ExternalLink, ChevronUp, ChevronDown, GripHorizontal, ChevronRight, ChevronLeft, Library } from 'lucide-react';
+import { Settings, BookOpen, Smartphone, X, Copy, ExternalLink, ChevronUp, ChevronDown, GripHorizontal, ChevronRight, ChevronLeft, Library, FolderInput, Package, LayoutGrid } from 'lucide-react';
 import { LibraryView } from '../../views/LibraryView';
 import { DAWCenterPanel } from './DAWCenterPanel';
 
@@ -9,8 +9,14 @@ import { LogBody, LogActionButton, LogStripCompactInfo } from './ProcessingLog';
 import { BottomMultiTabPanel } from './BottomMultiTabPanel';
 import { DocsModal } from './DocsModal';
 import { SettingsModal } from './SettingsModal';
+import { DawImportModal } from './DawImportModal';
+import { ProjectModal } from './ProjectModal';
+import { DownloadDock } from './DownloadDock';
 import { useAppUiStore } from '../../state/appUiStore';
 import { useBottomPanelStore } from '../../state/bottomPanelStore';
+import { useDawImportStore } from '../../state/dawImportStore';
+import { useProjectStore } from '../../state/projectStore';
+import { useEditLayoutStore } from '../../state/editLayoutStore';
 
 const RIGHT_RAIL_MIN = 280;
 const RIGHT_RAIL_MAX = 640;
@@ -27,6 +33,10 @@ export const Shell: React.FC = () => {
   const setLibraryExpanded = useAppUiStore((state) => state.setLibraryExpanded);
   const docsOpen = useAppUiStore((state) => state.docsOpen);
   const setDocsOpen = useAppUiStore((state) => state.setDocsOpen);
+  const openDawImport = useDawImportStore((state) => state.open);
+  const openProject = useProjectStore((state) => state.open);
+  const editLayoutActive = useEditLayoutStore((state) => state.active);
+  const toggleEditLayout = useEditLayoutStore((state) => state.toggle);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
   const isDjWorkspace = centerTab === 'dj';
@@ -129,7 +139,7 @@ export const Shell: React.FC = () => {
 
   return (
     <div
-      className="flex flex-col w-full bg-[#07050a] text-[#f5f3ff] overflow-hidden font-sans dense-layout"
+      className="relative flex flex-col w-full bg-[#07050a] text-[#f5f3ff] overflow-hidden font-sans dense-layout"
       style={{ height: isDjWorkspace ? 'calc(100vh / var(--layout-zoom))' : 'calc((100vh - 5rem) / var(--layout-zoom))' }}
     >
       {/* Combined header + tab bar — logo (left), workspace tabs (center),
@@ -161,6 +171,25 @@ export const Shell: React.FC = () => {
           {/* Icon-only — the hover tooltip (title) names each one. The library
               toggle is the right-edge pull handle (below), not a cluster icon.
               All three carry the colored accent glow. */}
+          <TopBarButton
+            onClick={toggleEditLayout}
+            icon={<LayoutGrid className="w-3.5 h-3.5" />}
+            title="Edit Layout — drag controls and panels to move them, drag borders to resize"
+            accent="purple"
+            active={editLayoutActive}
+          />
+          <TopBarButton
+            onClick={() => openDawImport()}
+            icon={<FolderInput className="w-3.5 h-3.5" />}
+            title="Import a DAW project (.als / .RPP / .flp / …)"
+            accent="sky"
+          />
+          <TopBarButton
+            onClick={() => openProject('save')}
+            icon={<Package className="w-3.5 h-3.5" />}
+            title="Save or open a .tasmo project"
+            accent="sky"
+          />
           <TopBarButton
             onClick={() => setDocsOpen(true)}
             icon={<BookOpen className="w-3.5 h-3.5" />}
@@ -227,19 +256,6 @@ export const Shell: React.FC = () => {
         </aside>
       )}
 
-      {/* Library pull handle — compact, vertically-centered tab on the right
-          edge of the work area, global across every workspace. Click toggles
-          the library panel; resize stays on the panel's inner edge. */}
-      <button
-        type="button"
-        onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-        title={`${isRightPanelOpen ? 'Collapse' : 'Expand'} library`}
-        aria-label={`${isRightPanelOpen ? 'Collapse' : 'Expand'} library`}
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-40 group flex flex-col items-center justify-center gap-1.5 h-24 w-7 rounded-l-lg border border-r-0 border-purple-400/60 bg-purple-500/20 text-purple-100 shadow-[0_0_16px_rgba(168,85,247,0.45)] hover:w-8 hover:text-white hover:border-purple-300/80 hover:bg-purple-500/35 hover:shadow-[0_0_22px_rgba(168,85,247,0.65)] transition-all"
-      >
-        <Library className="w-4 h-4" />
-        {isRightPanelOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-      </button>
       </div>
 
       {/* Global bottom dock — BottomMultiTabPanel (left, flex-1) and
@@ -249,7 +265,24 @@ export const Shell: React.FC = () => {
           collapse toggle + resize handle (multiHeight / logHeight in
           bottomPanelStore) — expanding or resizing one does NOT
           affect the other. */}
-      {!isDjWorkspace && <ShellBottomDock />}
+      <ShellBottomDock />
+
+      {/* Library pull handle — root-level so it floats ABOVE every panel (bottom
+          dock, log, maximized panels) and is never clipped by the work area's
+          overflow. Vertically centered on the right edge. Click toggles the
+          library; resize stays on the panel's inner edge. */}
+      {!isDjWorkspace && (
+        <button
+          type="button"
+          onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
+          title={`${isRightPanelOpen ? 'Collapse' : 'Expand'} library`}
+          aria-label={`${isRightPanelOpen ? 'Collapse' : 'Expand'} library`}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-50 group flex flex-col items-center justify-center gap-1.5 h-24 w-7 rounded-l-lg border border-r-0 border-purple-400/60 bg-purple-500/20 text-purple-100 shadow-[0_0_16px_rgba(168,85,247,0.45)] hover:w-8 hover:text-white hover:border-purple-300/80 hover:bg-purple-500/35 hover:shadow-[0_0_22px_rgba(168,85,247,0.65)] transition-all"
+        >
+          <Library className="w-4 h-4" />
+          {isRightPanelOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+      )}
       <DocsModal open={docsOpen} onClose={() => setDocsOpen(false)} />
       {shareOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center">
@@ -319,6 +352,12 @@ export const Shell: React.FC = () => {
         </div>
       )}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <DawImportModal />
+      <ProjectModal />
+      {/* Floating model-download manager — fixed bottom-right, self-hiding when
+          there are no downloads. Mounted once at the app root so it floats over
+          every view. */}
+      <DownloadDock />
     </div>
   );
 };
@@ -372,9 +411,16 @@ const ShellBottomDock: React.FC = () => {
 
   if (centerTab === 'dj') return null;
 
-  // ONE shared dock-body height — the LOG can never grow taller than the dock
-  // and push into the center work area. Maximized fills the work area.
-  const bodyHeight = multiMaximized ? 'calc(100vh - 7rem)' : `${multiHeight}px`;
+  // Dock-body height — shared by the multi-tab panel (in-flow) and the floating
+  // LOG overlay. Maximized fills the work area. The height MUST be computed in
+  // the same zoom-aware space as the .dense-layout root (height =
+  // calc((100vh - 5rem) / var(--layout-zoom))); a raw `100vh` calc here ignores
+  // --layout-zoom and, at zoom > 1, overflows the root's overflow-hidden so the
+  // dock's own bottom (e.g. the Score viewer's page/zoom controls) is clipped.
+  // Reserve 5rem inside the root for the header (h-11) + the always-on strip.
+  const bodyHeight = multiMaximized
+    ? 'calc((100vh - 5rem) / var(--layout-zoom) - 5rem)'
+    : `${multiHeight}px`;
   // The LOG strip section auto-fits its content (the telemetry readouts + the
   // fixed action button). Mirror its measured width into logWidth so the LOG
   // body directly below it stays column-aligned (opens to the same left edge).

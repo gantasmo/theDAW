@@ -86,16 +86,35 @@ export interface CategoryMeta {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   count: number;
+  /** Solid dot/swatch color (bg-*) for list rows and chips. */
+  dot: string;
   tile: { bg: string; text: string; border: string; ring: string; glow: string };
+  /** Sidebar rail button classes, so each category reads its own color. */
+  rail: { active: string; idle: string };
 }
 
+// Each category gets a distinct hue across the spectrum (purple → blue → cyan →
+// amber → emerald → rose) so the effects panel has real color diversity rather
+// than one all-purple wash.
 export const CATEGORY_META: CategoryMeta[] = [
-  { id: 'stacks',   label: 'Stacks',   icon: Layers,            count: 7, tile: { bg: 'bg-purple-950',  text: 'text-purple-200',  border: 'border-purple-500/50', ring: 'ring-purple-400/50', glow: 'bg-purple-500/20' } },
-  { id: 'dynamics', label: 'Dynamics', icon: Activity,          count: 6, tile: { bg: 'bg-blue-950',    text: 'text-blue-200',    border: 'border-blue-500/50',   ring: 'ring-blue-400/50',   glow: 'bg-blue-500/20' } },
-  { id: 'eq',       label: 'EQ',       icon: SlidersHorizontal, count: 3, tile: { bg: 'bg-teal-950',    text: 'text-teal-200',    border: 'border-teal-500/50',   ring: 'ring-teal-400/50',   glow: 'bg-teal-500/20' } },
-  { id: 'tempo',    label: 'Tempo',    icon: Clock,             count: 2, tile: { bg: 'bg-cyan-950',    text: 'text-cyan-200',    border: 'border-cyan-500/50',   ring: 'ring-cyan-400/50',   glow: 'bg-cyan-500/20' } },
-  { id: 'cleanup',  label: 'Cleanup',  icon: Eraser,            count: 3, tile: { bg: 'bg-emerald-950', text: 'text-emerald-200', border: 'border-emerald-500/50',ring: 'ring-emerald-400/50',glow: 'bg-emerald-500/20' } },
-  { id: 'export',   label: 'Export',   icon: Download,          count: 4, tile: { bg: 'bg-orange-950',  text: 'text-orange-200',  border: 'border-orange-500/50', ring: 'ring-orange-400/50', glow: 'bg-orange-500/20' } },
+  { id: 'stacks',   label: 'Stacks',   icon: Layers,            count: 7, dot: 'bg-purple-400',
+    tile: { bg: 'bg-purple-950',  text: 'text-purple-200',  border: 'border-purple-500/50', ring: 'ring-purple-400/50', glow: 'bg-purple-500/20' },
+    rail: { active: 'border-purple-400 text-purple-200 bg-purple-500/10', idle: 'border-transparent text-purple-300/70 hover:text-purple-200 hover:bg-purple-500/5' } },
+  { id: 'dynamics', label: 'Dynamics', icon: Activity,          count: 6, dot: 'bg-blue-400',
+    tile: { bg: 'bg-blue-950',    text: 'text-blue-200',    border: 'border-blue-500/50',   ring: 'ring-blue-400/50',   glow: 'bg-blue-500/20' },
+    rail: { active: 'border-blue-400 text-blue-200 bg-blue-500/10', idle: 'border-transparent text-blue-300/70 hover:text-blue-200 hover:bg-blue-500/5' } },
+  { id: 'eq',       label: 'EQ',       icon: SlidersHorizontal, count: 3, dot: 'bg-cyan-400',
+    tile: { bg: 'bg-cyan-950',    text: 'text-cyan-200',    border: 'border-cyan-500/50',   ring: 'ring-cyan-400/50',   glow: 'bg-cyan-500/20' },
+    rail: { active: 'border-cyan-400 text-cyan-200 bg-cyan-500/10', idle: 'border-transparent text-cyan-300/70 hover:text-cyan-200 hover:bg-cyan-500/5' } },
+  { id: 'tempo',    label: 'Tempo',    icon: Clock,             count: 2, dot: 'bg-amber-400',
+    tile: { bg: 'bg-amber-950',   text: 'text-amber-200',   border: 'border-amber-500/50',  ring: 'ring-amber-400/50',  glow: 'bg-amber-500/20' },
+    rail: { active: 'border-amber-400 text-amber-200 bg-amber-500/10', idle: 'border-transparent text-amber-300/70 hover:text-amber-200 hover:bg-amber-500/5' } },
+  { id: 'cleanup',  label: 'Cleanup',  icon: Eraser,            count: 3, dot: 'bg-emerald-400',
+    tile: { bg: 'bg-emerald-950', text: 'text-emerald-200', border: 'border-emerald-500/50',ring: 'ring-emerald-400/50',glow: 'bg-emerald-500/20' },
+    rail: { active: 'border-emerald-400 text-emerald-200 bg-emerald-500/10', idle: 'border-transparent text-emerald-300/70 hover:text-emerald-200 hover:bg-emerald-500/5' } },
+  { id: 'export',   label: 'Export',   icon: Download,          count: 4, dot: 'bg-rose-400',
+    tile: { bg: 'bg-rose-950',    text: 'text-rose-200',    border: 'border-rose-500/50',   ring: 'ring-rose-400/50',   glow: 'bg-rose-500/20' },
+    rail: { active: 'border-rose-400 text-rose-200 bg-rose-500/10', idle: 'border-transparent text-rose-300/70 hover:text-rose-200 hover:bg-rose-500/5' } },
 ];
 
 const catById = Object.fromEntries(CATEGORY_META.map((c) => [c.id, c])) as Record<string, CategoryMeta>;

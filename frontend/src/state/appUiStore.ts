@@ -103,12 +103,12 @@ export const useAppUiStore = create<AppUiState>()(
       setDocsOpen: (open) => set({ docsOpen: open }),
     }),
     {
-      name: 'thedaw-app-ui',
+      name: 'thedaw-app-ui-v2',
+      // Panel open/expand state is intentionally NOT persisted: every app open
+      // starts with the shell chrome collapsed (left panel, right library rail).
+      // Only the active center tab and the rail width are remembered.
       partialize: (s) => ({
         centerTab: s.centerTab,
-        isLeftPanelOpen: s.isLeftPanelOpen,
-        isRightPanelOpen: s.isRightPanelOpen,
-        isLibraryExpanded: s.isLibraryExpanded,
         rightPanelWidth: s.rightPanelWidth,
       }),
     },

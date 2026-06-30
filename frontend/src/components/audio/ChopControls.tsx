@@ -43,7 +43,7 @@ export function ChopControls({ params, onChange, idPrefix }: ChopControlsProps) 
           name={programId}
           value={program}
           onChange={(e) => set('program', Number(e.target.value))}
-          className="flex-1 bg-zinc-900 border border-white/20 rounded px-2 py-1 text-[11px] font-mono text-zinc-100 outline-none focus:border-purple-500/60 cursor-pointer"
+          className="flex-1 form-select px-2 py-1 text-[11px] font-mono"
           style={{ colorScheme: 'dark' }}
         >
           {PROGRAMS.map((label, i) => (

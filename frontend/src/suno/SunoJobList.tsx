@@ -81,14 +81,14 @@ export const SunoJobList: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar p-2 flex flex-col gap-2">
+    <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-2 flex flex-col gap-2">
       {jobs.map((job) => {
         const cfg = STATUS[job.status] ?? STATUS.submitted;
         const hasAudio = (job.status === 'complete' || job.status === 'streaming') && !!job.audio_url;
         const isCurrent = engineEntryId === job.id;
         const open = expanded === job.id;
         return (
-          <div key={job.id} className={`hardware-card p-2 ${isCurrent ? 'ring-1 ring-purple-500/50' : ''}`}>
+          <div key={job.id} className={`hardware-card shrink-0 p-2 ${isCurrent ? 'ring-1 ring-purple-500/50' : ''}`}>
             <div className="flex items-start gap-2">
               <HoverTip text={hasAudio ? 'Play or pause this track in the shared player.' : 'Audio is not ready yet — the job is still generating.'}>
                 <button

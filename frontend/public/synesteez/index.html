@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<!--
+Img to Audio Spectrogram Converter - GANTASMO
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src blob:">
+  <title>GANTASMO AudiTize v1.0</title>
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --panel: #16161a;
+      --card: #1e1e24;
+      --border: #2a2a35;
+      --accent: #00e676;
+      --accent2: #ff6d00;
+      --accent3: #7c4dff;
+      --accent4: #00b0ff;
+      --text: #d8d8e0;
+      --muted: #55556a;
+      --danger: #f44336;
+      --slider-bg: #2a2a35;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px; min-height: 100vh; }
+
+    .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* TABS — slim top strip (the branded header was removed for compactness) */
+    .tab-nav { display: flex; gap: 2px; padding: 6px 12px 0; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab-btn {
+      background: none; border: none; color: var(--muted); padding: 6px 16px;
+      cursor: pointer; font-size: 12px; border-radius: 4px 4px 0 0;
+      border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+
+    /* TAB PANES */
+    .tab-pane { display: none; flex: 1; padding: 10px; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 10px; }
+
+    /* LAYOUT */
+    .two-col { display: flex; gap: 12px; align-items: flex-start; }
+    .ctrl-col { flex: 0 0 320px; display: flex; flex-direction: column; gap: 8px; }
+    .preview-col { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+    /* SECTIONS */
+    details.section {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; overflow: hidden;
+    }
+    details.section summary {
+      padding: 8px 12px; cursor: pointer; font-weight: 600; font-size: 11px;
+      letter-spacing: .5px; text-transform: uppercase; color: var(--muted);
+      list-style: none; display: flex; align-items: center; gap: 6px;
+      user-select: none;
+    }
+    details.section summary::before { content: '▸'; transition: transform .15s; }
+    details.section[open] summary::before { transform: rotate(90deg); }
+    details.section summary:hover { color: var(--text); }
+    .section-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    /* CONTROLS */
+    .ctrl { display: flex; flex-direction: column; gap: 4px; }
+    .ctrl-row { display: flex; align-items: center; gap: 8px; }
+    .ctrl label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+    .ctrl label span { color: var(--text); font-weight: 600; }
+
+    /* SLIDE-style capsule: dark glass track, colour value-fill, white glowing knob.
+       --fill (0-100%) is painted live from JS; --sl is the per-slider accent. */
+    input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 10px;
+      border-radius: 9999px; cursor: pointer; outline: none;
+      --sl: var(--accent);
+      background: linear-gradient(to right, var(--sl) var(--fill, 0%), rgba(0,0,0,.5) var(--fill, 0%));
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow: inset 0 0 4px rgba(0,0,0,.6);
+    }
+    input[type=range].orange { --sl: var(--accent2); }
+    input[type=range].purple { --sl: var(--accent3); }
+    input[type=range].blue   { --sl: var(--accent4); }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+      background: #fff; border-radius: 50%; cursor: pointer;
+      box-shadow: 0 0 8px var(--sl), 0 0 2px rgba(0,0,0,.5);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 14px; height: 14px; border: none; background: #fff; border-radius: 50%;
+      cursor: pointer; box-shadow: 0 0 8px var(--sl);
+    }
+    input[type=range]::-moz-range-track { background: transparent; border: none; }
+
+    select, input[type=number] {
+      background: var(--slider-bg); border: 1px solid var(--border);
+      color: var(--text); padding: 4px 8px; border-radius: 4px;
+      font-size: 11px; outline: none;
+    }
+    select { cursor: pointer; }
+    select:hover, input[type=number]:hover { border-color: var(--muted); }
+
+    input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+
+    .seg-ctrl { display: flex; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+    .seg-ctrl button {
+      flex: 1; background: none; border: none; color: var(--muted);
+      padding: 5px 4px; font-size: 10px; cursor: pointer; transition: background .1s, color .1s;
+    }
+    .seg-ctrl button.active { background: var(--accent); color: #000; font-weight: 700; }
+    .seg-ctrl button:not(.active):hover { background: var(--border); color: var(--text); }
+
+    /* BUTTONS */
+    .btn {
+      background: var(--accent); color: #000; border: none; padding: 9px 16px;
+      border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700;
+      transition: opacity .15s; letter-spacing: .3px;
+    }
+    .btn:hover { opacity: .85; }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn.orange { background: var(--accent2); color: #fff; }
+    .btn.purple { background: var(--accent3); color: #fff; }
+    .btn.blue { background: var(--accent4); color: #000; }
+    .btn.danger { background: var(--danger); color: #fff; }
+    .btn.ghost { background: none; border: 1px solid var(--border); color: var(--text); }
+    .btn.sm { padding: 5px 10px; font-size: 11px; }
+
+    /* PROGRESS */
+    .progress-wrap { background: var(--slider-bg); border-radius: 4px; height: 6px; overflow: hidden; }
+    .progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .1s; border-radius: 4px; }
+
+    /* CANVAS */
+    canvas { display: block; width: 100%; background: #000; border-radius: 4px; border: 1px solid var(--border); }
+
+    /* AUDIO */
+    audio { width: 100%; height: 36px; border-radius: 4px; }
+    audio::-webkit-media-controls-panel { background: var(--card); }
+    .audio-row { display: flex; gap: 8px; align-items: center; }
+    .output-section { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .output-section h4 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+    /* FILE INPUT */
+    .file-drop {
+      border: 2px dashed var(--border); border-radius: 6px; padding: 16px;
+      text-align: center; cursor: pointer; color: var(--muted); transition: border-color .15s;
+    }
+    .file-drop:hover, .file-drop.drag-over { border-color: var(--accent); color: var(--text); }
+    .file-drop input { display: none; }
+
+    /* ---- SEQUENCE TAB ---- */
+    .seq-list { display: flex; flex-direction: column; gap: 6px; }
+    .seq-item {
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    }
+    .seq-item.drag-over { border-color: var(--accent); }
+    .seq-thumb { width: 48px; height: 32px; object-fit: cover; border-radius: 3px; background: #000; flex-shrink: 0; }
+    .seq-name { flex: 1; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .seq-item-ctrls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .seq-item-ctrls label { font-size: 10px; color: var(--muted); }
+    .seq-item-ctrls input[type=number] { width: 52px; }
+    .drag-handle { cursor: grab; color: var(--muted); font-size: 14px; flex-shrink: 0; }
+    .drag-handle:active { cursor: grabbing; }
+
+    /* ---- META COMPOSER TAB ---- */
+    .meta-layout { display: flex; gap: 10px; flex: 1; min-height: 0; }
+    .meta-library { flex: 0 0 140px; display: flex; flex-direction: column; gap: 6px; }
+    .meta-library h4 { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; overflow-y: auto; max-height: 400px; }
+    .tile-item {
+      border-radius: 4px; overflow: hidden; cursor: pointer;
+      border: 2px solid transparent; position: relative; aspect-ratio: 1;
+    }
+    .tile-item.selected { border-color: var(--accent); }
+    .tile-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .tile-item .tile-del {
+      position: absolute; top: 1px; right: 1px; background: rgba(0,0,0,.7);
+      color: #f44; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;
+      padding: 0 3px; display: none;
+    }
+    .tile-item:hover .tile-del { display: block; }
+
+    .meta-canvas-wrap { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .meta-canvas-wrap h4 { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    #metaCanvas { cursor: crosshair; }
+
+    .meta-props { flex: 0 0 160px; display: flex; flex-direction: column; gap: 8px; }
+    .meta-props h4 { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .prop-group { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+
+    /* STATUS */
+    .status { font-size: 11px; color: var(--muted); min-height: 16px; }
+    .status.err { color: var(--danger); }
+    .status.ok { color: var(--accent); }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Compact desktop targets (embedded in the app, mouse-first) */
+    .btn { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 6px 14px; }
+    .btn.sm { min-height: 24px; padding: 4px 9px; }
+    .tab-btn { min-height: 28px; display: inline-flex; align-items: center; }
+    details.section summary { min-height: 30px; }
+
+    select, input[type=number] { font-size: 12px; }
+    input[type=range] { touch-action: pan-y; }
+
+    /* Move buttons for mobile reorder */
+    .move-btns { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+    .move-btns button {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 3px; cursor: pointer; font-size: 11px; padding: 3px 7px; line-height: 1;
+      min-height: 20px;
+    }
+    .move-btns button:hover { color: var(--text); border-color: var(--muted); }
+
+    @media (max-width: 800px) {
+      .two-col { flex-direction: column; }
+      .ctrl-col { flex: none; width: 100%; }
+      .meta-layout { flex-direction: column; }
+      .meta-library { flex: none; width: 100%; }
+      .meta-props { flex: none; width: 100%; }
+      .meta-library .tile-grid { grid-template-columns: repeat(5, 1fr); max-height: 100px; }
+      .tab-nav { width: 100%; }
+      .tab-btn { flex: 1; text-align: center; font-size: 11px; padding: 6px 4px; justify-content: center; }
+      .seq-item { flex-wrap: wrap; }
+      .seq-item-ctrls { flex-wrap: wrap; }
+    }
+    @media (max-width: 480px) {
+      .tab-pane { padding: 10px 8px; }
+      .section-body { padding: 8px 10px; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="composer">Composer</button>
+    <button class="tab-btn" data-tab="sequence">Sequence</button>
+    <button class="tab-btn" data-tab="meta">Meta Composer</button>
+  </nav>
+
+  <!-- ═══════════════════════════════ COMPOSER ═══════════════════════════════ -->
+  <div class="tab-pane active" id="tab-composer">
+    <div class="two-col">
+      <div class="ctrl-col">
+
+        <details class="section" open>
+          <summary>Image</summary>
+          <div class="section-body">
+            <div class="file-drop" id="composerDrop">
+              <input type="file" id="imageInput" accept="image/*">
+              <div>Drop image here or <strong>click to browse</strong></div>
+            </div>
+            <div class="ctrl">
+              <label>Scan direction</label>
+              <div class="seg-ctrl" id="directionCtrl">
+                <button class="active" data-val="lr">L→R</button>
+                <button data-val="rl">R→L</button>
+                <button data-val="tb">T→B</button>
+                <button data-val="bt">B→T</button>
+              </div>
+            </div>
+            <div class="ctrl-row">
+              <input type="checkbox" id="invertBrightness">
+              <label for="invertBrightness">Invert brightness</label>
+              <input type="checkbox" id="mirrorTime" style="margin-left:10px">
+              <label for="mirrorTime">Mirror time</label>
+            </div>
+          </div>
+        </details>
+
+        <details class="section" open>
+          <summary>Duration</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Duration <span id="durationValue">5.0</span>s</label>
+              <input type="range" id="duration" min="0.1" max="300" step="0.1" value="5.0">
+            </div>
+            <div class="ctrl-row" style="gap:6px">
+              <label style="color:var(--muted);font-size:11px">Precise:</label>
+              <input type="number" id="durationExact" min="0.1" max="300" step="0.1" value="5.0" style="width:70px">
+              <span style="font-size:11px;color:var(--muted)">sec</span>
+            </div>
+          </div>
+        </details>
+
+        <details class="section" open>
+          <summary>Frequency</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Base frequency <span id="baseFreqValue">20</span> Hz</label>
+              <input type="range" class="blue" id="baseFreq" min="20" max="8000" step="1" value="20">
+            </div>
+            <div class="ctrl">
+              <label>Frequency span <span id="freqSpanValue">20000</span> Hz</label>
+              <input type="range" class="blue" id="freqSpan" min="100" max="22000" step="100" value="20000">
+            </div>
+            <div class="ctrl">
+              <label>Frequency scale</label>
+              <div class="seg-ctrl" id="freqScaleCtrl">
+                <button class="active" data-val="linear">Linear</button>
+                <button data-val="log">Log</button>
+                <button data-val="mel">Mel</button>
+              </div>
+            </div>
+            <div class="ctrl">
+              <label>Transposition <span id="freqShiftValue">0</span> Hz</label>
+              <input type="range" class="blue" id="frequencyShift" min="-10000" max="10000" step="50" value="0">
+            </div>
+            <div class="ctrl">
+              <label>Pitch quantize</label>
+              <select id="pitchQuantize">
+                <option value="none">None (free)</option>
+                <option value="chromatic">Chromatic</option>
+                <option value="major">Major scale</option>
+                <option value="minor">Minor scale</option>
+                <option value="pentatonic">Pentatonic</option>
+                <option value="whole">Whole tone</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>Synthesis</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Waveform</label>
+              <div class="seg-ctrl" id="waveformCtrl">
+                <button class="active" data-val="sine">Sine</button>
+                <button data-val="square">Square</button>
+                <button data-val="sawtooth">Saw</button>
+                <button data-val="triangle">Tri</button>
+              </div>
+            </div>
+            <div class="ctrl">
+              <label>Harmonics <span id="harmonicCountValue">1</span></label>
+              <input type="range" class="orange" id="harmonicCount" min="1" max="12" step="1" value="1">
+            </div>
+            <div class="ctrl">
+              <label>Harmonic rolloff <span id="harmonicRolloffValue">0.50</span></label>
+              <input type="range" class="orange" id="harmonicRolloff" min="0.05" max="1" step="0.05" value="0.5">
+            </div>
+            <div class="ctrl">
+              <label>Chaos / detune <span id="chaosValue">0</span>%</label>
+              <input type="range" class="orange" id="chaos" min="0" max="100" step="1" value="0">
+            </div>
+            <div class="ctrl">
+              <label>Vibrato rate <span id="vibratoRateValue">0.0</span> Hz</label>
+              <input type="range" class="orange" id="vibratoRate" min="0" max="20" step="0.1" value="0">
+            </div>
+            <div class="ctrl">
+              <label>Vibrato depth <span id="vibratoDepthValue">0</span> Hz</label>
+              <input type="range" class="orange" id="vibratoDepth" min="0" max="500" step="5" value="0">
+            </div>
+            <div class="ctrl-row">
+              <input type="checkbox" id="phaseRandomize">
+              <label for="phaseRandomize">Randomize phase offsets</label>
+            </div>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>Envelope</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Attack <span id="attackValue">10</span> ms</label>
+              <input type="range" class="purple" id="attackMs" min="0" max="500" step="5" value="10">
+            </div>
+            <div class="ctrl">
+              <label>Release <span id="releaseValue">10</span> ms</label>
+              <input type="range" class="purple" id="releaseMs" min="0" max="500" step="5" value="10">
+            </div>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>Dynamics</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Brightness threshold <span id="brightnessThresholdValue">50</span></label>
+              <input type="range" id="brightnessThreshold" min="0" max="255" step="1" value="50">
+            </div>
+            <div class="ctrl-row">
+              <input type="checkbox" id="dynamicRangeToggle">
+              <label for="dynamicRangeToggle">Dynamic range (dB)</label>
+            </div>
+            <div class="ctrl" id="dynamicRangeControl" style="display:none">
+              <label>Dynamic range <span id="dynamicRangeValue">24</span> dB</label>
+              <input type="range" id="dynamicRange" min="6" max="120" step="1" value="24">
+            </div>
+            <div class="ctrl">
+              <label>Gain <span id="gainValue">100</span>%</label>
+              <input type="range" id="gain" min="10" max="300" step="5" value="100">
+            </div>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>Stereo</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Stereo mode</label>
+              <div class="seg-ctrl" id="stereoModeCtrl">
+                <button class="active" data-val="mono">Mono</button>
+                <button data-val="lh">Lo/Hi</button>
+                <button data-val="pan">Pan→</button>
+                <button data-val="freq">Freq</button>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details class="section">
+          <summary>Output Format</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Sample rate</label>
+              <select id="sampleRate">
+                <option value="22050">22050 Hz</option>
+                <option value="44100" selected>44100 Hz</option>
+                <option value="48000">48000 Hz</option>
+                <option value="96000">96000 Hz</option>
+              </select>
+            </div>
+            <div class="ctrl">
+              <label>Bit depth</label>
+              <select id="bitDepth">
+                <option value="8">8-bit</option>
+                <option value="16" selected>16-bit</option>
+                <option value="24">24-bit</option>
+                <option value="32">32-bit</option>
+              </select>
+            </div>
+            <div class="ctrl">
+              <label>Spectrogram colormap</label>
+              <select id="colormap">
+                <option value="inferno">Inferno</option>
+                <option value="viridis">Viridis</option>
+                <option value="plasma">Plasma</option>
+                <option value="hot">Hot</option>
+                <option value="cool">Cool</option>
+                <option value="electric">Electric</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="convertBtn">Generate WAV</button>
+          <button class="btn ghost sm" id="cancelBtn" style="display:none">Cancel</button>
+        </div>
+        <div class="status" id="composerStatus"></div>
+        <div class="progress-wrap" id="composerProgressWrap" style="display:none">
+          <div class="progress-bar" id="composerProgress"></div>
+        </div>
+      </div>
+
+      <div class="preview-col">
+        <div class="two-col" style="gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Original</div>
+            <canvas id="imageCanvas"></canvas>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Spectrogram Preview</div>
+            <canvas id="spectrogramPreviewCanvas"></canvas>
+          </div>
+        </div>
+        <div class="output-section">
+          <h4>Audio Output</h4>
+          <audio id="audioPlayer" controls></audio>
+          <div class="audio-row">
+            <button class="btn ghost sm" id="downloadBtn" disabled>Download WAV</button>
+            <span class="status" id="fileSizeLabel"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ SEQUENCE ═══════════════════════════════ -->
+  <div class="tab-pane" id="tab-sequence">
+    <div class="two-col" style="align-items:flex-start">
+      <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn blue sm" id="seqAddBtn">+ Add Images</button>
+          <input type="file" id="seqFileInput" accept="image/*" multiple style="display:none">
+          <span style="font-size:11px;color:var(--muted)">Drag items to reorder</span>
+        </div>
+        <div class="seq-list" id="seqList">
+          <div style="color:var(--muted);font-size:11px;padding:20px;text-align:center;border:1px dashed var(--border);border-radius:6px">
+            No images added yet
+          </div>
+        </div>
+      </div>
+      <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:10px">
+        <details class="section" open>
+          <summary>Transition</summary>
+          <div class="section-body">
+            <div class="ctrl">
+              <label>Transition type</label>
+              <div class="seg-ctrl" id="transitionTypeCtrl">
+                <button class="active" data-val="none">None</button>
+                <button data-val="crossfade">Crossfade</button>
+                <button data-val="morph">Morph</button>
+              </div>
+            </div>
+            <div class="ctrl" id="transitionDurCtrl">
+              <label>Transition duration <span id="transitionDurValue">1.0</span>s</label>
+              <input type="range" class="blue" id="transitionDur" min="0.1" max="10" step="0.1" value="1.0">
+            </div>
+            <div style="font-size:10px;color:var(--muted);line-height:1.6">
+              <strong style="color:var(--accent4)">Crossfade</strong>: blends audio amplitudes<br>
+              <strong style="color:var(--accent3)">Morph</strong>: blends image pixels spectrally
+            </div>
+          </div>
+        </details>
+        <details class="section" open>
+          <summary>Sequence Settings</summary>
+          <div class="section-body">
+            <div class="ctrl-row">
+              <input type="checkbox" id="seqUseComposerSettings" checked>
+              <label for="seqUseComposerSettings">Use Composer settings</label>
+            </div>
+            <div style="font-size:10px;color:var(--muted)">Synthesis params (waveform, harmonics, etc.) are pulled from the Composer tab.</div>
+            <div class="ctrl" id="seqDefaultDurCtrl">
+              <label>Default image duration <span id="seqDefaultDurValue">5.0</span>s</label>
+              <input type="range" id="seqDefaultDur" min="0.5" max="60" step="0.5" value="5.0">
+            </div>
+          </div>
+        </details>
+        <div class="status" id="seqTotalDurLabel" style="margin-bottom:2px"></div>
+        <button class="btn orange" id="seqGenerateBtn">Generate Sequence</button>
+        <button class="btn ghost sm" id="seqCancelBtn" style="display:none">Cancel</button>
+        <div class="status" id="seqStatus"></div>
+        <div class="progress-wrap" id="seqProgressWrap" style="display:none">
+          <div class="progress-bar" id="seqProgress"></div>
+        </div>
+        <div class="output-section">
+          <h4>Audio Output</h4>
+          <audio id="seqAudioPlayer" controls></audio>
+          <div class="audio-row">
+            <button class="btn ghost sm" id="seqDownloadBtn" disabled>Download WAV</button>
+            <span class="status" id="seqFileSizeLabel"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════ META COMPOSER ═══════════════════════════════ -->
+  <div class="tab-pane" id="tab-meta">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+      Build a spectrogram as a <strong style="color:var(--text)">collage of images</strong>. Each tile occupies a time×frequency region — its brightness maps directly to amplitude at that pitch and moment.
+    </div>
+    <div class="meta-layout">
+      <div class="meta-library">
+        <h4>Tile Library</h4>
+        <button class="btn blue sm" id="metaAddTileBtn" style="width:100%">+ Add Tiles</button>
+        <input type="file" id="metaTileInput" accept="image/*" multiple style="display:none">
+        <div class="tile-grid" id="tileGrid"></div>
+        <div style="margin-top:8px">
+          <div class="ctrl">
+            <label>Mosaic grid</label>
+            <div class="ctrl-row">
+              <input type="number" id="mosaicCols" min="1" max="16" value="3" style="width:44px"> ×
+              <input type="number" id="mosaicRows" min="1" max="16" value="3" style="width:44px">
+            </div>
+          </div>
+          <button class="btn ghost sm" id="mosaicFillBtn" style="width:100%;margin-top:6px">Auto-fill Mosaic</button>
+        </div>
+      </div>
+
+      <div class="meta-canvas-wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <h4>Spectrogram Canvas <span style="color:var(--muted);font-weight:400">(click to place selected tile)</span></h4>
+          <button class="btn danger sm" id="metaClearBtn">Clear All</button>
+        </div>
+        <canvas id="metaCanvas" height="300"></canvas>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted)">
+          <span>0s</span><span id="metaTimeLabel">— s</span>
+          <span style="float:right">← Lo freq · Hi freq →</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <div class="ctrl" style="flex:1;min-width:80px">
+            <label>Duration <span id="metaDurValue">10.0</span>s</label>
+            <input type="range" id="metaDuration" min="1" max="300" step="1" value="10">
+          </div>
+          <div class="ctrl" style="flex:1;min-width:80px">
+            <label>Base freq <span id="metaBaseFreqValue">20</span> Hz</label>
+            <input type="range" class="blue" id="metaBaseFreq" min="20" max="4000" value="20">
+          </div>
+          <div class="ctrl" style="flex:1;min-width:80px">
+            <label>Freq span <span id="metaFreqSpanValue">20000</span> Hz</label>
+            <input type="range" class="blue" id="metaFreqSpan" min="100" max="22000" step="100" value="20000">
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-props">
+        <h4>Selected Tile</h4>
+        <div id="metaNoSelection" style="color:var(--muted);font-size:11px">Click a tile in the library, then click the canvas to place it.</div>
+        <div id="metaTileProps" style="display:none;flex-direction:column;gap:8px">
+          <div class="prop-group">
+            <div style="font-size:10px;color:var(--muted)">Position (% of canvas)</div>
+            <div class="ctrl-row">
+              <label style="font-size:10px;color:var(--muted);width:16px">X:</label>
+              <input type="number" id="tileX" min="0" max="100" value="0" style="width:52px">
+              <label style="font-size:10px;color:var(--muted);width:16px">Y:</label>
+              <input type="number" id="tileY" min="0" max="100" value="0" style="width:52px">
+            </div>
+            <div style="font-size:10px;color:var(--muted)">Size (% of canvas)</div>
+            <div class="ctrl-row">
+              <label style="font-size:10px;color:var(--muted);width:16px">W:</label>
+              <input type="number" id="tileW" min="1" max="100" value="25" style="width:52px">
+              <label style="font-size:10px;color:var(--muted);width:16px">H:</label>
+              <input type="number" id="tileH" min="1" max="100" value="25" style="width:52px">
+            </div>
+          </div>
+          <div class="prop-group">
+            <div class="ctrl">
+              <label>Weight <span id="tileWeightValue">1.00</span></label>
+              <input type="range" id="tileWeight" min="0.05" max="2" step="0.05" value="1">
+            </div>
+            <div class="ctrl">
+              <label>Blend mode</label>
+              <select id="tileBlend">
+                <option value="add">Add</option>
+                <option value="max">Max</option>
+                <option value="multiply">Multiply</option>
+                <option value="screen">Screen</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn danger sm" id="deleteTileBtn">Remove Tile</button>
+        </div>
+        <div style="margin-top:auto;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+          <button class="btn purple" id="metaGenerateBtn">Generate Audio</button>
+          <button class="btn ghost sm" id="metaCancelBtn" style="display:none">Cancel</button>
+          <div class="status" id="metaStatus"></div>
+          <div class="progress-wrap" id="metaProgressWrap" style="display:none">
+            <div class="progress-bar" id="metaProgress"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="output-section" style="margin-top:10px">
+      <h4>Audio Output</h4>
+      <audio id="metaAudioPlayer" controls></audio>
+      <div class="audio-row">
+        <button class="btn ghost sm" id="metaDownloadBtn" disabled>Download WAV</button>
+        <span class="status" id="metaFileSizeLabel"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// SHARED CONFIG
+// ═══════════════════════════════════════════════════════════════════
+const config = {
+  duration: 5.0,
+  imageDirection: 'lr',
+  invertBrightness: false,
+  mirrorTime: false,
+  baseFrequency: 20,
+  frequencySpan: 20000,
+  freqScale: 'linear',
+  frequencyShift: 0,
+  pitchQuantize: 'none',
+  waveform: 'sine',
+  harmonicCount: 1,
+  harmonicRolloff: 0.5,
+  chaos: 0,
+  vibratoRate: 0,
+  vibratoDepth: 0,
+  phaseRandomize: false,
+  attackMs: 10,
+  releaseMs: 10,
+  brightnessThreshold: 50,
+  useDynamicRange: false,
+  dynamicRange: 24,
+  gain: 1.0,
+  stereoMode: 'mono',
+  sampleRate: 44100,
+  bitDepth: 16,
+  colormap: 'inferno',
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// COLORMAPS
+// ═══════════════════════════════════════════════════════════════════
+const COLORMAPS = {
+  inferno: [[0,0,3],[20,11,53],[46,9,93],[84,14,131],[114,25,147],[140,35,156],[165,44,160],[188,52,161],[210,60,159],[230,69,154],[245,78,148],[253,85,142],[255,102,127],[255,136,90],[255,182,35],[255,255,0]],
+  viridis: [[68,1,84],[72,40,120],[62,83,160],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[110,206,88],[181,222,43],[253,231,37]],
+  plasma: [[13,8,135],[75,3,161],[125,3,168],[168,34,150],[203,70,121],[229,107,93],[245,144,60],[252,188,22],[240,249,33]],
+  hot: [[0,0,0],[64,0,0],[128,0,0],[192,0,0],[255,0,0],[255,64,0],[255,128,0],[255,192,0],[255,255,0],[255,255,255]],
+  cool: [[0,255,255],[32,224,255],[64,192,255],[96,160,255],[128,128,255],[160,96,255],[192,64,255],[224,32,255],[255,0,255]],
+  electric: [[0,0,0],[0,0,128],[0,0,255],[0,128,255],[0,255,255],[128,255,128],[255,255,0],[255,128,0],[255,0,0],[255,255,255]],
+};
+
+function getColor(intensity, colormap) {
+  const cm = COLORMAPS[colormap] || COLORMAPS.inferno;
+  const pos = Math.max(0, Math.min(1, intensity)) * (cm.length - 1);
+  const i1 = Math.floor(pos), i2 = Math.min(i1 + 1, cm.length - 1);
+  const f = pos - i1;
+  return [
+    Math.round(cm[i1][0] + f * (cm[i2][0] - cm[i1][0])),
+    Math.round(cm[i1][1] + f * (cm[i2][1] - cm[i1][1])),
+    Math.round(cm[i1][2] + f * (cm[i2][2] - cm[i1][2])),
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WEB WORKER CODE (inline blob)
+// ═══════════════════════════════════════════════════════════════════
+const WORKER_CODE = `
+'use strict';
+const SIN_N = 131072;
+const sinTable = new Float32Array(SIN_N);
+for (let i = 0; i < SIN_N; i++) sinTable[i] = Math.sin(2 * Math.PI * i / SIN_N);
+
+function fsin(phase) {
+  let idx = ((phase / (2 * Math.PI)) * SIN_N) | 0;
+  idx = ((idx % SIN_N) + SIN_N) % SIN_N;
+  return sinTable[idx];
+}
+
+function waveAt(wf, phase) {
+  switch (wf) {
+    case 'square': return fsin(phase) >= 0 ? 1 : -1;
+    case 'sawtooth': { const p = ((phase / (2*Math.PI)) % 1 + 1) % 1; return 2*p - 1; }
+    case 'triangle': { const p = ((phase / (2*Math.PI)) % 1 + 1) % 1; return p < .5 ? 4*p-1 : 3-4*p; }
+    default: return fsin(phase);
+  }
+}
+
+const NOTE_INTERVALS = {
+  chromatic: [0,1,2,3,4,5,6,7,8,9,10,11],
+  major:     [0,2,4,5,7,9,11],
+  minor:     [0,2,3,5,7,8,10],
+  pentatonic:[0,2,4,7,9],
+  whole:     [0,2,4,6,8,10],
+};
+
+function quantizeFreq(freq, scale) {
+  if (scale === 'none') return freq;
+  const A4 = 440, intervals = NOTE_INTERVALS[scale] || null;
+  if (!intervals) return freq;
+  const semitone = 12 * Math.log2(freq / A4);
+  const octave = Math.floor(semitone / 12);
+  const degree = ((semitone % 12) + 12) % 12;
+  let best = intervals[0], bestDist = 999;
+  for (const iv of intervals) {
+    const d = Math.abs(iv - degree);
+    const d2 = Math.min(d, 12 - d);
+    if (d2 < bestDist) { bestDist = d2; best = iv; }
+  }
+  return A4 * Math.pow(2, (octave * 12 + best) / 12);
+}
+
+function getFreq(normY, cfg) {
+  const b = cfg.baseFrequency, s = cfg.frequencySpan;
+  switch (cfg.freqScale) {
+    case 'log': return b * Math.pow((b + s) / b, normY);
+    case 'mel': {
+      const hm = f => 2595 * Math.log10(1 + f/700);
+      const mh = m => 700 * (Math.pow(10, m/2595) - 1);
+      return mh(hm(b) + normY * (hm(b+s) - hm(b)));
+    }
+    default: return b + normY * s;
+  }
+}
+
+function synthesize(pixels, width, height, cfg, startSampleOffset) {
+  const sr = cfg.sampleRate;
+  const dur = cfg.duration;
+  const totalSamples = Math.floor(sr * dur);
+  const stereo = cfg.stereoMode !== 'mono';
+
+  const chL = new Float32Array(totalSamples);
+  const chR = stereo ? new Float32Array(totalSamples) : null;
+
+  const samplesPerCol = totalSamples / width;
+  const threshold = cfg.brightnessThreshold;
+  const gainFactor = cfg.gain;
+  const chaosScale = cfg.chaos / 100;
+  const vibRate = cfg.vibratoRate;
+  const vibDepth = cfg.vibratoDepth;
+  const attackSamples = (cfg.attackMs / 1000) * sr;
+  const releaseSamples = (cfg.releaseMs / 1000) * sr;
+  const wf = cfg.waveform;
+  const harmonics = cfg.harmonicCount;
+  const rolloff = cfg.harmonicRolloff;
+  const phRand = cfg.phaseRandomize;
+  const freqShift = cfg.frequencyShift;
+
+  // Random chaos seed per pixel column
+  const chaos_rng = [];
+  for (let i = 0; i < width * height; i++) chaos_rng.push(Math.random() * 2 - 1);
+
+  const phaseOffsets = phRand ? new Float64Array(height).map(() => Math.random() * 2 * Math.PI) : null;
+
+  const TWOPI = 2 * Math.PI;
+
+  for (let x = 0; x < width; x++) {
+    const t0 = x * samplesPerCol;
+    const t1 = Math.min(totalSamples, (x + 1) * samplesPerCol);
+    const startS = Math.floor(t0);
+    const endS = Math.floor(t1);
+    const colLen = endS - startS;
+    if (colLen <= 0) continue;
+
+    const atkS = Math.min(attackSamples, colLen * 0.5);
+    const relS = Math.min(releaseSamples, colLen * 0.5);
+
+    for (let y = 0; y < height; y++) {
+      const pIdx = (y * width + x) * 3;
+      let brightness = (pixels[pIdx] + pixels[pIdx+1] + pixels[pIdx+2]) / 3;
+      if (cfg.invertBrightness) brightness = 255 - brightness;
+      if (brightness < threshold) continue;
+
+      const normY = (height - 1 - y) / (height - 1);
+      let baseFreq = getFreq(normY, cfg) + freqShift;
+      if (baseFreq <= 0) continue;
+
+      const chaosOffset = chaos_rng[y * width + x] * chaosScale * baseFreq * 0.15;
+      baseFreq = Math.max(1, baseFreq + chaosOffset);
+      baseFreq = quantizeFreq(baseFreq, cfg.pitchQuantize);
+
+      const amplitude = (brightness / 255) * gainFactor;
+
+      for (let h = 1; h <= harmonics; h++) {
+        const hFreq = baseFreq * h;
+        if (hFreq >= sr / 2) continue;
+        const hAmp = amplitude * Math.pow(rolloff, h - 1);
+        const phOffset = phaseOffsets ? phaseOffsets[y] * h : 0;
+        const phInc = TWOPI * hFreq / sr;
+        let phase = TWOPI * hFreq * (startS + startSampleOffset) / sr + phOffset;
+        const vibPhInc = vibRate > 0 ? TWOPI * vibRate / sr : 0;
+        let vibPh = TWOPI * vibRate * (startS + startSampleOffset) / sr;
+
+        // Stereo pan factor
+        let panL = 1, panR = 1;
+        if (stereo) {
+          if (cfg.stereoMode === 'lh') {
+            panL = normY < 0.5 ? 1 : 0;
+            panR = normY >= 0.5 ? 1 : 0;
+          } else if (cfg.stereoMode === 'pan') {
+            const panPos = x / width; // 0=left, 1=right
+            panL = Math.cos(panPos * Math.PI / 2);
+            panR = Math.sin(panPos * Math.PI / 2);
+          } else if (cfg.stereoMode === 'freq') {
+            panL = Math.cos(normY * Math.PI / 2);
+            panR = Math.sin(normY * Math.PI / 2);
+          }
+        }
+
+        for (let i = 0; i < colLen; i++) {
+          const si = startS + i;
+
+          let env = 1;
+          if (atkS > 0 && i < atkS) env = i / atkS;
+          if (relS > 0 && i >= colLen - relS) env = Math.min(env, (colLen - i) / relS);
+
+          let vibMod = 0;
+          if (vibDepth > 0 && vibRate > 0) {
+            vibMod = vibDepth * fsin(vibPh) / hFreq; // fractional phase shift
+            vibPh += vibPhInc;
+          }
+
+          const sample = hAmp * env * waveAt(wf, phase + vibMod);
+          chL[si] += sample * panL;
+          if (chR) chR[si] += sample * panR;
+          phase += phInc;
+        }
+      }
+    }
+
+    if (x % 32 === 0) {
+      self.postMessage({ type: 'progress', pct: x / width });
+    }
+  }
+
+  // Normalize
+  let maxAmp = 0;
+  for (let i = 0; i < totalSamples; i++) maxAmp = Math.max(maxAmp, Math.abs(chL[i]));
+  if (chR) for (let i = 0; i < totalSamples; i++) maxAmp = Math.max(maxAmp, Math.abs(chR[i]));
+
+  if (maxAmp > 1e-8) {
+    if (cfg.useDynamicRange) {
+      const dbScale = Math.pow(10, cfg.dynamicRange / 20);
+      const scale = dbScale / maxAmp;
+      const minAmp = 1 / dbScale;
+      for (let i = 0; i < totalSamples; i++) {
+        const s = chL[i] * scale;
+        chL[i] = Math.sign(s) * Math.max(minAmp, Math.abs(s));
+        if (chR) {
+          const sr2 = chR[i] * scale;
+          chR[i] = Math.sign(sr2) * Math.max(minAmp, Math.abs(sr2));
+        }
+      }
+    } else {
+      const scale = 0.85 / maxAmp;
+      for (let i = 0; i < totalSamples; i++) {
+        chL[i] *= scale;
+        if (chR) chR[i] *= scale;
+      }
+    }
+  }
+
+  return chR ? [chL, chR] : [chL];
+}
+
+self.onmessage = function(e) {
+  const { pixels, width, height, cfg, startSampleOffset = 0 } = e.data;
+  const channels = synthesize(pixels, width, height, cfg, startSampleOffset);
+  self.postMessage({ type: 'done', channels }, channels.map(c => c.buffer));
+};
+`;
+
+// ═══════════════════════════════════════════════════════════════════
+// WAV BLOB CREATOR
+// ═══════════════════════════════════════════════════════════════════
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+DataView.prototype.setInt24 = function(pos, val) {
+  this.setUint8(pos, val & 0xff);
+  this.setUint8(pos + 1, (val >> 8) & 0xff);
+  this.setUint8(pos + 2, (val >> 16) & 0xff);
+};
+
+function createWavBlob(channels, sampleRate, bitDepth) {
+  const numChannels = channels.length;
+  const totalSamples = channels[0].length;
+  const bytesPerSample = bitDepth / 8;
+  const dataSize = totalSamples * numChannels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+  view.setUint16(32, numChannels * bytesPerSample, true);
+  view.setUint16(34, bitDepth, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < totalSamples; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = Math.max(-1, Math.min(1, channels[ch][i]));
+      if (bitDepth === 8) {
+        view.setUint8(offset++, Math.floor((s + 1) * 127.5));
+      } else if (bitDepth === 16) {
+        view.setInt16(offset, s * 32767, true); offset += 2;
+      } else if (bitDepth === 24) {
+        view.setInt24(offset, Math.floor(s * 8388607)); offset += 3;
+      } else {
+        view.setInt32(offset, Math.floor(s * 2147483647), true); offset += 4;
+      }
+    }
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WORKER RUNNER
+// ═══════════════════════════════════════════════════════════════════
+function makeWorker() {
+  const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+  return new Worker(URL.createObjectURL(blob));
+}
+
+let activeWorker = null;
+
+function runWorker(pixels, width, height, cfg, onProgress, startSampleOffset = 0) {
+  return new Promise((resolve, reject) => {
+    if (activeWorker) { activeWorker.terminate(); activeWorker = null; }
+    const worker = makeWorker();
+    activeWorker = worker;
+    worker.onmessage = (e) => {
+      if (e.data.type === 'progress') {
+        onProgress(e.data.pct);
+      } else if (e.data.type === 'done') {
+        activeWorker = null;
+        resolve(e.data.channels);
+      }
+    };
+    worker.onerror = (e) => { activeWorker = null; reject(e); };
+    worker.postMessage({ pixels, width, height, cfg: JSON.parse(JSON.stringify(cfg)), startSampleOffset },
+      [pixels.buffer]);
+  });
+}
+
+function cancelWorker() {
+  if (activeWorker) { activeWorker.terminate(); activeWorker = null; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IMAGE PROCESSING
+// ═══════════════════════════════════════════════════════════════════
+const isMobile = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+function adaptiveMaxSize(durationHint) {
+  if (isMobile() || (durationHint && durationHint > 60)) return { maxW: 512, maxH: 256 };
+  return { maxW: 1024, maxH: 512 };
+}
+function processImageToData(img, maxW = 1024, maxH = 512) {
+  const canvas = document.createElement('canvas');
+  let w = img.width, h = img.height;
+  if (w > maxW || h > maxH) {
+    const r = Math.min(maxW / w, maxH / h);
+    w = Math.floor(w * r); h = Math.floor(h * r);
+  }
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const pixels = new Uint8Array(w * h * 3);
+  for (let i = 0, j = 0; i < imageData.data.length; i += 4, j += 3) {
+    pixels[j] = imageData.data[i];
+    pixels[j+1] = imageData.data[i+1];
+    pixels[j+2] = imageData.data[i+2];
+  }
+  return { width: w, height: h, pixels };
+}
+
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function reorientPixels(imgData, direction) {
+  const { width: W, height: H, pixels } = imgData;
+  if (direction === 'lr') return imgData;
+
+  let outW = W, outH = H;
+  if (direction === 'tb' || direction === 'bt') { outW = H; outH = W; }
+
+  const out = new Uint8Array(outW * outH * 3);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const srcIdx = (y * W + x) * 3;
+      let dx, dy;
+      switch (direction) {
+        case 'rl': dx = W - 1 - x; dy = y; break;
+        case 'tb': dx = y; dy = x; break;
+        case 'bt': dx = H - 1 - y; dy = x; break;
+        default: dx = x; dy = y;
+      }
+      const dstIdx = (dy * outW + dx) * 3;
+      out[dstIdx] = pixels[srcIdx];
+      out[dstIdx+1] = pixels[srcIdx+1];
+      out[dstIdx+2] = pixels[srcIdx+2];
+    }
+  }
+  return { width: outW, height: outH, pixels: out };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SPECTROGRAM PREVIEW
+// ═══════════════════════════════════════════════════════════════════
+function drawSpectrogramPreview(imgData, canvas, cfg) {
+  const W = Math.min(800, imgData.width);
+  const H = Math.min(256, imgData.height);
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(W, H);
+
+  for (let i = 0; i < id.data.length; i += 4) {
+    id.data[i] = 0; id.data[i+1] = 0; id.data[i+2] = 0; id.data[i+3] = 255;
+  }
+
+  const maxFreq = cfg.baseFrequency + cfg.frequencySpan;
+  const xRatio = imgData.width / W;
+  const yRatio = imgData.height / H;
+
+  for (let px = 0; px < W; px++) {
+    const srcX = Math.min(imgData.width - 1, Math.floor(px * xRatio));
+    for (let py = 0; py < H; py++) {
+      const srcY = Math.min(imgData.height - 1, Math.floor(py * yRatio));
+      const idx = (srcY * imgData.width + srcX) * 3;
+      let brightness = (imgData.pixels[idx] + imgData.pixels[idx+1] + imgData.pixels[idx+2]) / 3;
+      if (cfg.invertBrightness) brightness = 255 - brightness;
+      if (brightness < cfg.brightnessThreshold) continue;
+
+      const rawI = brightness / 255;
+      let displayI;
+      if (cfg.useDynamicRange) {
+        const db = 20 * Math.log10(Math.max(1e-6, rawI));
+        displayI = (Math.max(-cfg.dynamicRange, db) + cfg.dynamicRange) / cfg.dynamicRange;
+      } else {
+        displayI = rawI;
+      }
+
+      const displayY = H - 1 - py;
+      const dstIdx = (displayY * W + px) * 4;
+      const color = getColor(displayI, cfg.colormap);
+      id.data[dstIdx] = color[0];
+      id.data[dstIdx+1] = color[1];
+      id.data[dstIdx+2] = color[2];
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+function displayImageOnCanvas(imgData, canvas) {
+  const maxW = 400, maxH = 300;
+  let w = imgData.width, h = imgData.height;
+  if (w > maxW || h > maxH) {
+    const r = Math.min(maxW/w, maxH/h);
+    w = Math.floor(w*r); h = Math.floor(h*r);
+  }
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(w, h);
+  const xr = imgData.width / w, yr = imgData.height / h;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const si = (Math.floor(y*yr) * imgData.width + Math.floor(x*xr)) * 3;
+      const di = (y*w+x)*4;
+      id.data[di] = imgData.pixels[si];
+      id.data[di+1] = imgData.pixels[si+1];
+      id.data[di+2] = imgData.pixels[si+2];
+      id.data[di+3] = 255;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TAB NAVIGATION
+// ═══════════════════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SEGMENT CONTROL HELPER
+// ═══════════════════════════════════════════════════════════════════
+function initSegCtrl(id, configKey) {
+  const ctrl = document.getElementById(id);
+  ctrl.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ctrl.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      config[configKey] = btn.dataset.val;
+      composerOnChange();
+    });
+  });
+}
+
+function sliderLabel(sliderId, labelId, transform) {
+  const slider = document.getElementById(sliderId);
+  const label = document.getElementById(labelId);
+  slider.addEventListener('input', () => {
+    label.textContent = transform ? transform(slider.value) : slider.value;
+    composerOnChange();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// COMPOSER TAB
+// ═══════════════════════════════════════════════════════════════════
+let composerImageData = null;
+let composerDebounce = null;
+
+function composerOnChange() {
+  clearTimeout(composerDebounce);
+  composerDebounce = setTimeout(() => {
+    if (composerImageData) {
+      const oriented = reorientPixels(composerImageData, config.imageDirection);
+      drawSpectrogramPreview(oriented, document.getElementById('spectrogramPreviewCanvas'), config);
+    }
+  }, 150);
+}
+
+function initComposer() {
+  // File drop
+  const drop = document.getElementById('composerDrop');
+  const fileInput = document.getElementById('imageInput');
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) loadComposerImage(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadComposerImage(fileInput.files[0]); });
+
+  // Duration
+  const durSlider = document.getElementById('duration');
+  const durExact = document.getElementById('durationExact');
+  const durLabel = document.getElementById('durationValue');
+  durSlider.addEventListener('input', () => {
+    config.duration = parseFloat(durSlider.value);
+    durLabel.textContent = config.duration.toFixed(1);
+    durExact.value = config.duration.toFixed(1);
+    composerOnChange();
+  });
+  durExact.addEventListener('change', () => {
+    const v = Math.max(0.1, Math.min(300, parseFloat(durExact.value) || 5));
+    config.duration = v;
+    durSlider.value = v;
+    durLabel.textContent = v.toFixed(1);
+    composerOnChange();
+  });
+
+  // Checkboxes
+  document.getElementById('invertBrightness').addEventListener('change', function() {
+    config.invertBrightness = this.checked; composerOnChange();
+  });
+  document.getElementById('mirrorTime').addEventListener('change', function() {
+    config.mirrorTime = this.checked; composerOnChange();
+  });
+
+  // Seg ctrls
+  initSegCtrl('directionCtrl', 'imageDirection');
+  initSegCtrl('freqScaleCtrl', 'freqScale');
+  initSegCtrl('waveformCtrl', 'waveform');
+  initSegCtrl('stereoModeCtrl', 'stereoMode');
+
+  // Sliders
+  sliderLabel('baseFreq', 'baseFreqValue', v => { config.baseFrequency = parseInt(v); return v; });
+  sliderLabel('freqSpan', 'freqSpanValue', v => { config.frequencySpan = parseInt(v); return v; });
+  sliderLabel('frequencyShift', 'freqShiftValue', v => { config.frequencyShift = parseInt(v); return v; });
+  sliderLabel('harmonicCount', 'harmonicCountValue', v => { config.harmonicCount = parseInt(v); return v; });
+  sliderLabel('harmonicRolloff', 'harmonicRolloffValue', v => { config.harmonicRolloff = parseFloat(v); return parseFloat(v).toFixed(2); });
+  sliderLabel('chaos', 'chaosValue', v => { config.chaos = parseInt(v); return v; });
+  sliderLabel('vibratoRate', 'vibratoRateValue', v => { config.vibratoRate = parseFloat(v); return parseFloat(v).toFixed(1); });
+  sliderLabel('vibratoDepth', 'vibratoDepthValue', v => { config.vibratoDepth = parseInt(v); return v; });
+  sliderLabel('attackMs', 'attackValue', v => { config.attackMs = parseInt(v); return v; });
+  sliderLabel('releaseMs', 'releaseValue', v => { config.releaseMs = parseInt(v); return v; });
+  sliderLabel('brightnessThreshold', 'brightnessThresholdValue', v => { config.brightnessThreshold = parseInt(v); return v; });
+  sliderLabel('dynamicRange', 'dynamicRangeValue', v => { config.dynamicRange = parseInt(v); return v; });
+  sliderLabel('gain', 'gainValue', v => { config.gain = parseInt(v) / 100; return v; });
+
+  // Pitch quantize
+  document.getElementById('pitchQuantize').addEventListener('change', function() {
+    config.pitchQuantize = this.value; composerOnChange();
+  });
+
+  // Dynamic range toggle
+  document.getElementById('dynamicRangeToggle').addEventListener('change', function() {
+    config.useDynamicRange = this.checked;
+    document.getElementById('dynamicRangeControl').style.display = this.checked ? '' : 'none';
+    composerOnChange();
+  });
+
+  // Phase randomize
+  document.getElementById('phaseRandomize').addEventListener('change', function() {
+    config.phaseRandomize = this.checked;
+  });
+
+  // Sample rate / bit depth / colormap
+  document.getElementById('sampleRate').addEventListener('change', function() {
+    config.sampleRate = parseInt(this.value);
+  });
+  document.getElementById('bitDepth').addEventListener('change', function() {
+    config.bitDepth = parseInt(this.value);
+  });
+  document.getElementById('colormap').addEventListener('change', function() {
+    config.colormap = this.value; composerOnChange();
+  });
+
+  // Generate
+  document.getElementById('convertBtn').addEventListener('click', generateComposerAudio);
+  document.getElementById('cancelBtn').addEventListener('click', () => {
+    cancelWorker();
+    setComposerBusy(false);
+    setStatus('composerStatus', 'Cancelled.', 'err');
+  });
+}
+
+async function loadComposerImage(file) {
+  try {
+    const img = await loadImageFile(file);
+    const { maxW, maxH } = adaptiveMaxSize(config.duration);
+    composerImageData = processImageToData(img, maxW, maxH);
+    const oriented = reorientPixels(composerImageData, config.imageDirection);
+    displayImageOnCanvas(oriented, document.getElementById('imageCanvas'));
+    drawSpectrogramPreview(oriented, document.getElementById('spectrogramPreviewCanvas'), config);
+    setStatus('composerStatus', `Loaded: ${file.name} (${composerImageData.width}×${composerImageData.height})`, 'ok');
+  } catch (e) {
+    setStatus('composerStatus', 'Error loading image: ' + e.message, 'err');
+  }
+}
+
+function setComposerBusy(busy) {
+  document.getElementById('convertBtn').disabled = busy;
+  document.getElementById('cancelBtn').style.display = busy ? '' : 'none';
+  document.getElementById('composerProgressWrap').style.display = busy ? '' : 'none';
+  if (!busy) document.getElementById('composerProgress').style.width = '0%';
+}
+
+async function generateComposerAudio() {
+  if (!composerImageData) { setStatus('composerStatus', 'Load an image first.', 'err'); return; }
+  setComposerBusy(true);
+  setStatus('composerStatus', 'Synthesizing...');
+
+  try {
+    let imgData = reorientPixels(composerImageData, config.imageDirection);
+    if (config.mirrorTime) {
+      // flip X
+      const flipped = new Uint8Array(imgData.pixels.length);
+      for (let y = 0; y < imgData.height; y++) {
+        for (let x = 0; x < imgData.width; x++) {
+          const si = (y * imgData.width + (imgData.width - 1 - x)) * 3;
+          const di = (y * imgData.width + x) * 3;
+          flipped[di] = imgData.pixels[si];
+          flipped[di+1] = imgData.pixels[si+1];
+          flipped[di+2] = imgData.pixels[si+2];
+        }
+      }
+      imgData = { ...imgData, pixels: flipped };
+    }
+
+    const pixels = new Uint8Array(imgData.pixels);
+    const channels = await runWorker(pixels, imgData.width, imgData.height, config, (pct) => {
+      document.getElementById('composerProgress').style.width = (pct * 100).toFixed(0) + '%';
+    });
+
+    const blob = createWavBlob(channels, config.sampleRate, config.bitDepth);
+    const url = URL.createObjectURL(blob);
+    document.getElementById('audioPlayer').src = url;
+    const dlBtn = document.getElementById('downloadBtn');
+    dlBtn.disabled = false;
+    dlBtn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = 'sonivista.wav'; a.click(); };
+    document.getElementById('fileSizeLabel').textContent = `${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+    setStatus('composerStatus', 'Done!', 'ok');
+  } catch (e) {
+    setStatus('composerStatus', 'Error: ' + (e.message || e), 'err');
+  } finally {
+    setComposerBusy(false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SEQUENCE TAB
+// ═══════════════════════════════════════════════════════════════════
+let seqImages = []; // [{file, img, imgData, duration, transpose}]
+
+function initSequence() {
+  document.getElementById('seqAddBtn').addEventListener('click', () =>
+    document.getElementById('seqFileInput').click());
+
+  document.getElementById('seqFileInput').addEventListener('change', async function() {
+    const defDur = parseFloat(document.getElementById('seqDefaultDur').value) || config.duration;
+    for (const file of this.files) {
+      try {
+        const img = await loadImageFile(file);
+        const { maxW, maxH } = adaptiveMaxSize(defDur);
+        const imgData = processImageToData(img, maxW, maxH);
+        seqImages.push({ file, img, imgData, duration: defDur, transpose: 0 });
+      } catch(e) { console.warn('Failed to load', file.name, e); }
+    }
+    this.value = '';
+    renderSeqList();
+  });
+
+  const transCtrl = document.getElementById('transitionTypeCtrl');
+  transCtrl.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      transCtrl.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      updateSeqTotalLabel();
+    });
+  });
+
+  const transSlider = document.getElementById('transitionDur');
+  transSlider.addEventListener('input', () => {
+    document.getElementById('transitionDurValue').textContent = parseFloat(transSlider.value).toFixed(1);
+    updateSeqTotalLabel();
+  });
+
+  const defDurSlider = document.getElementById('seqDefaultDur');
+  defDurSlider.addEventListener('input', () => {
+    document.getElementById('seqDefaultDurValue').textContent = parseFloat(defDurSlider.value).toFixed(1);
+  });
+
+  document.getElementById('seqGenerateBtn').addEventListener('click', generateSequence);
+  document.getElementById('seqCancelBtn').addEventListener('click', () => {
+    cancelWorker();
+    setSeqBusy(false);
+    setStatus('seqStatus', 'Cancelled.', 'err');
+  });
+}
+
+function updateSeqTotalLabel() {
+  const lbl = document.getElementById('seqTotalDurLabel');
+  if (!lbl || seqImages.length === 0) { if (lbl) lbl.textContent = ''; return; }
+  const transType = document.getElementById('transitionTypeCtrl').querySelector('.active').dataset.val;
+  const xf = transType !== 'none' ? parseFloat(document.getElementById('transitionDur').value) : 0;
+  const rawTotal = seqImages.reduce((s, i) => s + i.duration, 0);
+  const total = Math.max(0, rawTotal - xf * Math.max(0, seqImages.length - 1));
+  lbl.textContent = `Total: ~${total.toFixed(1)}s across ${seqImages.length} image${seqImages.length !== 1 ? 's' : ''}`;
+}
+
+function renderSeqList() {
+  const list = document.getElementById('seqList');
+  if (seqImages.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;text-align:center;border:1px dashed var(--border);border-radius:6px">No images added yet</div>';
+    updateSeqTotalLabel();
+    return;
+  }
+  list.innerHTML = '';
+  seqImages.forEach((item, idx) => {
+    const el = document.createElement('div');
+    el.className = 'seq-item';
+    el.draggable = true;
+
+    // Thumbnail
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 48; thumbCanvas.height = 32;
+    thumbCanvas.className = 'seq-thumb';
+    thumbCanvas.getContext('2d').drawImage(item.img, 0, 0, 48, 32);
+    el.appendChild(thumbCanvas);
+
+    // Name
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'seq-name'; nameSpan.title = item.file.name;
+    nameSpan.textContent = item.file.name;
+    el.appendChild(nameSpan);
+
+    // Controls
+    const ctrls = document.createElement('div');
+    ctrls.className = 'seq-item-ctrls';
+
+    const durLbl = document.createElement('label'); durLbl.textContent = 'dur';
+    const durInp = document.createElement('input');
+    durInp.type = 'number'; durInp.value = item.duration.toFixed(1);
+    durInp.min = 0.1; durInp.max = 300; durInp.step = 0.5;
+    durInp.style.width = '58px';
+    durInp.addEventListener('change', () => { item.duration = Math.max(0.1, parseFloat(durInp.value) || 5); updateSeqTotalLabel(); });
+
+    const shiftLbl = document.createElement('label'); shiftLbl.textContent = 'shift';
+    const shiftInp = document.createElement('input');
+    shiftInp.type = 'number'; shiftInp.value = item.transpose;
+    shiftInp.min = -10000; shiftInp.max = 10000; shiftInp.step = 50;
+    shiftInp.style.width = '65px';
+    shiftInp.addEventListener('change', () => { item.transpose = parseFloat(shiftInp.value) || 0; });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn danger sm'; delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => { seqImages.splice(idx, 1); renderSeqList(); });
+
+    // Up/Down buttons (work on all devices)
+    const moveBtns = document.createElement('div');
+    moveBtns.className = 'move-btns';
+    const upBtn = document.createElement('button'); upBtn.textContent = '↑'; upBtn.title = 'Move up';
+    const dnBtn = document.createElement('button'); dnBtn.textContent = '↓'; dnBtn.title = 'Move down';
+    upBtn.addEventListener('click', () => { if (idx > 0) { [seqImages[idx-1], seqImages[idx]] = [seqImages[idx], seqImages[idx-1]]; renderSeqList(); } });
+    dnBtn.addEventListener('click', () => { if (idx < seqImages.length-1) { [seqImages[idx], seqImages[idx+1]] = [seqImages[idx+1], seqImages[idx]]; renderSeqList(); } });
+    moveBtns.appendChild(upBtn); moveBtns.appendChild(dnBtn);
+
+    ctrls.append(durLbl, durInp, shiftLbl, shiftInp, delBtn, moveBtns);
+    el.appendChild(ctrls);
+
+    // Desktop drag-to-reorder
+    el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', idx); el.style.opacity = '.4'; });
+    el.addEventListener('dragend', () => { el.style.opacity = '1'; });
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drag-over');
+      const src = parseInt(e.dataTransfer.getData('text/plain'));
+      if (!isNaN(src) && src !== idx) {
+        const [moved] = seqImages.splice(src, 1);
+        seqImages.splice(idx, 0, moved);
+        renderSeqList();
+      }
+    });
+
+    list.appendChild(el);
+  });
+  updateSeqTotalLabel();
+}
+
+function setSeqBusy(busy) {
+  document.getElementById('seqGenerateBtn').disabled = busy;
+  document.getElementById('seqCancelBtn').style.display = busy ? '' : 'none';
+  document.getElementById('seqProgressWrap').style.display = busy ? '' : 'none';
+}
+
+async function generateSequence() {
+  if (seqImages.length === 0) { setStatus('seqStatus', 'Add images first.', 'err'); return; }
+  setSeqBusy(true);
+
+  const transType = document.getElementById('transitionTypeCtrl').querySelector('.active').dataset.val;
+  const xfadeDur = parseFloat(document.getElementById('transitionDur').value);
+  const sr = config.sampleRate;
+
+  try {
+    // ── Step 1: Render every image at its full specified duration ──────
+    const imageBuffers = [];
+    for (let i = 0; i < seqImages.length; i++) {
+      const item = seqImages[i];
+      setStatus('seqStatus', `Synthesizing image ${i + 1} / ${seqImages.length}…`);
+      const imgCfg = Object.assign({}, config, {
+        duration: item.duration,
+        frequencyShift: config.frequencyShift + (item.transpose || 0),
+      });
+      const imgData = reorientPixels(item.imgData, config.imageDirection);
+      const channels = await runWorker(
+        new Uint8Array(imgData.pixels), imgData.width, imgData.height, imgCfg,
+        pct => { document.getElementById('seqProgress').style.width = ((i + pct) / seqImages.length * 100).toFixed(0) + '%'; }
+      );
+      imageBuffers.push(channels);
+    }
+
+    const numCh = Math.max(...imageBuffers.map(b => b.length));
+
+    // ── Step 2: Assemble with chosen transition strategy ───────────────
+    let outChannels;
+
+    if (transType === 'none' || seqImages.length === 1) {
+      // Simple concatenation — no overlap
+      const total = imageBuffers.reduce((s, b) => s + b[0].length, 0);
+      outChannels = Array.from({ length: numCh }, () => new Float32Array(total));
+      let pos = 0;
+      for (const buf of imageBuffers) {
+        for (let ch = 0; ch < numCh; ch++) outChannels[ch].set(ch < buf.length ? buf[ch] : buf[0], pos);
+        pos += buf[0].length;
+      }
+
+    } else if (transType === 'crossfade') {
+      // Overlap-add with power-of-cosine amplitude envelopes
+      const minBufLen = Math.min(...imageBuffers.map(b => b[0].length));
+      const xf = Math.min(Math.floor(xfadeDur * sr), Math.floor(minBufLen * 0.45));
+      const total = Math.max(1, imageBuffers.reduce((s, b) => s + b[0].length, 0) - (imageBuffers.length - 1) * xf);
+      outChannels = Array.from({ length: numCh }, () => new Float32Array(total));
+      let pos = 0;
+      for (let i = 0; i < imageBuffers.length; i++) {
+        const buf = imageBuffers[i];
+        const len = buf[0].length;
+        const fadeIn  = i > 0                       ? xf : 0;
+        const fadeOut = i < imageBuffers.length - 1 ? xf : 0;
+        for (let ch = 0; ch < numCh; ch++) {
+          const src = ch < buf.length ? buf[ch] : buf[0];
+          for (let j = 0; j < len; j++) {
+            const si = pos + j;
+            if (si >= total) break;
+            let g = 1;
+            if (fadeIn  > 0 && j < fadeIn)          g = j / fadeIn;
+            if (fadeOut > 0 && j >= len - fadeOut)   g = Math.min(g, (len - j) / fadeOut);
+            outChannels[ch][si] += src[j] * g;
+          }
+        }
+        pos += len - (i < imageBuffers.length - 1 ? xf : 0);
+      }
+
+    } else if (transType === 'morph') {
+      // Render pixel-blended transition audio per boundary, then concatenate:
+      // [img0 body] [morph 0→1] [img1 body] [morph 1→2] [img2 body] …
+      // "body" = full render with half-xfade trimmed from each adjacent end
+      const MORPH_FRAMES = 8;
+      const frameDur = xfadeDur / MORPH_FRAMES;
+      const halfXf = Math.floor(xfadeDur * sr / 2);
+
+      const morphBuffers = [];
+      for (let i = 0; i < seqImages.length - 1; i++) {
+        setStatus('seqStatus', `Morphing ${i + 1}→${i + 2} (${MORPH_FRAMES} frames)…`);
+        const imgA = reorientPixels(seqImages[i].imgData, config.imageDirection);
+        const imgB = reorientPixels(seqImages[i + 1].imgData, config.imageDirection);
+        const tA = seqImages[i].transpose || 0, tB = seqImages[i + 1].transpose || 0;
+        const frameParts = Array.from({ length: numCh }, () => []);
+
+        for (let f = 0; f < MORPH_FRAMES; f++) {
+          const alpha = f / (MORPH_FRAMES - 1);
+          const blended = blendImageData(imgA, imgB, alpha);
+          const frameCfg = Object.assign({}, config, {
+            duration: frameDur,
+            frequencyShift: config.frequencyShift + tA * (1 - alpha) + tB * alpha,
+          });
+          const fCh = await runWorker(new Uint8Array(blended.pixels), blended.width, blended.height, frameCfg, () => {});
+          for (let ch = 0; ch < numCh; ch++) frameParts[ch].push(ch < fCh.length ? fCh[ch] : fCh[0]);
+        }
+        morphBuffers.push(frameParts.map(parts => {
+          const t = parts.reduce((s, p) => s + p.length, 0);
+          const out = new Float32Array(t);
+          let off = 0;
+          for (const p of parts) { out.set(p, off); off += p.length; }
+          return out;
+        }));
+      }
+
+      // Calculate total output length
+      let total = 0;
+      for (let i = 0; i < imageBuffers.length; i++) {
+        const len = imageBuffers[i][0].length;
+        const c0 = i > 0                       ? Math.min(halfXf, Math.floor(len * 0.4)) : 0;
+        const c1 = i < imageBuffers.length - 1 ? Math.min(halfXf, Math.floor(len * 0.4)) : 0;
+        total += Math.max(0, len - c0 - c1);
+        if (i < morphBuffers.length) total += morphBuffers[i][0].length;
+      }
+
+      outChannels = Array.from({ length: numCh }, () => new Float32Array(Math.max(1, total)));
+      let pos = 0;
+      for (let i = 0; i < imageBuffers.length; i++) {
+        const buf = imageBuffers[i];
+        const len = buf[0].length;
+        const c0 = i > 0                       ? Math.min(halfXf, Math.floor(len * 0.4)) : 0;
+        const c1 = i < imageBuffers.length - 1 ? Math.min(halfXf, Math.floor(len * 0.4)) : 0;
+        const wLen = Math.max(0, len - c0 - c1);
+        if (wLen > 0) {
+          for (let ch = 0; ch < numCh; ch++) {
+            const src = ch < buf.length ? buf[ch] : buf[0];
+            outChannels[ch].set(src.subarray(c0, c0 + wLen), pos);
+          }
+          pos += wLen;
+        }
+        if (i < morphBuffers.length) {
+          const morph = morphBuffers[i];
+          for (let ch = 0; ch < numCh; ch++) outChannels[ch].set(ch < morph.length ? morph[ch] : morph[0], pos);
+          pos += morphBuffers[i][0].length;
+        }
+      }
+    }
+
+    // ── Step 3: Normalize & export ─────────────────────────────────────
+    let maxA = 0;
+    outChannels.forEach(ch => { for (const s of ch) maxA = Math.max(maxA, Math.abs(s)); });
+    if (maxA > 0.85) {
+      const scale = 0.85 / maxA;
+      outChannels.forEach(ch => { for (let i = 0; i < ch.length; i++) ch[i] *= scale; });
+    }
+
+    const blob = createWavBlob(outChannels, sr, config.bitDepth);
+    const url = URL.createObjectURL(blob);
+    document.getElementById('seqAudioPlayer').src = url;
+    const dlBtn = document.getElementById('seqDownloadBtn');
+    dlBtn.disabled = false;
+    dlBtn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = 'sonivista-sequence.wav'; a.click(); };
+    const totalSec = outChannels[0].length / sr;
+    document.getElementById('seqFileSizeLabel').textContent = `${(blob.size / 1024 / 1024).toFixed(2)} MB · ${totalSec.toFixed(1)}s`;
+    setStatus('seqStatus', `Done! ${seqImages.length} image${seqImages.length !== 1 ? 's' : ''}, ${totalSec.toFixed(1)}s total`, 'ok');
+
+  } catch (e) {
+    setStatus('seqStatus', 'Error: ' + (e.message || e), 'err');
+  } finally {
+    setSeqBusy(false);
+  }
+}
+
+function blendImageData(a, b, alpha) {
+  const W = Math.min(a.width, b.width);
+  const H = Math.min(a.height, b.height);
+  const pixels = new Uint8Array(W * H * 3);
+  const xrA = a.width / W, yrA = a.height / H;
+  const xrB = b.width / W, yrB = b.height / H;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const siA = (Math.floor(y*yrA) * a.width + Math.floor(x*xrA)) * 3;
+      const siB = (Math.floor(y*yrB) * b.width + Math.floor(x*xrB)) * 3;
+      const di = (y*W+x)*3;
+      pixels[di]   = a.pixels[siA]   * (1-alpha) + b.pixels[siB]   * alpha;
+      pixels[di+1] = a.pixels[siA+1] * (1-alpha) + b.pixels[siB+1] * alpha;
+      pixels[di+2] = a.pixels[siA+2] * (1-alpha) + b.pixels[siB+2] * alpha;
+    }
+  }
+  return { width: W, height: H, pixels };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// META COMPOSER TAB
+// ═══════════════════════════════════════════════════════════════════
+let metaTiles = [];      // [{id, file, img, imgData}]
+let metaPlacements = []; // [{tileId, x, y, w, h, weight, blend}]
+let metaSelectedTileId = null;
+let metaSelectedPlacementIdx = null;
+let metaTileIdCounter = 0;
+
+function initMeta() {
+  document.getElementById('metaAddTileBtn').addEventListener('click', () =>
+    document.getElementById('metaTileInput').click());
+
+  document.getElementById('metaTileInput').addEventListener('change', async function() {
+    for (const file of this.files) {
+      const img = await loadImageFile(file);
+      const imgData = processImageToData(img, 256, 256);
+      metaTiles.push({ id: metaTileIdCounter++, file, img, imgData });
+    }
+    this.value = '';
+    renderTileLibrary();
+  });
+
+  document.getElementById('metaClearBtn').addEventListener('click', () => {
+    metaPlacements = [];
+    metaSelectedPlacementIdx = null;
+    renderMetaCanvas();
+    hideTileProps();
+  });
+
+  document.getElementById('mosaicFillBtn').addEventListener('click', fillMosaic);
+  document.getElementById('metaGenerateBtn').addEventListener('click', generateMeta);
+  document.getElementById('metaCancelBtn').addEventListener('click', () => {
+    cancelWorker();
+    setMetaBusy(false);
+    setStatus('metaStatus', 'Cancelled.', 'err');
+  });
+  document.getElementById('deleteTileBtn').addEventListener('click', () => {
+    if (metaSelectedPlacementIdx !== null) {
+      metaPlacements.splice(metaSelectedPlacementIdx, 1);
+      metaSelectedPlacementIdx = null;
+      hideTileProps();
+      renderMetaCanvas();
+    }
+  });
+
+  // Meta canvas click
+  const mc = document.getElementById('metaCanvas');
+  mc.addEventListener('click', (e) => {
+    const rect = mc.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width * 100;
+    const cy = (e.clientY - rect.top) / rect.height * 100;
+
+    // Check if clicking on an existing placement
+    for (let i = metaPlacements.length - 1; i >= 0; i--) {
+      const p = metaPlacements[i];
+      if (cx >= p.x && cx <= p.x+p.w && cy >= p.y && cy <= p.y+p.h) {
+        metaSelectedPlacementIdx = i;
+        showTileProps(p);
+        renderMetaCanvas();
+        return;
+      }
+    }
+
+    // Place new tile
+    if (metaSelectedTileId === null) return;
+    const newPlacement = { tileId: metaSelectedTileId, x: Math.max(0, cx - 12.5), y: Math.max(0, cy - 12.5), w: 25, h: 25, weight: 1, blend: 'add' };
+    metaPlacements.push(newPlacement);
+    metaSelectedPlacementIdx = metaPlacements.length - 1;
+    showTileProps(newPlacement);
+    renderMetaCanvas();
+  });
+
+  // Tile property inputs
+  ['tileX','tileY','tileW','tileH'].forEach(id => {
+    document.getElementById(id).addEventListener('change', syncTileProps);
+  });
+  document.getElementById('tileWeight').addEventListener('input', function() {
+    document.getElementById('tileWeightValue').textContent = parseFloat(this.value).toFixed(2);
+    syncTileProps();
+  });
+  document.getElementById('tileBlend').addEventListener('change', syncTileProps);
+
+  // Meta canvas duration/freq sliders
+  const metaDurSlider = document.getElementById('metaDuration');
+  metaDurSlider.addEventListener('input', function() {
+    document.getElementById('metaDurValue').textContent = this.value;
+    document.getElementById('metaTimeLabel').textContent = this.value + 's';
+    renderMetaCanvas();
+  });
+  document.getElementById('metaBaseFreq').addEventListener('input', function() {
+    document.getElementById('metaBaseFreqValue').textContent = this.value;
+  });
+  document.getElementById('metaFreqSpan').addEventListener('input', function() {
+    document.getElementById('metaFreqSpanValue').textContent = this.value;
+  });
+
+  document.getElementById('metaTimeLabel').textContent = metaDurSlider.value + 's';
+  renderMetaCanvas();
+}
+
+function renderTileLibrary() {
+  const grid = document.getElementById('tileGrid');
+  grid.innerHTML = '';
+  metaTiles.forEach(tile => {
+    const el = document.createElement('div');
+    el.className = 'tile-item' + (tile.id === metaSelectedTileId ? ' selected' : '');
+    el.dataset.id = tile.id;
+    const img = document.createElement('img');
+    // Create thumbnail URL
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 64; thumbCanvas.height = 64;
+    thumbCanvas.getContext('2d').drawImage(tile.img, 0, 0, 64, 64);
+    img.src = thumbCanvas.toDataURL();
+    const delBtn = document.createElement('button');
+    delBtn.className = 'tile-del';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      metaTiles = metaTiles.filter(t => t.id !== tile.id);
+      metaPlacements = metaPlacements.filter(p => p.tileId !== tile.id);
+      if (metaSelectedTileId === tile.id) metaSelectedTileId = null;
+      renderTileLibrary();
+      renderMetaCanvas();
+    });
+    el.appendChild(img);
+    el.appendChild(delBtn);
+    el.addEventListener('click', () => {
+      metaSelectedTileId = tile.id;
+      renderTileLibrary();
+    });
+    grid.appendChild(el);
+  });
+}
+
+function showTileProps(p) {
+  document.getElementById('metaNoSelection').style.display = 'none';
+  const propsEl = document.getElementById('metaTileProps');
+  propsEl.style.display = 'flex';
+  document.getElementById('tileX').value = p.x.toFixed(1);
+  document.getElementById('tileY').value = p.y.toFixed(1);
+  document.getElementById('tileW').value = p.w.toFixed(1);
+  document.getElementById('tileH').value = p.h.toFixed(1);
+  document.getElementById('tileWeight').value = p.weight;
+  document.getElementById('tileWeightValue').textContent = p.weight.toFixed(2);
+  document.getElementById('tileBlend').value = p.blend;
+}
+
+function hideTileProps() {
+  document.getElementById('metaNoSelection').style.display = '';
+  document.getElementById('metaTileProps').style.display = 'none';
+}
+
+function syncTileProps() {
+  if (metaSelectedPlacementIdx === null) return;
+  const p = metaPlacements[metaSelectedPlacementIdx];
+  p.x = parseFloat(document.getElementById('tileX').value) || 0;
+  p.y = parseFloat(document.getElementById('tileY').value) || 0;
+  p.w = parseFloat(document.getElementById('tileW').value) || 25;
+  p.h = parseFloat(document.getElementById('tileH').value) || 25;
+  p.weight = parseFloat(document.getElementById('tileWeight').value) || 1;
+  p.blend = document.getElementById('tileBlend').value;
+  renderMetaCanvas();
+}
+
+function fillMosaic() {
+  const cols = parseInt(document.getElementById('mosaicCols').value) || 3;
+  const rows = parseInt(document.getElementById('mosaicRows').value) || 3;
+  if (metaTiles.length === 0) { setStatus('metaStatus', 'Add tiles first.', 'err'); return; }
+  metaPlacements = [];
+  const cw = 100 / cols, ch = 100 / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const tileIdx = (r * cols + c) % metaTiles.length;
+      metaPlacements.push({
+        tileId: metaTiles[tileIdx].id,
+        x: c * cw, y: r * ch, w: cw, h: ch,
+        weight: 1, blend: 'add'
+      });
+    }
+  }
+  metaSelectedPlacementIdx = null;
+  hideTileProps();
+  renderMetaCanvas();
+}
+
+function renderMetaCanvas() {
+  const canvas = document.getElementById('metaCanvas');
+  const W = canvas.width || canvas.clientWidth || 600;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, canvas.height);
+
+  const COLORS = ['#00e676','#ff6d00','#7c4dff','#00b0ff','#f44336','#ffcc00','#00bcd4','#e91e63'];
+
+  metaPlacements.forEach((p, idx) => {
+    const tile = metaTiles.find(t => t.id === p.tileId);
+    if (!tile) return;
+
+    const px = p.x / 100 * W;
+    const py = p.y / 100 * canvas.height;
+    const pw = p.w / 100 * W;
+    const ph = p.h / 100 * canvas.height;
+
+    // Draw thumbnail
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, p.weight * 0.7);
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = Math.ceil(pw); thumbCanvas.height = Math.ceil(ph);
+    thumbCanvas.getContext('2d').drawImage(tile.img, 0, 0, thumbCanvas.width, thumbCanvas.height);
+    ctx.drawImage(thumbCanvas, px, py, pw, ph);
+    ctx.restore();
+
+    // Highlight selected
+    const color = COLORS[idx % COLORS.length];
+    ctx.strokeStyle = idx === metaSelectedPlacementIdx ? '#fff' : color;
+    ctx.lineWidth = idx === metaSelectedPlacementIdx ? 2 : 1;
+    ctx.strokeRect(px, py, pw, ph);
+
+    ctx.fillStyle = color;
+    ctx.font = '10px monospace';
+    ctx.fillText(tile.file.name.slice(0, 12), px + 3, py + 12);
+  });
+
+  if (metaPlacements.length === 0) {
+    ctx.fillStyle = '#333';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Select a tile from the library, then click here to place it', W/2, canvas.height/2);
+    ctx.textAlign = 'left';
+  }
+}
+
+function compositeMetaSpectrogram() {
+  const W = 512, H = 256;
+  const composite = new Float32Array(W * H); // brightness 0-1
+
+  metaPlacements.forEach(p => {
+    const tile = metaTiles.find(t => t.id === p.tileId);
+    if (!tile) return;
+
+    const x0 = Math.floor(p.x / 100 * W);
+    const y0 = Math.floor(p.y / 100 * H);
+    const x1 = Math.min(W, Math.ceil((p.x + p.w) / 100 * W));
+    const y1 = Math.min(H, Math.ceil((p.y + p.h) / 100 * H));
+
+    const tw = x1 - x0, th = y1 - y0;
+    if (tw <= 0 || th <= 0) return;
+
+    const xr = tile.imgData.width / tw;
+    const yr = tile.imgData.height / th;
+
+    for (let cy = 0; cy < th; cy++) {
+      for (let cx = 0; cx < tw; cx++) {
+        const si = (Math.floor(cy*yr) * tile.imgData.width + Math.floor(cx*xr)) * 3;
+        const brightness = (tile.imgData.pixels[si] + tile.imgData.pixels[si+1] + tile.imgData.pixels[si+2]) / 3 / 255;
+        const dstIdx = (y0+cy) * W + (x0+cx);
+        const val = brightness * p.weight;
+
+        switch (p.blend) {
+          case 'add':      composite[dstIdx] = Math.min(1, composite[dstIdx] + val); break;
+          case 'max':      composite[dstIdx] = Math.max(composite[dstIdx], val); break;
+          case 'multiply': composite[dstIdx] = composite[dstIdx] * val; break;
+          case 'screen':   composite[dstIdx] = 1 - (1-composite[dstIdx]) * (1-val); break;
+          default:         composite[dstIdx] = Math.min(1, composite[dstIdx] + val);
+        }
+      }
+    }
+  });
+
+  // Convert float composite to Uint8 RGB pixels
+  const pixels = new Uint8Array(W * H * 3);
+  for (let i = 0; i < W * H; i++) {
+    const v = Math.floor(composite[i] * 255);
+    pixels[i*3] = v; pixels[i*3+1] = v; pixels[i*3+2] = v;
+  }
+  return { width: W, height: H, pixels };
+}
+
+function setMetaBusy(busy) {
+  document.getElementById('metaGenerateBtn').disabled = busy;
+  document.getElementById('metaCancelBtn').style.display = busy ? '' : 'none';
+  document.getElementById('metaProgressWrap').style.display = busy ? '' : 'none';
+}
+
+async function generateMeta() {
+  if (metaPlacements.length === 0) { setStatus('metaStatus', 'Place some tiles first.', 'err'); return; }
+  setMetaBusy(true);
+  setStatus('metaStatus', 'Compositing...');
+
+  try {
+    const composed = compositeMetaSpectrogram();
+    const metaCfg = {
+      ...config,
+      duration: parseFloat(document.getElementById('metaDuration').value),
+      baseFrequency: parseInt(document.getElementById('metaBaseFreq').value),
+      frequencySpan: parseInt(document.getElementById('metaFreqSpan').value),
+    };
+
+    setStatus('metaStatus', 'Synthesizing...');
+    const channels = await runWorker(new Uint8Array(composed.pixels), composed.width, composed.height, metaCfg, (pct) => {
+      document.getElementById('metaProgress').style.width = (pct * 100).toFixed(0) + '%';
+    });
+
+    const blob = createWavBlob(channels, metaCfg.sampleRate, config.bitDepth);
+    const url = URL.createObjectURL(blob);
+    document.getElementById('metaAudioPlayer').src = url;
+    const dlBtn = document.getElementById('metaDownloadBtn');
+    dlBtn.disabled = false;
+    dlBtn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = 'sonivista-meta.wav'; a.click(); };
+    document.getElementById('metaFileSizeLabel').textContent = `${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+    setStatus('metaStatus', 'Done!', 'ok');
+  } catch (e) {
+    setStatus('metaStatus', 'Error: ' + (e.message || e), 'err');
+  } finally {
+    setMetaBusy(false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UTIL
+// ═══════════════════════════════════════════════════════════════════
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' ' + type : '');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initComposer();
+  initSequence();
+  initMeta();
+
+  // Resize meta canvas reactively
+  const metaCanvasParent = document.getElementById('metaCanvas').parentElement;
+  function resizeMetaCanvas() {
+    const mc = document.getElementById('metaCanvas');
+    const newW = metaCanvasParent ? metaCanvasParent.clientWidth : 600;
+    if (newW > 0) { mc.width = newW; renderMetaCanvas(); }
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(resizeMetaCanvas).observe(metaCanvasParent);
+  } else {
+    window.addEventListener('resize', resizeMetaCanvas);
+    setTimeout(resizeMetaCanvas, 120);
+  }
+
+  // Also resize when switching to the meta tab
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { if (btn.dataset.tab === 'meta') setTimeout(resizeMetaCanvas, 30); });
+  });
+
+  // SLIDE-style fill: paint the coloured portion left of the knob. One delegated
+  // listener handles every range input, so dragging stays instant (no per-frame
+  // redraw work on the slider itself — the heavy preview redraw is debounced).
+  const paintRange = (el) => {
+    const min = parseFloat(el.min) || 0;
+    const max = parseFloat(el.max);
+    const span = (isNaN(max) ? 100 : max) - min || 1;
+    el.style.setProperty('--fill', (((parseFloat(el.value) - min) / span) * 100) + '%');
+  };
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.matches && e.target.matches('input[type=range]')) paintRange(e.target);
+  });
+  document.querySelectorAll('input[type=range]').forEach(paintRange);
+});
+</script>
+
+</body>
+</html>

@@ -346,9 +346,11 @@ export const SunoGenPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Render queue */}
-        <motion.div {...fade(0.12)} className="w-80 shrink-0 flex flex-col bg-[#08060c]/60 backdrop-blur-sm">
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/8">
+        {/* Render queue — min-h-0 lets the column bound its height so ONLY
+            the job list scrolls; the header stays pinned (shrink-0) instead
+            of the whole column compressing when the pane is short. */}
+        <motion.div {...fade(0.12)} className="w-80 shrink-0 min-h-0 flex flex-col bg-[#08060c]/60 backdrop-blur-sm">
+          <div className="shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-white/8">
             <span className="mono-label text-[10px]! flex items-center gap-1.5">
               <ListMusic className="w-3.5 h-3.5 text-purple-400" />
               Render Queue

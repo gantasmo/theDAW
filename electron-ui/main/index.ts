@@ -5,6 +5,7 @@ import {
   dialog,
   protocol,
   net,
+  session,
 } from 'electron'
 import { ChildProcess, spawn, execFile } from 'child_process'
 import * as fs from 'fs'
@@ -58,6 +59,123 @@ const BACKEND_BASE = 'http://localhost:8600'
 const HEALTH_URL = `${BACKEND_BASE}/api/health`
 const SHUTDOWN_URL = `${BACKEND_BASE}/api/admin/shutdown`
 
+// ---------------------------------------------------------------------------
+// Packaged-app paths + first-run bootstrap
+//
+// In a packaged build the Python project, a bundled uv.exe, and ffmpeg.exe ship
+// under process.resourcesPath (see electron-builder.yml -> extraResources). The
+// per-user install directory is writable, so uv creates the venv next to the
+// bundled pyproject.toml on first launch and the backend writes its data/ tree
+// there. In dev none of this applies: the backend runs from the repo via uv on
+// PATH exactly as before.
+// ---------------------------------------------------------------------------
+
+function getPythonDir(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'python') : repoRoot
+}
+
+function getToolsDir(): string {
+  return path.join(process.resourcesPath, 'tools')
+}
+
+function getUvCommand(): string {
+  return app.isPackaged ? path.join(getToolsDir(), 'uv.exe') : 'uv'
+}
+
+function venvPython(pyDir: string): string {
+  return process.platform === 'win32'
+    ? path.join(pyDir, '.venv', 'Scripts', 'python.exe')
+    : path.join(pyDir, '.venv', 'bin', 'python')
+}
+
+// Environment for the backend + the uv sync step. Packaged builds prepend the
+// bundled tools dir (uv.exe, ffmpeg.exe, ffprobe.exe) to PATH so the backend's
+// audio I/O resolves ffmpeg without a system install. The PATH key is matched
+// case-insensitively because Windows exposes it as "Path".
+function buildBackendEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, SA3_SUPERVISOR_PRESENT: '1' }
+  if (app.isPackaged) {
+    const toolsDir = getToolsDir()
+    const key = Object.keys(env).find((k) => k.toLowerCase() === 'path') ?? 'PATH'
+    env[key] = `${toolsDir}${path.delimiter}${env[key] ?? ''}`
+  }
+  return env
+}
+
+function coreImportsOk(py: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const proc = spawn(py, ['-c', 'import uvicorn, fastapi'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      proc.on('exit', (code) => resolve(code === 0))
+      proc.on('error', () => resolve(false))
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+function runUvSync(uvCmd: string, cwd: string): Promise<void> {
+  return new Promise((resolve) => {
+    log(`Running ${uvCmd} sync --group dev in ${cwd}`)
+    const proc = spawn(uvCmd, ['sync', '--group', 'dev'], {
+      cwd,
+      env: buildBackendEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    const emit = (data: Buffer): void => {
+      for (const raw of data.toString().split('\n')) {
+        const text = raw.replace(/\r$/, '').trimEnd()
+        if (!text.trim()) continue
+        log(`[uv] ${text}`)
+        sendLoadingLog(text, '')
+      }
+    }
+    proc.stdout?.on('data', emit)
+    proc.stderr?.on('data', emit)
+    proc.on('exit', (code) => {
+      if (code === 0) {
+        sendLoadingLog('Dependencies installed.', 'load')
+      } else {
+        sendLoadingLog(
+          `Setup step exited with code ${code}. The app may not start until this is resolved.`,
+          'err',
+        )
+      }
+      resolve()
+    })
+    proc.on('error', (err) => {
+      sendLoadingLog(`Setup failed to start: ${err.message}`, 'err')
+      resolve()
+    })
+  })
+}
+
+// First-run bootstrap: build the venv when it is missing or a core import fails
+// (a uv sync interrupted after the venv is created but before packages install
+// leaves a half-built env). Streams progress into the boot cinematic. No-op in
+// dev, where the repo venv is managed by theDAW.bat / uv on PATH.
+async function ensurePythonEnv(): Promise<void> {
+  if (!app.isPackaged) return
+  const pyDir = getPythonDir()
+  const py = venvPython(pyDir)
+  let ok = fs.existsSync(py)
+  if (ok) ok = await coreImportsOk(py)
+  if (ok) {
+    log('Python env present and complete — skipping sync.')
+    return
+  }
+  sendLoadingStatus('First run: setting up the audio engine')
+  sendLoadingLog(
+    'Installing the Python runtime and dependencies. The first run downloads several GB and can take several minutes.',
+    'load',
+  )
+  await runUvSync(getUvCommand(), pyDir)
+}
+
 async function isBackendRunning(): Promise<boolean> {
   try {
     const res = await globalThis.fetch(HEALTH_URL, {
@@ -73,10 +191,43 @@ function spawnBackend(): void {
   log('Spawning backend process...')
 
   const isWindows = process.platform === 'win32'
-  const cwd = repoRoot
-  const env = { ...process.env, SA3_SUPERVISOR_PRESENT: '1' }
+  const cwd = getPythonDir()
+  const env = buildBackendEnv()
+  const devVenvPy = venvPython(cwd)
+  const useDevVenv = !app.isPackaged && fs.existsSync(devVenvPy)
 
-  if (isWindows) {
+  if (app.isPackaged) {
+    // The bundled uv is an absolute path, so it is invoked directly (no shell).
+    backendProcess = spawn(
+      getUvCommand(),
+      ['run', 'python', '-m', 'backend._supervisor'],
+      {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: !isWindows,
+      },
+    )
+  } else if (useDevVenv) {
+    // Dev: launch with the project venv's Python directly. `uv run` can fail when
+    // uv's cache is unavailable, which silently leaves no backend on :8600 — the
+    // frontend then shows 500s for every /api call (Vite's proxy returns 500 on
+    // ECONNREFUSED). theDAW.bat already provisions the venv, so this is the
+    // reliable dev path; the uv branches below remain the fallback.
+    log(`Spawning backend via venv Python: ${devVenvPy}`)
+    backendProcess = spawn(
+      devVenvPy,
+      ['-m', 'backend._supervisor'],
+      {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: isWindows,
+        detached: !isWindows,
+      },
+    )
+  } else if (isWindows) {
     backendProcess = spawn(
       'cmd',
       ['/c', 'uv run python -m backend._supervisor'],
@@ -152,29 +303,6 @@ function spawnBackend(): void {
     sendLoadingLog(`Backend process error: ${err.message}`, 'err')
     backendProcess = null
   })
-}
-
-async function waitForBackend(maxAttempts = 30): Promise<boolean> {
-  let delay = 1000
-  const MAX_DELAY = 8000
-
-  for (let i = 0; i < maxAttempts; i++) {
-    if (await isBackendRunning()) {
-      log('Backend is healthy.')
-      sendLoadingLog('Backend is healthy.', 'ok')
-      sendLoadingStatus('Loading app...')
-      return true
-    }
-    const msg = `Health check ${i + 1}/${maxAttempts} — waiting...`
-    log(`Health check attempt ${i + 1}/${maxAttempts} failed, retrying in ${delay}ms...`)
-    sendLoadingLog(msg, '')
-    await new Promise((resolve) => setTimeout(resolve, delay))
-    delay = Math.min(delay * 2, MAX_DELAY)
-  }
-
-  log('Backend failed to become healthy within timeout.')
-  sendLoadingLog('Backend failed to become healthy within timeout.', 'err')
-  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -260,87 +388,38 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     title: 'theDAW',
+    // Open windowed at the default size (reverted from forced fullscreen).
+    fullscreen: false,
+    // Paint solid black immediately so there's no white window flash before
+    // content loads — one continuous black background from the first frame to
+    // the app (matches index.html's <body> + the boot splash).
+    backgroundColor: '#000000',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: true,
+      // The boot cinematic's logo is a muted, looping video — allow it to
+      // autoplay without a user gesture (Chromium blocks this by default).
+      autoplayPolicy: 'no-user-gesture-required',
     },
   })
 
-  // Show a loading page while backend boots
-  mainWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(loadingHTML())}`,
-  )
+  // Load the React renderer IMMEDIATELY (no separate spinner page). The renderer
+  // shows the boot cinematic and polls /api/health on its own, holding until the
+  // backend is ready — exactly like the web app. This keeps ONE background the
+  // whole time and keeps the desktop + web boot flows in sync.
+  loadRenderer()
 }
 
-function loadingHTML(): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      background: #0a0a0f;
-      color: #e0e0e0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #333;
-      border-top-color: #8b5cf6;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    h2 { font-size: 18px; margin: 0; }
-    #status { font-size: 13px; opacity: 0.6; margin: 0; }
-    #log {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 180px;
-      background: #06060a;
-      border-top: 1px solid #1a1a2e;
-      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
-      font-size: 11px;
-      color: #7a7a9a;
-      padding: 8px 12px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    #log .err { color: #ef4444; }
-    #log .load { color: #8b5cf6; }
-    #log .ok { color: #22c55e; }
-  </style>
-</head>
-<body>
-  <div class="spinner"></div>
-  <h2>theDAW</h2>
-  <p id="status">Starting backend...</p>
-  <div id="log"></div>
-  <script>
-    function addLog(text, cls) {
-      const el = document.getElementById('log');
-      const line = document.createElement('div');
-      if (cls) line.className = cls;
-      line.textContent = text;
-      el.appendChild(line);
-      el.scrollTop = el.scrollHeight;
-    }
-    function setStatus(text) {
-      document.getElementById('status').textContent = text;
-    }
-  </script>
-</body>
-</html>`
+function loadRenderer(): void {
+  if (!mainWindow) return
+  const devURL = process.env.ELECTRON_RENDERER_URL
+  if (!app.isPackaged && devURL) {
+    mainWindow.loadURL(devURL)
+  } else if (!app.isPackaged) {
+    mainWindow.loadURL('http://localhost:5173')
+  } else {
+    mainWindow.loadURL('app://./index.html')
+  }
 }
 
 function escapeForJS(s: string): string {
@@ -432,6 +511,12 @@ function registerIpcHandlers(): void {
       return result
     },
   )
+
+  // Quit the app on request (Settings "Shutdown" in desktop mode). app.quit()
+  // triggers before-quit, which kills the spawned backend, then closes the window.
+  ipcMain.handle('app:quit', () => {
+    app.quit()
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -452,6 +537,20 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 app.whenReady().then(async () => {
+  // Identify as theDAW, not "Electron": names the process / menu / userData dir
+  // and, via the AppUserModelID, the Windows taskbar grouping + shortcut binding.
+  app.setName('theDAW')
+  app.setAppUserModelId('com.gantasmo.thedaw')
+
+  // Grant media (microphone / camera) capture to the renderer. Electron layers
+  // its own permission gate on top of the OS; with no handler a getUserMedia
+  // track can return MUTED — the OS opens the device but the renderer receives
+  // silence. The renderer only ever loads our own local content, so granting is
+  // safe. Mic capture (vocal record) and camera (VJ) both depend on this.
+  const ses = session.defaultSession
+  ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(true))
+  ses.setPermissionCheckHandler(() => true)
+
   registerIpcHandlers()
 
   // In production, register our custom protocol
@@ -459,48 +558,20 @@ app.whenReady().then(async () => {
     registerAppProtocol()
   }
 
+  // Window loads the renderer (boot cinematic) right away.
   createWindow()
 
-  // Check if backend is already running
-  sendLoadingLog('Checking for running backend...', '')
+  // Spawn the backend in the background if it isn't already up. The renderer's
+  // own health polling + cinematic cover the wait; if the backend never comes
+  // up, the app surfaces its "continue without backend" escape — same as web.
   const alreadyRunning = await isBackendRunning()
-
   if (!alreadyRunning) {
-    sendLoadingLog('No backend found — spawning...', '')
-    sendLoadingStatus('Starting backend...')
+    // Packaged builds bootstrap the Python env on first launch before the
+    // backend can start; dev builds no-op here.
+    await ensurePythonEnv()
     spawnBackend()
   } else {
     log('Backend already running — skipping spawn.')
-    sendLoadingLog('Backend already running — skipping spawn.', 'ok')
-  }
-
-  // Wait for backend to be healthy
-  const healthy = await waitForBackend()
-
-  if (!mainWindow) return
-
-  if (healthy) {
-    // Load the renderer
-    const devURL = process.env.ELECTRON_RENDERER_URL
-    if (!app.isPackaged && devURL) {
-      mainWindow.loadURL(devURL)
-    } else if (!app.isPackaged) {
-      mainWindow.loadURL('http://localhost:5173')
-    } else {
-      mainWindow.loadURL('app://./index.html')
-    }
-  } else {
-    mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(
-        `<!DOCTYPE html>
-<html><body style="background:#0a0a0f;color:#e0e0e0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-  <div style="text-align:center;">
-    <h1 style="color:#ef4444;">Backend Failed to Start</h1>
-    <p>Check logs at: ${logsDir.replace(/\\/g, '/')}/backend.log</p>
-  </div>
-</body></html>`,
-      )}`,
-    )
   }
 })
 

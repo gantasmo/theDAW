@@ -1,0 +1,10 @@
+{
+  "name": "convert",
+  "label": "Convert",
+  "enabled": true,
+  "icon": "Repeat",
+  "sidebar": false,
+  "api_prefix": "/api/convert",
+  "backend": true,
+  "description": "Generic media format conversion via FFmpeg. Converts a library entry or an uploaded file to any compatible target format (audio<->audio, video<->video, video->audio extract, video->gif, image<->image). Powers the right-click 'Convert to...' menu."
+}

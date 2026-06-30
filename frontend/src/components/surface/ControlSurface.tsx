@@ -16,6 +16,7 @@ import { SurfaceToolbar } from './SurfaceToolbar';
 import { AlignmentGuides } from './AlignmentGuides';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { useLayoutPrefs } from '../../state/layoutPrefsStore';
+import { useEditLayoutStore } from '../../state/editLayoutStore';
 import { createLayoutStore, companionOf, absorbableSibling } from '../../state/surfaceLayoutStore';
 import type { SurfaceLayout, SurfaceStoreApi } from '../../state/surfaceLayoutStore';
 import type { WidgetRegistry, BindableTarget, ButtonShape } from './widgetTypes';
@@ -103,6 +104,7 @@ export const ControlSurface: React.FC<{
   const tgts = targets ?? NO_TARGETS;
   const root = store((s) => s.layout.root);
   const design = store((s) => s.designMode);
+  const editLayoutActive = useEditLayoutStore((s) => s.active);
   const showGuides = useLayoutPrefs((s) => s.showGuides);
 
   const menu = useContextMenu<SurfaceMenuTarget>();
@@ -128,6 +130,17 @@ export const ControlSurface: React.FC<{
     }
   }, [legacyKeyToClear]);
 
+  // The global top-header "Edit Layout" flag is the single source of truth for
+  // design mode; mirror it one-way into this surface's session-only designMode
+  // (runs on mount too, so navigating into a surface while edit-layout is on
+  // arms it). Exit paths (Done button, Esc) clear the global flag, which flows
+  // back here through this same effect.
+  useEffect(() => {
+    if (store.getState().designMode !== editLayoutActive) {
+      store.getState().setDesignMode(editLayoutActive);
+    }
+  }, [editLayoutActive, store]);
+
   // Design-Mode hotkeys (ignored while typing). Ctrl/Cmd+Z undo,
   // Ctrl+Shift+Z / Ctrl+Y redo, Ctrl+S save-as-default, Esc exit; and single
   // keys acting on the HOVERED node: M mirror, U match, L flow, F frame, X axis,
@@ -148,7 +161,7 @@ export const ControlSurface: React.FC<{
       }
       if (mod && k === 'y') { e.preventDefault(); api.redo(); return; }
       if (mod && k === 's') { e.preventDefault(); api.saveAsDefault(); return; }
-      if (e.key === 'Escape') { if (menuOpenRef.current) return; e.preventDefault(); api.setDesignMode(false); return; }
+      if (e.key === 'Escape') { if (menuOpenRef.current) return; e.preventDefault(); useEditLayoutStore.getState().setActive(false); return; }
       if (mod) return;
       const hv = api.hoverNodeId;
       const node = hv ? api.layout.nodes[hv] : null;

@@ -1,0 +1,10 @@
+{
+  "name": "dawimport",
+  "label": "DAW Import",
+  "enabled": true,
+  "icon": "Import",
+  "sidebar": false,
+  "api_prefix": "/api/dawimport",
+  "backend": true,
+  "description": "Import projects from Ableton Live (.als), Reaper (.RPP), and Logic Pro X (.logicx)"
+}

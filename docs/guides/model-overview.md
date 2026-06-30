@@ -103,6 +103,8 @@ Three families of checkpoints are provided, each with Small and Medium variants:
 
 Post-trained checkpoints have no suffix because they are the default choice for inference — the `-base` suffix distinguishes the earlier-stage RF base checkpoints. SAME checkpoints will reuse a locally cached post-trained or base checkpoint automatically if one is already present, avoiding a redundant download.
 
+The in-app Model dropdown and the [User Guide](../USER_GUIDE.md#21-models) use a shorter key set: `small` and `medium` are the post-trained ARC checkpoints (the no-suffix family above) used for inference, while `small-rf` and `medium-rf` are the RF bases (the `-base` family above) used for LoRA training. The two schemes name the same released weights.
+
 ## How inference works
 
 At inference time, Stable Audio 3 turns your inputs (text prompt and duration) into audio through a two-stage process: latent generation with the DiT, followed by waveform reconstruction with SAME.

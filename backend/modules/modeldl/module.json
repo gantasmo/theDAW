@@ -1,0 +1,10 @@
+{
+  "name": "modeldl",
+  "label": "Model Downloads",
+  "enabled": true,
+  "icon": "Download",
+  "sidebar": false,
+  "api_prefix": "/api/models",
+  "backend": true,
+  "description": "On-demand model weight downloads with a live progress registry behind the Settings download dock."
+}

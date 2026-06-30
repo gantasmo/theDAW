@@ -9,27 +9,31 @@
 import React, { useState } from 'react';
 import {
   Activity, Info, Piano, Layers, FolderOpen, SlidersVertical, ExternalLink, Maximize2, Minimize2,
-  FileMusic,
+  FileMusic, Waves, Brush,
 } from 'lucide-react';
 import { AdvancedVisualizer } from '../audio/AdvancedVisualizer';
-import { PianoRoll } from '../audio/PianoRoll';
 import { StepSequencer } from '../audio/StepSequencer';
 import { DetailsView } from './DetailsView';
 import { ScoreView } from './ScoreView';
 import { MediaBucketView } from './MediaBucketView';
 import { SlidePanel } from './SlidePanel';
+import { SwayPanel } from './SwayPanel';
+import { MidiPanel } from './MidiPanel';
+import { DrawPanel } from './DrawPanel';
 import { DetachableWindow } from './DetachableWindow';
 import { useBottomPanelStore, type BottomPanelTab } from '../../state/bottomPanelStore';
 import { useSlideStore } from '../../state/slideStore';
 
-const TAB_DEFS: Array<{ id: BottomPanelTab; label: string; icon: React.ComponentType<{ className?: string }>; colorActive: string }> = [
-  { id: 'spectral',   label: 'Visualize',    icon: Activity,   colorActive: 'border-purple-500 text-purple-300' },
-  { id: 'piano-roll', label: 'Piano',        icon: Piano,      colorActive: 'border-cyan-500 text-cyan-300' },
-  { id: 'step-seq',   label: 'Sequence',     icon: Layers,     colorActive: 'border-cyan-500 text-cyan-300' },
-  { id: 'score',      label: 'Score',        icon: FileMusic,  colorActive: 'border-emerald-500 text-emerald-300' },
-  { id: 'details',    label: 'Details',      icon: Info,       colorActive: 'border-emerald-500 text-emerald-300' },
-  { id: 'bucket',     label: 'Media',        icon: FolderOpen, colorActive: 'border-amber-500 text-amber-300' },
-  { id: 'slide',      label: 'SLIDE',        icon: SlidersVertical, colorActive: 'border-pink-500 text-pink-300' },
+const TAB_DEFS: Array<{ id: BottomPanelTab; label: string; desc: string; icon: React.ComponentType<{ className?: string }>; colorActive: string }> = [
+  { id: 'spectral',   label: 'Visualize',  desc: 'Live spectrum + waveform visualizer of the playing audio',                 icon: Activity,   colorActive: 'border-purple-500 text-purple-300' },
+  { id: 'midi',       label: 'MIDI',       desc: 'Piano roll: sing in, record or analyze notes, edit them, export MIDI',     icon: Piano,      colorActive: 'border-cyan-500 text-cyan-300' },
+  { id: 'step-seq',   label: 'Sequence',   desc: 'Program drum and note patterns step by step on a grid',                    icon: Layers,     colorActive: 'border-cyan-500 text-cyan-300' },
+  { id: 'draw',       label: 'DRAW',       desc: 'Draw to play generative music; record it to the library or EDIT',          icon: Brush,      colorActive: 'border-purple-500 text-purple-300' },
+  { id: 'score',      label: 'Score',      desc: 'Sheet music + tabs for the selection; convert and arrange notation',       icon: FileMusic,  colorActive: 'border-emerald-500 text-emerald-300' },
+  { id: 'details',    label: 'Details',    desc: 'Metadata, prompt and analysis for the selected library item',              icon: Info,       colorActive: 'border-emerald-500 text-emerald-300' },
+  { id: 'bucket',     label: 'Media',      desc: 'Drag-and-drop bucket for staging clips and media files',                   icon: FolderOpen, colorActive: 'border-amber-500 text-amber-300' },
+  { id: 'slide',      label: 'SLIDE',      desc: 'Control surface: map sliders and pads to parameters',                      icon: SlidersVertical, colorActive: 'border-pink-500 text-pink-300' },
+  { id: 'sway',       label: 'SWAY',       desc: 'Pose control: drive music and effects from body movement',                 icon: Waves,      colorActive: 'border-fuchsia-500 text-fuchsia-300' },
 ];
 
 export const BottomMultiTabPanel: React.FC = () => {
@@ -76,7 +80,7 @@ export const BottomMultiTabPanel: React.FC = () => {
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
                 className={`px-3 py-1.5 flex items-center gap-1.5 border-b-2 text-[9px] uppercase tracking-widest font-black transition-colors whitespace-nowrap ${active ? t.colorActive : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
-                title={t.label}
+                title={t.desc}
               >
                 <Icon className="w-3 h-3" /> {t.label}
               </button>
@@ -130,9 +134,14 @@ export const BottomMultiTabPanel: React.FC = () => {
             <DetailsView />
           </div>
         )}
-        {activeTab === 'piano-roll' && (
+        {activeTab === 'midi' && (
           <div className="absolute inset-0">
-            <PianoRoll />
+            <MidiPanel />
+          </div>
+        )}
+        {activeTab === 'draw' && (
+          <div className="absolute inset-0">
+            <DrawPanel />
           </div>
         )}
         {activeTab === 'step-seq' && (
@@ -148,6 +157,11 @@ export const BottomMultiTabPanel: React.FC = () => {
         {activeTab === 'bucket' && (
           <div className="absolute inset-0">
             <MediaBucketView />
+          </div>
+        )}
+        {activeTab === 'sway' && (
+          <div className="absolute inset-0">
+            <SwayPanel />
           </div>
         )}
         {activeTab === 'slide' && (

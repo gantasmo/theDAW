@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileMusic, Guitar, LayoutGrid, Loader2, Music2, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Download, FileMusic, Guitar, LayoutGrid, Loader2, Maximize2, Minus, Music2, Plus, RefreshCw } from 'lucide-react';
 import { useLibraryStore } from '../../state/libraryStore';
 import { logError, logInfo } from '../../state/logStore';
 import {
@@ -10,6 +10,7 @@ import {
   makeArrangement,
   makeTabs,
   notationArtifactUrl,
+  notationPackUrl,
   type NotationArtifact,
   type NotationCapabilities,
 } from '../../lib/notationClient';
@@ -45,6 +46,8 @@ export const ScoreView: React.FC = () => {
   const [tabDifficulty, setTabDifficulty] = useState('medium');
   const [arrangeStyle, setArrangeStyle] = useState('piano-reduction');
   const [arranging, setArranging] = useState(false);
+  // The global artist/composer name now lives in Settings (notation.artist); the
+  // sheet preview reads it directly when rendering.
 
   const selectedArtifact = artifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
   const musicXmlArtifacts = artifacts.filter((artifact) => artifact.kind === 'musicxml');
@@ -225,7 +228,7 @@ export const ScoreView: React.FC = () => {
               id="score-tab-instrument"
               name="score-tab-instrument"
               aria-label="Tab instrument"
-              className="bg-black/40 border border-white/10 rounded text-[8px] text-zinc-200 px-1 py-1"
+              className="form-select text-[8px] px-1 py-1"
               value={tabInstrument}
               onChange={(e) => onInstrumentChange(e.target.value)}
             >
@@ -236,7 +239,7 @@ export const ScoreView: React.FC = () => {
               id="score-tab-difficulty"
               name="score-tab-difficulty"
               aria-label="Tab difficulty"
-              className="bg-black/40 border border-white/10 rounded text-[8px] text-zinc-200 px-1 py-1"
+              className="form-select text-[8px] px-1 py-1"
               value={tabDifficulty}
               onChange={(e) => setTabDifficulty(e.target.value)}
             >
@@ -250,7 +253,7 @@ export const ScoreView: React.FC = () => {
               id="score-tab-tuning"
               name="score-tab-tuning"
               aria-label="Tab tuning"
-              className="bg-black/40 border border-white/10 rounded text-[8px] text-zinc-200 px-1 py-1"
+              className="form-select text-[8px] px-1 py-1"
               value={tabTuning}
               onChange={(e) => setTabTuning(e.target.value)}
             >
@@ -267,7 +270,7 @@ export const ScoreView: React.FC = () => {
                 min={0}
                 max={12}
                 aria-label="Capo fret"
-                className="w-full bg-black/40 border border-white/10 rounded text-[8px] text-zinc-200 px-1 py-1"
+                className="w-full form-select text-[8px] px-1 py-1"
                 value={tabCapo}
                 onChange={(e) => setTabCapo(Math.max(0, Math.min(12, Number(e.target.value) || 0)))}
               />
@@ -293,7 +296,7 @@ export const ScoreView: React.FC = () => {
             id="score-arrange-style"
             name="score-arrange-style"
             aria-label="Arrangement style"
-            className="w-full bg-black/40 border border-white/10 rounded text-[8px] text-zinc-200 px-1 py-1"
+            className="w-full form-select text-[8px] px-1 py-1"
             value={arrangeStyle}
             onChange={(e) => setArrangeStyle(e.target.value)}
           >
@@ -360,8 +363,17 @@ export const ScoreView: React.FC = () => {
           {selectedArtifact && (
             <a
               className="btn-ghost text-[8px] py-1 flex items-center gap-1"
-              href={notationArtifactUrl(selectedArtifact.id)}
+              href={
+                selectedArtifact.kind === 'musicxml'
+                  ? notationPackUrl(selectedArtifact.id)
+                  : notationArtifactUrl(selectedArtifact.id)
+              }
               download
+              title={
+                selectedArtifact.kind === 'musicxml'
+                  ? 'Download MusicXML + PDF (PDF needs MuseScore)'
+                  : 'Download this artifact'
+              }
             >
               <Download className="w-3 h-3" /> DOWNLOAD
             </a>
@@ -387,34 +399,375 @@ export const ScoreView: React.FC = () => {
   );
 };
 
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 1.12;
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+
+/** Ctrl/Cmd + scrollwheel zoom on the sheet. A native non-passive listener
+ *  is required so the gesture can preventDefault (React's onWheel is passive).
+ *  Plain wheel keeps scrolling the page so long scores stay navigable. */
+function useWheelZoom(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  onZoomDelta: (factor: number) => void,
+) {
+  const cb = useRef(onZoomDelta);
+  cb.current = onZoomDelta;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      cb.current(e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [scrollRef]);
+}
+
+const ZoomControls: React.FC<{
+  zoom: number;
+  onIn: () => void;
+  onOut: () => void;
+  onReset: () => void;
+}> = ({ zoom, onIn, onOut, onReset }) => (
+  <div className="absolute bottom-2 right-2 z-10 flex items-center gap-0.5 rounded-md border border-purple-500/40 bg-[#0a080f]/95 px-1 py-0.5 shadow-lg backdrop-blur-sm">
+    <button
+      className="p-1 rounded text-purple-200 hover:bg-purple-500/20 disabled:opacity-40"
+      onClick={onOut}
+      disabled={zoom <= ZOOM_MIN + 0.001}
+      title="Zoom out (Ctrl + scroll)"
+      aria-label="Zoom out"
+    >
+      <Minus className="w-3 h-3" />
+    </button>
+    <button
+      className="min-w-9 text-center text-[9px] font-mono text-purple-200 hover:text-white px-0.5"
+      onClick={onReset}
+      title="Reset zoom"
+      aria-label="Reset zoom to 100%"
+    >
+      {Math.round(zoom * 100)}%
+    </button>
+    <button
+      className="p-1 rounded text-purple-200 hover:bg-purple-500/20 disabled:opacity-40"
+      onClick={onIn}
+      disabled={zoom >= ZOOM_MAX - 0.001}
+      title="Zoom in (Ctrl + scroll)"
+      aria-label="Zoom in"
+    >
+      <Plus className="w-3 h-3" />
+    </button>
+    <button
+      className="p-1 rounded text-purple-200 hover:bg-purple-500/20"
+      onClick={onReset}
+      title="Fit / reset zoom"
+      aria-label="Fit to width"
+    >
+      <Maximize2 className="w-3 h-3" />
+    </button>
+  </div>
+);
+
+const A4_RATIO = 297 / 210; // A4 portrait height / width
+const PAGE_GAP = 24; // px between side-by-side pages (matches gap-6)
+
+// Media + symbolic extensions that must never show up in a sheet title.
+const TITLE_EXT_RE =
+  /\.(wav|mp3|flac|ogg|oga|m4a|aac|aif|aiff|opus|wma|alac|mp4|mov|webm|mkv|m4v|avi|mid|midi|musicxml|xml)$/i;
+
+/** Sanitize a title for engraving: drop a trailing media extension and treat
+ *  music21's "Music21 Fragment" / "Music21" placeholders as empty. */
+const cleanTitleText = (raw: string): string => {
+  const t = (raw || '').trim().replace(TITLE_EXT_RE, '').trim();
+  return /^music21( fragment)?$/i.test(t) ? '' : t;
+};
+
+/** Word-wrap a long title by inserting newlines (OSMD splits labels on \n and
+ *  centers each line) so a long song name lays out across the page instead of
+ *  running off the side. Never truncates; hard-breaks a single oversized word. */
+const wrapTitle = (t: string, budget: number): string => {
+  if (t.length <= budget) return t;
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of t.split(/\s+/)) {
+    let word = w;
+    if (cur && (cur + ' ' + word).length > budget) {
+      lines.push(cur);
+      cur = '';
+    }
+    cur = cur ? cur + ' ' + word : word;
+    while (cur.length > budget) {
+      lines.push(cur.slice(0, budget));
+      cur = cur.slice(budget);
+      word = cur;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.join('\n');
+};
+
+/** Pre-process MusicXML before OSMD renders it so the title block reads like a
+ *  real sheet: the SONG name as the centered Title (cleaned of media extensions,
+ *  word-wrapped if long), and the ARTIST centered directly beneath it. OSMD maps
+ *  <work-title> -> Title and <movement-title> -> Subtitle (confirmed in its
+ *  reader), so the song goes in work-title and the artist in movement-title; the
+ *  composer credit is disabled in the options so the artist never floats off to
+ *  the top-right. Returns the cleaned song title for the running page footer. */
+const prepareMusicXml = (
+  xml: string,
+  pageWidthPx: number,
+  artist: string,
+): { xml: string; title: string } => {
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) return { xml, title: '' };
+    const root = doc.documentElement;
+    const budget = Math.max(16, Math.floor(pageWidthPx / 13));
+
+    const song = cleanTitleText(
+      (doc.querySelector('work > work-title')?.textContent ||
+        doc.querySelector('movement-title')?.textContent ||
+        '').trim(),
+    );
+
+    // Title slot (work-title) = wrapped song name.
+    let work = doc.querySelector('work');
+    if (!work) {
+      work = doc.createElement('work');
+      root.insertBefore(work, root.firstChild);
+    }
+    let workTitle = work.querySelector('work-title');
+    if (!workTitle) {
+      workTitle = doc.createElement('work-title');
+      work.appendChild(workTitle);
+    }
+    workTitle.textContent = song ? wrapTitle(song, budget) : '';
+
+    // Subtitle slot (movement-title) = artist, centered under the title.
+    let movement = doc.querySelector('movement-title');
+    if (!movement) {
+      movement = doc.createElement('movement-title');
+      if (work.nextSibling) root.insertBefore(movement, work.nextSibling);
+      else root.appendChild(movement);
+    }
+    movement.textContent = artist || '';
+
+    // Drop music21's placeholder credit-words so they don't print.
+    for (const cw of Array.from(doc.querySelectorAll('credit-words'))) {
+      if (/^music21( fragment)?$/i.test((cw.textContent || '').trim())) cw.textContent = '';
+    }
+
+    return { xml: new XMLSerializer().serializeToString(doc), title: song };
+  } catch {
+    return { xml, title: '' };
+  }
+};
+
+/** Engraving rules that make OSMD output look like sheet music from a book:
+ *  smaller text (the default title/labels are oversized for a fitted A4 page),
+ *  tidy page margins so music never runs off the side, and compact, even
+ *  system spacing. Applied before render; unknown keys on older builds no-op. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const applySheetEngraving = (rules: any): void => {
+  if (!rules) return;
+  try {
+    rules.SheetTitleHeight = 2.2;
+    rules.SheetSubtitleHeight = 1.4;
+    rules.SheetComposerHeight = 1.5;
+    rules.SheetAuthorHeight = 1.4;
+    rules.TitleTopDistance = 5.0;
+    rules.TitleBottomDistance = 1.0;
+    rules.SpacingBetweenTextLines = 1.0;
+    rules.MeasureNumberLabelHeight = 1.0;
+    rules.InstrumentLabelTextHeight = 1.4;
+    rules.LyricsHeight = 1.5;
+    rules.InstantaneousTempoTextHeight = 1.6;
+    rules.ContinuousTempoTextHeight = 1.4;
+    // Generous page margins, especially top + bottom (the bottom margin also
+    // houses the injected running footer + page number).
+    rules.PageLeftMargin = 4.0;
+    rules.PageRightMargin = 4.0;
+    rules.PageTopMargin = 5.5;
+    // Tall bottom margin: the music must clear the injected running footer +
+    // page number that live in the bottom margin (see decoratePages).
+    rules.PageBottomMargin = 14.0;
+    rules.MinimumDistanceBetweenSystems = 4.0;
+    rules.MinSkyBottomDistBetweenSystems = 2.0;
+    rules.StaffDistance = 4.0;
+    rules.BetweenStaffDistance = 4.0;
+    rules.RenderMeasureNumbersOnlyAtSystemStart = true;
+  } catch {
+    /* older OSMD builds: ignore unsupported rules */
+  }
+};
+
+/** Sheet-music preview. Renders the score as real A4 pages laid out left-to-
+ *  right (like an open book), engraved by OpenSheetMusicDisplay with proper
+ *  margins so nothing runs off the edge. OSMD reads the host's offsetWidth to
+ *  size a page, so we feed it a fixed one-page width, render, then flip the
+ *  host into a horizontal strip of the resulting page <svg>s. Zooming re-renders
+ *  (measures reflow + renumber); the footer ◀ ▶ and arrow keys turn pages by
+ *  scrolling one page; the page width tracks the pane height (fit one sheet). */
 const MusicXmlPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const osmdRef = useRef<any>(null);
+  const zoomRef = useRef(1);
+  const pageWRef = useRef(520);
+  const footerTitleRef = useRef('');
+  const footerArtistRef = useRef('');
+  const [zoom, setZoom] = useState(1);
   const [status, setStatus] = useState('Loading MusicXML renderer…');
+  const [pageCount, setPageCount] = useState(1);
+  const [page, setPage] = useState(1); // 1-based page currently in view
+
+  const computePageW = (): number => {
+    const availH = (scrollRef.current?.clientHeight ?? 600) - 32;
+    return Math.round(Math.min(1000, Math.max(360, availH / A4_RATIO)));
+  };
+
+  // Add a book-style running footer to each rendered page: "Song - Artist" and
+  // the page number, centered in the bottom margin. OSMD has no footer/page-
+  // number support, so we inject it into each page wrapper after every render
+  // (render() recreates the pages, so this must run each time).
+  const decoratePages = useCallback(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const t = footerTitleRef.current;
+    const a = footerArtistRef.current;
+    const running = a ? (t ? `${t} - ${a}` : a) : t;
+    const pages = Array.from(host.children).filter(
+      (n): n is HTMLElement => n.nodeType === 1,
+    );
+    pages.forEach((node, idx) => {
+      let pageEl = node;
+      if (pageEl.tagName.toLowerCase() === 'svg') {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;flex:0 0 auto;background:#fff;';
+        pageEl.replaceWith(wrap);
+        wrap.appendChild(pageEl);
+        pageEl = wrap;
+      } else {
+        pageEl.style.position = 'relative';
+      }
+      const w = pageEl.clientWidth || pageWRef.current;
+      const fs = Math.max(8, Math.round(w * 0.019));
+      let f = pageEl.querySelector(':scope > .score-page-footer') as HTMLElement | null;
+      if (!f) {
+        f = document.createElement('div');
+        f.className = 'score-page-footer';
+        pageEl.appendChild(f);
+      }
+      f.style.cssText =
+        `position:absolute;left:0;right:0;bottom:${Math.round(w * 0.022)}px;` +
+        `text-align:center;pointer-events:none;color:#555;line-height:1.35;` +
+        `font-family:Georgia,'Times New Roman',serif;`;
+      f.innerHTML = '';
+      if (running) {
+        const l1 = document.createElement('div');
+        l1.textContent = running;
+        l1.style.cssText = `font-size:${fs}px;font-style:italic;`;
+        f.appendChild(l1);
+      }
+      const l2 = document.createElement('div');
+      l2.textContent = String(idx + 1);
+      l2.style.cssText = `font-size:${fs}px;`;
+      f.appendChild(l2);
+    });
+  }, []);
+
+  // OSMD reads host.offsetWidth at render() to size one page, then we widen the
+  // host into a horizontal strip so the page svgs sit side by side.
+  const doRender = useCallback(() => {
+    const osmd = osmdRef.current;
+    const host = hostRef.current;
+    if (!osmd || !host) return;
+    try {
+      host.style.display = 'block';
+      host.style.width = `${pageWRef.current}px`;
+      osmd.Zoom = zoomRef.current;
+      osmd.render();
+      host.style.display = 'flex';
+      host.style.width = 'max-content';
+      const count =
+        osmd.GraphicSheet?.MusicPages?.length ||
+        host.querySelectorAll('svg').length ||
+        1;
+      setPageCount(count);
+      decoratePages();
+    } catch {
+      /* render races with reload — ignore */
+    }
+  }, [decoratePages]);
+
+  const applyZoom = useCallback((next: number) => {
+    zoomRef.current = clampZoom(next);
+    setZoom(zoomRef.current);
+    doRender();
+  }, [doRender]);
+
+  const goToPage = useCallback((target: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const stride = pageWRef.current + PAGE_GAP;
+    const total = Math.max(1, Math.round(el.scrollWidth / stride));
+    const clamped = Math.min(total, Math.max(1, target));
+    el.scrollTo({ left: (clamped - 1) * stride, behavior: 'smooth' });
+    setPage(clamped);
+  }, []);
+
+  useWheelZoom(scrollRef, (factor) => applyZoom(zoomRef.current * factor));
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const container = containerRef.current;
-      if (!container) return;
-      container.innerHTML = '';
+      const host = hostRef.current;
+      if (!host) return;
+      host.innerHTML = '';
       try {
-        const [{ OpenSheetMusicDisplay }, res] = await Promise.all([
+        const [{ OpenSheetMusicDisplay }, res, settingsRes] = await Promise.all([
           import('opensheetmusicdisplay'),
           fetch(notationArtifactUrl(artifact.id)),
+          fetch('/api/settings').catch(() => null),
         ]);
         if (!res.ok) throw new Error(`MusicXML HTTP ${res.status}`);
         const xml = await res.text();
+        let artist = 'GANTASMO';
+        try {
+          if (settingsRes && settingsRes.ok) {
+            const s = await settingsRes.json();
+            artist = String(s?.notation?.artist ?? '').trim() || 'GANTASMO';
+          }
+        } catch {
+          /* settings unavailable — fall back to the GANTASMO floor */
+        }
         if (cancelled) return;
-        const osmd = new OpenSheetMusicDisplay(container, {
+        const osmd = new OpenSheetMusicDisplay(host, {
           backend: 'svg',
-          autoResize: true,
+          autoResize: false, // we drive width + re-render ourselves
           drawTitle: true,
-          drawingParameters: 'compacttight',
+          drawSubtitle: true, // the artist, centered under the title
+          drawComposer: false, // artist is the subtitle; no top-right credit
+          pageFormat: 'A4_P',
+          pageBackgroundColor: '#FFFFFF',
         });
-        await osmd.load(xml);
+        applySheetEngraving(osmd.EngravingRules);
+        // Song as the centered title (wrapped if long), artist as the subtitle
+        // under it; capture the song name for the running page footer.
+        const prepared = prepareMusicXml(xml, computePageW(), artist);
+        footerTitleRef.current = prepared.title;
+        footerArtistRef.current = artist;
+        await osmd.load(prepared.xml);
         if (cancelled) return;
-        osmd.render();
+        osmdRef.current = osmd;
+        pageWRef.current = computePageW();
+        doRender();
         setStatus('');
+        setPage(1);
+        if (scrollRef.current) scrollRef.current.scrollLeft = 0;
       } catch (e) {
         if (cancelled) return;
         setStatus(`Preview unavailable: ${e instanceof Error ? e.message : String(e)}`);
@@ -423,20 +776,147 @@ const MusicXmlPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact })
     void run();
     return () => {
       cancelled = true;
+      osmdRef.current = null;
     };
-  }, [artifact.id]);
+  }, [artifact.id, doRender]);
+
+  // Track the page in view on horizontal scroll; re-fit page width to the pane
+  // when it resizes (so one sheet keeps filling the height).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const stride = pageWRef.current + PAGE_GAP;
+      setPage(Math.max(1, Math.round(el.scrollLeft / stride) + 1));
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const w = computePageW();
+        if (Math.abs(w - pageWRef.current) > 4) {
+          pageWRef.current = w;
+          doRender();
+        }
+      });
+    });
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [doRender]);
+
+  // Keyboard paging (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault();
+        goToPage(page + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        goToPage(page - 1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [page, goToPage]);
+
+  const pageLabel = pageCount <= 1 ? '1 page' : `Page ${page} / ${pageCount}`;
 
   return (
-    <div className="h-full overflow-auto bg-white text-black">
-      {status && <div className="p-4 text-xs font-mono text-zinc-600">{status}</div>}
-      <div ref={containerRef} className="min-h-full p-4" />
+    <div className="relative h-full flex flex-col bg-[#23222a]">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto p-4">
+        {status && <div className="p-4 text-xs font-mono text-zinc-300">{status}</div>}
+        {/* display/width are driven imperatively in doRender (block+fixed during
+            OSMD's offsetWidth read, then flex+max-content for the page strip). */}
+        <div
+          ref={hostRef}
+          className="gap-6 items-start [&>div]:shrink-0 [&>div]:bg-white [&>div]:shadow-2xl [&>div]:rounded-sm [&>svg]:shrink-0 [&>svg]:bg-white [&>svg]:shadow-2xl [&>svg]:rounded-sm"
+        />
+      </div>
+      {/* Footer: page navigation + zoom. */}
+      <div className="shrink-0 h-8 border-t border-white/10 bg-[#0a080f] flex items-center justify-center gap-1.5 px-2 text-[10px] font-mono text-zinc-300">
+        <button
+          onClick={() => goToPage(page - 1)}
+          disabled={page <= 1}
+          className="p-1 rounded hover:bg-white/10 disabled:opacity-30"
+          title="Previous page (←)"
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <span className="min-w-24 text-center tabular-nums">{pageLabel}</span>
+        <button
+          onClick={() => goToPage(page + 1)}
+          disabled={page >= pageCount}
+          className="p-1 rounded hover:bg-white/10 disabled:opacity-30"
+          title="Next page (→)"
+          aria-label="Next page"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+        <span className="mx-1 w-px h-4 bg-white/10" />
+        <button
+          onClick={() => applyZoom(zoomRef.current / ZOOM_STEP)}
+          disabled={zoom <= ZOOM_MIN + 0.001}
+          className="p-1 rounded hover:bg-white/10 disabled:opacity-30"
+          title="Zoom out (Ctrl + scroll)"
+          aria-label="Zoom out"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => applyZoom(1)}
+          className="min-w-10 text-center hover:text-white"
+          title="Reset zoom"
+          aria-label="Reset zoom"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={() => applyZoom(zoomRef.current * ZOOM_STEP)}
+          disabled={zoom >= ZOOM_MAX - 0.001}
+          className="p-1 rounded hover:bg-white/10 disabled:opacity-30"
+          title="Zoom in (Ctrl + scroll)"
+          aria-label="Zoom in"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 };
 
 const TabPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact }) => {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const apiRef = useRef<AlphaTabApi | null>(null);
+  const zoomRef = useRef(1);
+  const [zoom, setZoom] = useState(1);
   const [status, setStatus] = useState('Loading tab renderer…');
+
+  const applyZoom = useCallback((next: number) => {
+    const z = clampZoom(next);
+    zoomRef.current = z;
+    setZoom(z);
+    const api = apiRef.current;
+    if (api) {
+      try {
+        api.settings.display.scale = z;
+        api.updateSettings();
+        api.render();
+      } catch {
+        /* render races with reload — ignore */
+      }
+    }
+  }, []);
+
+  useWheelZoom(scrollRef, (factor) => applyZoom(zoomRef.current * factor));
 
   useEffect(() => {
     let cancelled = false;
@@ -454,7 +934,9 @@ const TabPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact }) => {
         if (cancelled) return;
         api = new alphaTab.AlphaTabApi(container, {
           player: { enablePlayer: false },
+          display: { scale: zoomRef.current },
         });
+        apiRef.current = api;
         api.error.on((err) => {
           if (!cancelled) setStatus(`Tab render error: ${err instanceof Error ? err.message : String(err)}`);
         });
@@ -470,6 +952,7 @@ const TabPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact }) => {
     void run();
     return () => {
       cancelled = true;
+      apiRef.current = null;
       try {
         api?.destroy();
       } catch {
@@ -479,9 +962,17 @@ const TabPreview: React.FC<{ artifact: NotationArtifact }> = ({ artifact }) => {
   }, [artifact.id]);
 
   return (
-    <div className="h-full overflow-auto bg-white text-black">
-      {status && <div className="p-4 text-xs font-mono text-zinc-600">{status}</div>}
-      <div ref={containerRef} className="min-h-full" />
+    <div className="relative h-full">
+      <div ref={scrollRef} className="h-full overflow-auto bg-white text-black">
+        {status && <div className="p-4 text-xs font-mono text-zinc-600">{status}</div>}
+        <div ref={containerRef} className="min-h-full" />
+      </div>
+      <ZoomControls
+        zoom={zoom}
+        onIn={() => applyZoom(zoomRef.current * ZOOM_STEP)}
+        onOut={() => applyZoom(zoomRef.current / ZOOM_STEP)}
+        onReset={() => applyZoom(1)}
+      />
     </div>
   );
 };

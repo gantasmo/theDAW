@@ -48,6 +48,23 @@ export interface LibraryEntry {
   height?: number | null;
   /** True for transparent PNG/WebP or alpha WebM — overlay-capable media. */
   hasAlpha?: boolean;
+  /**
+   * Computed musical analysis attached by the backend list/get endpoints when
+   * the entry has been analyzed: a FLAT scalar dict (bpm, key, scale,
+   * loudness_lufs, rms_db, pitch_*, bars_estimated, genre, semantic_tags, plus
+   * a few ffprobe technicals like sample_rate/codec). Undefined until the
+   * background analyzer has run. The Catalogue inspector renders every key and
+   * `libraryStore.getFiltered` folds the values into its search haystack — both
+   * already read this field; it was simply never populated before.
+   */
+  analysis?: Record<string, unknown>;
+  /**
+   * Tags embedded INSIDE the audio file (ID3 / Vorbis / iTunes), parsed from
+   * the stored analysis row's `embedded_tags_json`. Undefined when the source
+   * file carried none (typical for freshly-generated tracks). Surfaced
+   * key-by-key in the inspector's EMBEDDED TAGS section.
+   */
+  embeddedTags?: Record<string, unknown>;
 }
 
 /** Subset of fields a client is allowed to PATCH. Must match the

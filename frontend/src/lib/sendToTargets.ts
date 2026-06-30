@@ -176,7 +176,7 @@ export function loadMidiIntoPianoRoll(
     }
     const piano = usePianoRollStore.getState();
     piano.importNotes(notes, midi.bpm); // auto-fits length + pitch range to the import
-    useBottomPanelStore.getState().showTab(target === 'piano-roll' ? 'piano-roll' : 'step-seq');
+    useBottomPanelStore.getState().showTab(target === 'piano-roll' ? 'midi' : 'step-seq');
     const totalSteps = usePianoRollStore.getState().totalSteps;
     logInfo(
       'send-to',

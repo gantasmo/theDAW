@@ -2,31 +2,108 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Upload, X, Eye, EyeOff, ChevronLeft, ChevronRight, Trash2,
   Download, Send, Sparkles, Plus, Gauge, History, Library, LayoutList, Grid3x3,
+  Plug, RefreshCw, Loader2, Play, Pause, Square,
 } from 'lucide-react';
 import { useEffectChainStore, EFFECT_LABELS, EFFECT_DEFAULTS } from '../state/effectChainStore';
+import { useVstStore } from '../state/vstStore';
+import type { Vst3PluginInfo } from '../lib/vstClient';
 import { useAdvancedEditorSourceStore } from '../state/advancedEditorStore';
 import { useStudioStore } from '../state/studioStore';
 import { useLibraryStore } from '../state/libraryStore';
 import { usePlayerStore } from '../state/playerStore';
 import { useGenerateParamsStore } from '../state/generateParamsStore';
 import { useAppUiStore } from '../state/appUiStore';
+import { logError } from '../state/logStore';
 import { SlideKnob } from '../components/audio/SlideKnob';
 import { SlideRow } from '../components/audio/SlideRow';
 import { MixVizRow, type MixVizMode } from '../components/audio/MixVizRow';
 import { EffectsVizPanel } from './EffectsVizPanel';
 import { EffectGuiStage } from '../components/audio/EffectGuiStage';
+import { TheOwl } from '../components/audio/TheOwl';
 import { ModuleThumb } from '../components/audio/ModuleThumb';
 import { ControlSurface } from '../components/surface/ControlSurface';
 import { FxRack } from '../components/audio/FxRack';
 import { useMixRackStore } from '../state/mixRackStore';
-import { buildEffectChain, ensureChopModule } from '../lib/rackEffects';
+import { attachMixLiveRack } from '../state/mixLiveRack';
+import { buildEffectChain, ensureChopModule, RACK_EFFECTS } from '../lib/rackEffects';
 import { encodeWav } from '../lib/wavEncode';
 import type { WidgetRegistry } from '../components/surface/widgetTypes';
 import type { SurfaceLayout } from '../state/surfaceLayoutStore';
-import { EFFECT_CATALOG, PARAM_BOUNDS, CATEGORY_META, fxToCategory } from '../lib/effectCatalog';
+import { EFFECT_CATALOG, PARAM_BOUNDS, CATEGORY_META, fxToCategory, type CategoryMeta } from '../lib/effectCatalog';
 import { STUDIO_MODULES, moduleById, effectToModuleId, type StudioModule } from '../lib/moduleCatalog';
-import { Boxes } from 'lucide-react';
+import { MAGENTA_TOOLS, magentaToolById, type MagentaTool } from '../lib/magentaToolCatalog';
+import { MagentaToolStage } from '../components/audio/MagentaToolStage';
+import { Boxes, Headphones, Music } from 'lucide-react';
 import '../components/layout/track-controls.css';
+
+/* ── Psychoacoustic effects shown as Studio-style tiles ──────────────────────
+   The 11 real-time psychoacoustic rack effects, surfaced in the effects library
+   as tiles (the old standalone "Psychoacoustic Rack" panel is gone). Each tile
+   gets a Studio-matching canvas thumbnail keyed by effect group; selecting one
+   adds it to the rack engine and opens the rack in the Effect Stage. */
+interface PsychoModule { id: string; name: string; color: string; desc: string; preview: string; }
+const PSYCHO_GROUP_STYLE: Record<string, { color: string; preview: string }> = {
+  Spatial: { color: '#ab47bc', preview: 'psy-spatial' },
+  'Low end': { color: '#f59e0b', preview: 'psy-lowend' },
+  Tone: { color: '#ef5350', preview: 'psy-tone' },
+  Performance: { color: '#8b5cf6', preview: 'psy-performance' },
+};
+const PSYCHO_MODULES: PsychoModule[] = RACK_EFFECTS.map((fx) => {
+  const s = PSYCHO_GROUP_STYLE[fx.group] ?? { color: '#a855f7', preview: 'psy-spatial' };
+  return { id: fx.id, name: fx.label, color: s.color, desc: fx.description, preview: s.preview };
+});
+if (import.meta.env.DEV) {
+  const uncovered = [...new Set(RACK_EFFECTS.map((fx) => fx.group))].filter((g) => !(g in PSYCHO_GROUP_STYLE));
+  if (uncovered.length) console.warn('[MixView] psychoacoustic groups with no tile style (fallback used):', uncovered);
+}
+
+/* ── "All" browser cells — shared by the list and tile (icon) views ──────────── */
+const AllHeader: React.FC<{ icon: React.ComponentType<{ className?: string }>; color: string; label: string; count: number }> = ({ icon: Icon, color, label, count }) => (
+  <div className="flex items-center gap-1.5 px-1 pt-0.5">
+    <Icon className={`w-3 h-3 shrink-0 ${color}`} />
+    <span className={`text-[9px] font-black uppercase tracking-widest ${color}`}>{label}</span>
+    <span className="text-[8px] font-mono text-zinc-600">{count}</span>
+  </div>
+);
+// A Studio module / psychoacoustic effect cell (color is a hex accent).
+const ModuleRow: React.FC<{ name: string; desc: string; color: string; marked: boolean; onClick: () => void }> = ({ name, desc, color, marked, onClick }) => (
+  <div onClick={onClick} className={`flex items-center gap-2 border rounded px-3 py-2 cursor-pointer transition-all ${marked ? 'border-white/30 bg-white/5' : 'border-zinc-800 hover:border-white/25 hover:bg-white/5'}`}>
+    <span aria-hidden="true" className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+    <div className="flex-1 min-w-0">
+      <span className="text-[11px] font-medium block truncate" style={{ color }}>{name}</span>
+      <p className="text-[9px] text-zinc-500 truncate mt-0.5">{desc}</p>
+    </div>
+    {marked && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />}
+  </div>
+);
+const ModuleTile: React.FC<{ name: string; color: string; marked: boolean; onClick: () => void }> = ({ name, color, marked, onClick }) => (
+  <div onClick={onClick} style={{ width: 90, height: 98 }} className={`relative flex flex-col items-center justify-center gap-2 rounded border cursor-pointer transition-all overflow-hidden p-2 ${marked ? 'border-white/30 bg-white/5' : 'border-white/8 hover:border-white/20 hover:brightness-110'}`}>
+    <span className="w-7 h-7 rounded-full shrink-0" style={{ background: color, boxShadow: `0 0 10px ${color}80` }} />
+    <span className="text-[10px] font-medium text-center leading-tight line-clamp-2" style={{ color }}>{name}</span>
+  </div>
+);
+// A backend effect cell (color comes from its category classes).
+const FxRow: React.FC<{ name: string; desc: string; cat: CategoryMeta; inChain: boolean; onClick: () => void }> = ({ name, desc, cat, inChain, onClick }) => (
+  <div onClick={onClick} className={`flex items-center gap-2 border rounded px-3 py-2 cursor-pointer transition-all ${inChain ? 'border-white/30 bg-white/5' : 'border-zinc-800 hover:border-white/25 hover:bg-white/5'}`}>
+    <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${cat.dot}`} />
+    <div className="flex-1 min-w-0">
+      <span className={`text-[11px] font-medium block truncate ${cat.tile.text}`}>{name}</span>
+      <p className="text-[9px] text-zinc-500 truncate mt-0.5">{desc}</p>
+    </div>
+    {inChain && <span className={`w-2 h-2 rounded-full shrink-0 ${cat.dot}`} />}
+  </div>
+);
+const FxTile: React.FC<{ name: string; cat: CategoryMeta; inChain: boolean; onClick: () => void }> = ({ name, cat, inChain, onClick }) => {
+  const Icon = cat.icon;
+  return (
+    <div onClick={onClick} style={{ width: 90, height: 98 }} className={`relative flex flex-col items-center justify-start gap-1.5 rounded border cursor-pointer transition-all overflow-hidden p-2 ${cat.tile.bg} ${inChain ? `${cat.tile.border} ring-2 ${cat.tile.ring}` : 'border-white/8 hover:border-white/20 hover:brightness-110'}`}>
+      <div className={`absolute inset-0 ${cat.tile.glow} blur-xl pointer-events-none opacity-70`} />
+      <div className="relative z-10 flex items-center justify-center w-10 h-10 mt-1.5"><Icon className={`w-7 h-7 ${cat.tile.text}`} /></div>
+      <span className={`text-[10px] font-medium text-center leading-tight relative z-10 ${cat.tile.text} px-0.5 line-clamp-2`}>{name}</span>
+      {inChain && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white z-10" />}
+    </div>
+  );
+};
 
 /* ═══ MIX (PROCESS) tab — now on the Control-Surface editor ═══════════════════
    Layout (drag-arrangeable in Design Mode, like DJ):
@@ -36,6 +113,51 @@ import '../components/layout/track-controls.css';
    The footer is the PROCESS-CHAIN transport. */
 
 const sectionTitle = 'text-[10px] font-black uppercase tracking-widest text-purple-300';
+
+/* ── MIX transport — play / pause / stop for a row's audio (input source or
+   processed output). Drives the global player engine; the row whose label is
+   currently loaded shows the live play/pause state so either can be auditioned
+   at any time. ── */
+const MixTransport: React.FC<{ url: string | null; label: string }> = ({ url, label }) => {
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const currentLabel = usePlayerStore((s) => s.currentLabel);
+  const isActive = currentLabel === label;
+  const playing = isActive && isPlaying;
+
+  const toggle = async () => {
+    if (!url) return;
+    if (isActive) { usePlayerStore.getState().toggle(); return; }
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      await usePlayerStore.getState().load(blob, { label });
+      usePlayerStore.getState().play();
+    } catch { /* non-fatal — load/play errors surface in the player log */ }
+  };
+  const stop = () => { if (isActive) usePlayerStore.getState().stop(); };
+
+  return (
+    <>
+      <button
+        onClick={() => void toggle()}
+        disabled={!url}
+        title={playing ? 'Pause' : 'Play'}
+        aria-label={playing ? 'Pause' : 'Play'}
+        className="p-1 rounded text-zinc-400 hover:text-purple-200 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+      </button>
+      <button
+        onClick={stop}
+        disabled={!url || !isActive}
+        title="Stop"
+        aria-label="Stop"
+        className="p-1 rounded text-zinc-400 hover:text-red-200 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <Square className="w-3 h-3" />
+      </button>
+    </>
+  );
+};
 
 const PARAM_LABELS: Record<string, string> = {
   lowBoost: 'Low', highBoost: 'High', limiterCeiling: 'Ceil', targetLUFS: 'LUFS',
@@ -118,7 +240,7 @@ function StatRow({ stats }: { stats: AudioStats }) {
      middle — Effects rail · [ Chain over Effect Stage ] · Library
    Version is bumped past any previously-persisted MIX layout so this default
    takes over cleanly. */
-const MIX_LAYOUT_VERSION = 4;
+const MIX_LAYOUT_VERSION = 6;
 const defaultMixLayout: SurfaceLayout = {
   version: MIX_LAYOUT_VERSION,
   root: 'root',
@@ -127,18 +249,17 @@ const defaultMixLayout: SurfaceLayout = {
     topViz: { id: 'topViz', type: 'container', axis: 'column', children: ['inputVizP', 'outputVizP'], fr: { inputVizP: 1, outputVizP: 1 } },
     inputVizP: { id: 'inputVizP', type: 'panel', title: 'Input', flow: 'row', widgets: [], pinned: 'inputViz' },
     outputVizP: { id: 'outputVizP', type: 'panel', title: 'Output', flow: 'row', widgets: [], pinned: 'outputViz' },
-    mid: { id: 'mid', type: 'container', axis: 'row', children: ['railP', 'cont-3-b45ab2a0', 'rackP'], fr: { railP: 0.7625161264148641, 'cont-3-b45ab2a0': 3.652897886323994, rackP: 1.4 } },
+    mid: { id: 'mid', type: 'container', axis: 'row', children: ['railP', 'cont-3-b45ab2a0'], fr: { railP: 0.7625161264148641, 'cont-3-b45ab2a0': 3.652897886323994 }, framed: true },
     railP: { id: 'railP', type: 'panel', title: 'Effects', flow: 'row', widgets: [], pinned: 'effectRail' },
     libraryP: { id: 'libraryP', type: 'panel', title: 'Library', flow: 'row', widgets: [], pinned: 'library' },
     chainP: { id: 'chainP', type: 'panel', title: 'Chain', flow: 'row', widgets: [], pinned: 'chain' },
     stageP: { id: 'stageP', type: 'panel', title: 'Effect Stage', flow: 'row', widgets: [], pinned: 'effectStage' },
-    rackP: { id: 'rackP', type: 'panel', title: 'Rack', flow: 'row', widgets: [], pinned: 'mixRack' },
-    'cont-3-b45ab2a0': { id: 'cont-3-b45ab2a0', type: 'container', axis: 'row', children: ['cont-4-4768bad0', 'libraryP'], fr: { libraryP: 0.45836297448789, 'cont-4-4768bad0': 1.5416370255121108 } },
-    'cont-4-4768bad0': { id: 'cont-4-4768bad0', type: 'container', axis: 'column', children: ['chainP', 'stageP'], fr: { chainP: 0.6536796536796542, stageP: 1.3463203463203457 } },
+    'cont-3-b45ab2a0': { id: 'cont-3-b45ab2a0', type: 'container', axis: 'row', children: ['cont-4-4768bad0', 'libraryP'], fr: { libraryP: 0.45836297448789, 'cont-4-4768bad0': 1.5416370255121108 }, framed: true },
+    'cont-4-4768bad0': { id: 'cont-4-4768bad0', type: 'container', axis: 'column', children: ['chainP', 'stageP'], fr: { chainP: 0.6536796536796542, stageP: 1.3463203463203457 }, framed: true },
   },
 };
 
-interface ChainEntry { id: string; effect: string; enabled: boolean; params: Record<string, number>; }
+interface ChainEntry { id: string; effect: string; enabled: boolean; params: Record<string, number>; vst?: { plugin_path: string; plugin_name: string }; }
 
 interface MixRegArgs {
   // input/output viz
@@ -161,8 +282,15 @@ interface MixRegArgs {
   // library
   activeEffects: Array<{ id: string; name: string; desc: string }>; viewMode: 'list' | 'tile';
   setViewMode: (m: 'list' | 'tile') => void; addEffect: (id: string) => void; chainEffectIds: Set<string>;
+  // VST3 plugins (hosted via pedalboard) — shown in the effects browser and
+  // added to the chain as 'vst3' nodes.
+  vstPlugins: Vst3PluginInfo[]; vstScanning: boolean; rescanVst: () => void;
+  addVstToChain: (p: Vst3PluginInfo) => void; vstInChain: Set<string>;
   // studio modules (exact-GUI instruments)
   onPickModule: (id: string) => void; activeModuleId: string | null; activeModule: StudioModule | null;
+  onPickPsycho: (id: string) => void; activePsychoId: string | null;
+  // magenta RT2 tools (Collider / Jam / MRT2 — generative instruments)
+  onPickMagenta: (id: string) => void; activeMagentaId: string | null; activeMagentaTool: MagentaTool | null;
   // chain
   chain: ChainEntry[]; selectedId: string | null; setSelectedId: (id: string) => void;
   removeEffect: (id: string) => void; updateParams: (id: string, p: Record<string, number>) => void;
@@ -201,6 +329,7 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
         headerExtra={
           <>
             {p.srcStats && <StatRow stats={p.srcStats} />}
+            <MixTransport url={p.sourceUrl} label="MIX Input" />
             <button onClick={p.onClickUpload} title={p.sourceFile ? 'Replace source' : 'Load source'} className="p-1 rounded text-zinc-400 hover:text-purple-200 hover:bg-white/5">
               <Upload className="w-3 h-3" />
             </button>
@@ -225,6 +354,7 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
         headerExtra={
           <>
             {p.outStats && <StatRow stats={p.outStats} />}
+            <MixTransport url={p.outputUrl} label="MIX Output" />
             <button onClick={p.onDownload} disabled={!p.outputUrl} title="Save" className="p-1 rounded text-zinc-400 hover:text-green-200 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"><Download className="w-3 h-3" /></button>
             <button onClick={p.onSendToDAW} disabled={!p.outputUrl} title="Send to Edit" className="p-1 rounded text-zinc-400 hover:text-emerald-200 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"><Send className="w-3 h-3" /></button>
             <button onClick={p.onSendToInpaint} disabled={!p.outputUrl} title="Send to Inpaint" className="p-1 rounded text-zinc-400 hover:text-purple-200 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"><Sparkles className="w-3 h-3" /></button>
@@ -244,24 +374,46 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
     <div className="h-full w-full flex flex-col min-h-0 overflow-hidden p-1.5 gap-1.5">
       <span className={sectionTitle}>Effects</span>
       <div className="flex flex-col gap-0.5 overflow-y-auto min-h-0">
+        <button onClick={() => p.setActiveCategory('all')}
+          title="Every effect in MIX, grouped by category"
+          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'all' ? 'border-purple-400 text-purple-200 bg-purple-500/10' : 'border-transparent text-zinc-300 hover:text-zinc-100 hover:bg-white/5'}`}>
+          <Library className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-[10px] font-bold flex-1 truncate">All</span>
+          <span className="text-[8px] font-mono text-zinc-500 shrink-0">{p.allEffectCount}</span>
+        </button>
         <button onClick={() => p.setActiveCategory('studio')}
           className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'studio' ? 'border-cyan-400 text-cyan-200 bg-cyan-500/10' : 'border-transparent text-cyan-400/80 hover:text-cyan-200 hover:bg-cyan-500/5'}`}>
           <Boxes className="w-3.5 h-3.5 shrink-0" />
           <span className="text-[10px] font-bold flex-1 truncate">Studio</span>
           <span className="text-[8px] font-mono text-cyan-600 shrink-0">{STUDIO_MODULES.length}</span>
         </button>
-        <button onClick={() => p.setActiveCategory('all')}
-          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'all' ? 'border-purple-400 text-purple-200 bg-purple-500/10' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-white/5'}`}>
-          <Library className="w-3.5 h-3.5 shrink-0" />
-          <span className="text-[10px] font-semibold flex-1 truncate">All</span>
-          <span className="text-[8px] font-mono text-zinc-600 shrink-0">{p.allEffectCount}</span>
+        <button onClick={() => p.setActiveCategory('psychoacoustics')}
+          title="Psychoacoustic effects — pick one to open the rack in the Effect Stage"
+          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'psychoacoustics' ? 'border-fuchsia-400 text-fuchsia-200 bg-fuchsia-500/10' : 'border-transparent text-fuchsia-400/80 hover:text-fuchsia-200 hover:bg-fuchsia-500/5'}`}>
+          <Headphones className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-[10px] font-bold flex-1 truncate">Psychoacoustics</span>
+          <span className="text-[8px] font-mono text-fuchsia-600 shrink-0">{PSYCHO_MODULES.length}</span>
+        </button>
+        <button onClick={() => p.setActiveCategory('magenta')}
+          title="Magenta RealTime 2 — generative instruments (Collider · Jam · MRT2)"
+          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'magenta' ? 'border-sky-400 text-sky-200 bg-sky-500/10' : 'border-transparent text-sky-400/80 hover:text-sky-200 hover:bg-sky-500/5'}`}>
+          <Music className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-[10px] font-bold flex-1 truncate">Magenta</span>
+          <span className="text-[8px] font-mono text-sky-600 shrink-0">{MAGENTA_TOOLS.length}</span>
+        </button>
+        <button onClick={() => p.setActiveCategory('vst')}
+          title="VST3 plugins hosted via pedalboard — add them to the chain like any effect"
+          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${p.activeCategory === 'vst' ? 'border-teal-400 text-teal-200 bg-teal-500/10' : 'border-transparent text-teal-400/80 hover:text-teal-200 hover:bg-teal-500/5'}`}>
+          <Plug className="w-3.5 h-3.5 shrink-0" />
+          <span className="text-[10px] font-bold flex-1 truncate">VST</span>
+          <span className="text-[8px] font-mono text-teal-600 shrink-0">{p.vstPlugins.length}</span>
         </button>
         {CATEGORY_META.map((cat) => {
           const Icon = cat.icon;
           const active = p.activeCategory === cat.id;
           return (
             <button key={cat.id} onClick={() => p.setActiveCategory(cat.id)}
-              className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${active ? 'border-purple-400 text-purple-200 bg-purple-500/10' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-white/5'}`}>
+              className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded w-full text-left border-l-2 transition-colors ${active ? cat.rail.active : cat.rail.idle}`}>
               <Icon className="w-3.5 h-3.5 shrink-0" />
               <span className="text-[10px] font-semibold flex-1 truncate">{cat.label}</span>
               <span className="text-[8px] font-mono text-zinc-600 shrink-0">{cat.count}</span>
@@ -288,15 +440,35 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
   pinned('library', 'Library', (
     <div className="h-full w-full flex flex-col min-h-0 min-w-0 overflow-hidden p-2">
       <div className="flex items-center justify-between mb-2 shrink-0">
-        <span className={sectionTitle}>{p.activeCategory === 'studio' ? 'Studio Modules' : p.activeCategory === 'all' ? 'All Effects' : (CATEGORY_META.find((c) => c.id === p.activeCategory)?.label ?? 'Effects')}</span>
-        {p.activeCategory !== 'studio' && (
+        <span className={sectionTitle}>{p.activeCategory === 'studio' ? 'Studio Modules' : p.activeCategory === 'magenta' ? 'Magenta Tools' : p.activeCategory === 'psychoacoustics' ? 'Psychoacoustics' : p.activeCategory === 'vst' ? 'VST3 Plugins' : p.activeCategory === 'all' ? 'All Effects' : (CATEGORY_META.find((c) => c.id === p.activeCategory)?.label ?? 'Effects')}</span>
+        {p.activeCategory !== 'studio' && p.activeCategory !== 'psychoacoustics' && p.activeCategory !== 'magenta' && p.activeCategory !== 'vst' && (
           <div className="flex items-center gap-0.5 bg-black/40 rounded p-0.5">
             <button onClick={() => p.setViewMode('list')} title="List view" className={`p-1 rounded transition-colors ${p.viewMode === 'list' ? 'text-purple-300 bg-purple-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}><LayoutList className="w-3 h-3" /></button>
             <button onClick={() => p.setViewMode('tile')} title="Icon view" className={`p-1 rounded transition-colors ${p.viewMode === 'tile' ? 'text-purple-300 bg-purple-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}><Grid3x3 className="w-3 h-3" /></button>
           </div>
         )}
       </div>
-      {p.activeCategory === 'studio' ? (
+      {p.activeCategory === 'magenta' ? (
+        <div className="flex-1 overflow-y-auto"><div className="flex flex-wrap gap-3 content-start justify-center p-1.5">
+          {MAGENTA_TOOLS.map((m) => {
+            const active = p.activeMagentaTool?.id === m.id;
+            return (
+              <button key={m.id} onClick={() => p.onPickMagenta(m.id)} title={m.desc}
+                className={`group relative flex flex-col gap-1.5 rounded-md border overflow-hidden transition-all p-2 text-left ${active ? 'border-cyan-400/60 ring-1 ring-cyan-400/40 bg-cyan-500/5' : 'border-white/8 bg-black/30 hover:border-white/20 hover:brightness-110'}`}
+                style={{ width: 132 }}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: m.color, boxShadow: `0 0 5px ${m.color}80` }} />
+                  <span className="text-[10px] font-bold text-zinc-100 truncate flex-1">{m.name}</span>
+                </div>
+                <div className="relative w-full h-20 rounded bg-[#0a0c14] border border-white/5 overflow-hidden">
+                  <ModuleThumb preview={m.preview} className="w-full h-full" />
+                </div>
+                <span className="text-[8px] font-mono text-zinc-500 leading-tight line-clamp-2">{m.desc}</span>
+              </button>
+            );
+          })}
+        </div></div>
+      ) : p.activeCategory === 'studio' ? (
         <div className="flex-1 overflow-y-auto"><div className="flex flex-wrap gap-3 content-start justify-center p-1.5">
           {STUDIO_MODULES.map((m) => {
             const active = p.activeModule?.id === m.id;
@@ -316,18 +488,135 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
             );
           })}
         </div></div>
-      ) : p.viewMode === 'list' ? (
+      ) : p.activeCategory === 'psychoacoustics' ? (
+        <div className="flex-1 overflow-y-auto"><div className="flex flex-wrap gap-3 content-start justify-center p-1.5">
+          {PSYCHO_MODULES.map((m) => {
+            const active = p.activePsychoId === m.id;
+            const inRack = p.rackChain.some((e) => e.effect === m.id);
+            return (
+              <button key={m.id} onClick={() => p.onPickPsycho(m.id)} title={m.desc}
+                className={`group relative flex flex-col gap-1.5 rounded-md border overflow-hidden transition-all p-2 text-left ${active ? 'border-fuchsia-400/60 ring-1 ring-fuchsia-400/40 bg-fuchsia-500/5' : 'border-white/8 bg-black/30 hover:border-white/20 hover:brightness-110'}`}
+                style={{ width: 132 }}>
+                <div className="flex items-center gap-1.5">
+                  <span aria-hidden="true" className="w-2 h-2 rounded-full shrink-0" style={{ background: m.color, boxShadow: `0 0 5px ${m.color}80` }} />
+                  <span className="text-[10px] font-bold text-zinc-100 truncate flex-1">{m.name}</span>
+                  {inRack && <span role="img" aria-label="In rack" className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shrink-0" />}
+                </div>
+                <div className="relative w-full h-20 rounded bg-[#0a0c14] border border-white/5 overflow-hidden">
+                  <ModuleThumb preview={m.preview} className="w-full h-full" />
+                </div>
+                <span className="text-[8px] font-mono text-zinc-500 leading-tight line-clamp-2">{m.desc}</span>
+              </button>
+            );
+          })}
+        </div></div>
+      ) : p.activeCategory === 'vst' ? (
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+          <div className="flex items-center gap-2 px-1.5 pb-1.5 shrink-0">
+            <button onClick={p.rescanVst} disabled={p.vstScanning} className="btn-ghost inline-flex items-center gap-1 disabled:opacity-40" title="Rescan the standard VST3 folders">
+              {p.vstScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Rescan
+            </button>
+            <span className="text-[8px] font-mono text-zinc-600">host: pedalboard</span>
+          </div>
+          {p.vstPlugins.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center opacity-30 italic gap-2 py-8">
+              <Plug className="w-7 h-7" />
+              <span className="text-[10px]">{p.vstScanning ? 'Scanning…' : 'No VST3 plugins found. Click Rescan.'}</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-3 content-start justify-center p-1.5">
+              {p.vstPlugins.map((pl) => {
+                const inChain = p.vstInChain.has(pl.path);
+                return (
+                  <button key={pl.path} onClick={() => p.addVstToChain(pl)} title={pl.path}
+                    className={`group relative flex flex-col gap-1.5 rounded-md border overflow-hidden transition-all p-2 text-left ${inChain ? 'border-teal-400/60 ring-1 ring-teal-400/40 bg-teal-500/5' : 'border-white/8 bg-black/30 hover:border-white/20 hover:brightness-110'}`}
+                    style={{ width: 132 }}>
+                    <div className="flex items-center gap-1.5">
+                      <Plug className="w-3 h-3 text-teal-300 shrink-0" />
+                      <span className="text-[10px] font-bold text-zinc-100 truncate flex-1">{pl.name}</span>
+                      {inChain && <span aria-label="In chain" className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" />}
+                    </div>
+                    <span className="text-[8px] font-mono text-zinc-500 leading-tight line-clamp-2">{[pl.manufacturer, pl.version].filter(Boolean).join(' · ') || pl.category}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : p.activeCategory === 'all' ? (() => {
+        // Everything in MIX, in either list or icon view. Order: Studio +
+        // Psychoacoustics first, then the backend effect categories.
+        const tile = p.viewMode === 'tile';
+        const boxCls = tile ? 'flex flex-wrap gap-3 content-start justify-center p-1' : 'flex flex-col gap-1';
+        return (
+          <div className="flex-1 overflow-y-auto"><div className="flex flex-col gap-2 content-start">
+            <div className="flex flex-col gap-1">
+              <AllHeader icon={Boxes} color="text-cyan-300" label="Studio" count={STUDIO_MODULES.length} />
+              <div className={boxCls}>
+                {STUDIO_MODULES.map((m) => (tile
+                  ? <ModuleTile key={m.id} name={m.name} color={m.color} marked={p.activeModule?.id === m.id} onClick={() => p.onPickModule(m.id)} />
+                  : <ModuleRow key={m.id} name={m.name} desc={m.desc} color={m.color} marked={p.activeModule?.id === m.id} onClick={() => p.onPickModule(m.id)} />
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <AllHeader icon={Headphones} color="text-fuchsia-300" label="Psychoacoustics" count={PSYCHO_MODULES.length} />
+              <div className={boxCls}>
+                {PSYCHO_MODULES.map((m) => {
+                  const marked = p.activePsychoId === m.id || p.rackChain.some((e) => e.effect === m.id);
+                  return tile
+                    ? <ModuleTile key={m.id} name={m.name} color={m.color} marked={marked} onClick={() => p.onPickPsycho(m.id)} />
+                    : <ModuleRow key={m.id} name={m.name} desc={m.desc} color={m.color} marked={marked} onClick={() => p.onPickPsycho(m.id)} />;
+                })}
+              </div>
+            </div>
+            {p.vstPlugins.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <AllHeader icon={Plug} color="text-teal-300" label="VST3" count={p.vstPlugins.length} />
+                <div className={boxCls}>
+                  {p.vstPlugins.map((pl) => {
+                    const inChain = p.vstInChain.has(pl.path);
+                    const desc = [pl.manufacturer, pl.version].filter(Boolean).join(' · ') || pl.category;
+                    return tile
+                      ? <ModuleTile key={pl.path} name={pl.name} color="#2dd4bf" marked={inChain} onClick={() => p.addVstToChain(pl)} />
+                      : <ModuleRow key={pl.path} name={pl.name} desc={desc} color="#2dd4bf" marked={inChain} onClick={() => p.addVstToChain(pl)} />;
+                  })}
+                </div>
+              </div>
+            )}
+            {CATEGORY_META.map((cat) => {
+              const fxs = EFFECT_CATALOG[cat.id] || [];
+              if (!fxs.length) return null;
+              return (
+                <div key={cat.id} className="flex flex-col gap-1">
+                  <AllHeader icon={cat.icon} color={cat.tile.text} label={cat.label} count={fxs.length} />
+                  <div className={boxCls}>
+                    {fxs.map((fx) => {
+                      const inChain = p.chainEffectIds.has(fx.id);
+                      return tile
+                        ? <FxTile key={fx.id} name={fx.name} cat={cat} inChain={inChain} onClick={() => p.addEffect(fx.id)} />
+                        : <FxRow key={fx.id} name={fx.name} desc={fx.desc} cat={cat} inChain={inChain} onClick={() => p.addEffect(fx.id)} />;
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div></div>
+        );
+      })() : p.viewMode === 'list' ? (
         <div className="flex-1 overflow-y-auto"><div className="flex flex-col gap-1 content-start">
           {p.activeEffects.map((fx) => {
+            const cat = fxToCategory[fx.id] ?? CATEGORY_META[0];
             const inChain = p.chainEffectIds.has(fx.id);
             return (
               <div key={fx.id} onClick={() => p.addEffect(fx.id)}
-                className={`flex items-center gap-2 border rounded px-3 py-2 cursor-pointer transition-all ${inChain ? 'border-purple-400/40 bg-purple-500/5' : 'border-zinc-800 hover:border-purple-500/30 hover:bg-white/5'}`}>
+                className={`flex items-center gap-2 border rounded px-3 py-2 cursor-pointer transition-all ${inChain ? 'border-white/30 bg-white/5' : 'border-zinc-800 hover:border-white/25 hover:bg-white/5'}`}>
+                <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${cat.dot}`} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-[11px] font-medium text-zinc-100 block truncate">{fx.name}</span>
+                  <span className={`text-[11px] font-medium block truncate ${cat.tile.text}`}>{fx.name}</span>
                   <p className="text-[9px] text-zinc-500 truncate mt-0.5">{fx.desc}</p>
                 </div>
-                {inChain && <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />}
+                {inChain && <span className={`w-2 h-2 rounded-full shrink-0 ${cat.dot}`} />}
               </div>
             );
           })}
@@ -389,7 +678,7 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
                 className={`rounded p-1.5 border transition-all cursor-pointer shrink-0 w-40 flex flex-col ${p.selectedEntry?.id === entry.id ? 'border-purple-500/60 bg-purple-500/5' : 'border-zinc-800 hover:border-white/10'} ${!entry.enabled ? 'opacity-40' : ''}`}>
                 <div className="flex items-center gap-1 shrink-0">
                   <button className="text-zinc-600 hover:text-purple-400 disabled:opacity-20 shrink-0" disabled={index === 0} title="Move earlier" onClick={(e) => { e.stopPropagation(); p.reorder(index, index - 1); }}><ChevronLeft className="w-3 h-3" /></button>
-                  <span className="text-[10px] font-mono text-purple-300 font-semibold flex-1 truncate">{EFFECT_LABELS[entry.effect] || entry.effect}</span>
+                  <span className="text-[10px] font-mono text-purple-300 font-semibold flex-1 truncate">{entry.vst ? entry.vst.plugin_name : (EFFECT_LABELS[entry.effect] || entry.effect)}</span>
                   <button className="text-zinc-500 hover:text-purple-400 shrink-0" onClick={(e) => { e.stopPropagation(); p.toggleEnabled(entry.id); }}>{entry.enabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}</button>
                   <button className="text-zinc-600 hover:text-red-400 shrink-0" onClick={(e) => { e.stopPropagation(); p.removeEffect(entry.id); }}><X className="w-3 h-3" /></button>
                   <button className="text-zinc-600 hover:text-purple-400 disabled:opacity-20 shrink-0" disabled={index === p.chain.length - 1} title="Move later" onClick={(e) => { e.stopPropagation(); p.reorder(index, index + 1); }}><ChevronRight className="w-3 h-3" /></button>
@@ -414,17 +703,7 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
      instrument, live Web-Audio preview), falling back to the generic viz for
      chain effects that have no dedicated instrument, and a pick-a-module prompt
      when nothing is focused. ── */
-  pinned('effectStage', 'Effect Stage', (
-    p.activeModule
-      ? <EffectGuiStage module={p.activeModule} sourceFile={p.sourceFile} />
-      : p.selectedEntry
-        ? <EffectsVizPanel effect={p.selectedEntry.effect} params={p.selectedEntry.params} className="h-full! border-purple-500/15!" />
-        : <EffectGuiStage module={null} sourceFile={p.sourceFile} />
-  ));
-
-  /* ── psychoacoustic rack — EDIT's real-time FX engine, applied to the MIX
-     source and baked offline into the output (distinct from the backend chain) ── */
-  pinned('mixRack', 'Rack', (
+  const psychoRackStage = (
     <div className="h-full w-full flex flex-col min-h-0 overflow-hidden p-2 gap-2">
       <div className="flex items-center gap-2 shrink-0">
         <span className={sectionTitle}>Psychoacoustic Rack</span>
@@ -453,6 +732,35 @@ function buildMixRegistry(p: MixRegArgs): WidgetRegistry {
         {p.applyingRack ? 'Rendering…' : 'Apply rack to output'}
       </button>
     </div>
+  );
+  // "The Owl" (the spatializer) gets its dedicated front-end in the Effect Stage
+  // footprint — the same spot Studio Modules land. It drives the live rack entry's
+  // params directly. Falls back to the rack view if the entry isn't present yet.
+  const owlEntry = p.rackChain.find((e) => e.effect === 'spatializer');
+  const owlStage = owlEntry ? (
+    <TheOwl
+      params={owlEntry.params}
+      idPrefix={`mix-owl-${owlEntry.id}`}
+      onChange={(np) => p.rackUpdateParams(owlEntry.id, np)}
+    />
+  ) : psychoRackStage;
+  // A focused psycho tile shows the rack; an explicit Studio module or selected
+  // chain entry takes priority; otherwise a populated rack still shows here so it
+  // can never be orphaned (and the Apply button stays reachable).
+  pinned('effectStage', 'Effect Stage', (
+    p.activeMagentaTool
+      ? <MagentaToolStage tool={p.activeMagentaTool} />
+    : p.activePsychoId === 'spatializer'
+      ? owlStage
+    : p.activePsychoId
+      ? psychoRackStage
+      : p.activeModule
+        ? <EffectGuiStage module={p.activeModule} sourceFile={p.sourceFile} />
+        : p.selectedEntry
+          ? <EffectsVizPanel effect={p.selectedEntry.effect} params={p.selectedEntry.params} className="h-full! border-purple-500/15!" />
+          : p.rackChain.length > 0
+            ? psychoRackStage
+            : <EffectGuiStage module={null} sourceFile={p.sourceFile} />
   ));
 
   return reg;
@@ -478,6 +786,11 @@ export const MixView: React.FC = () => {
 
   const chain = useEffectChainStore((s) => s.chain) as ChainEntry[];
   const addEffect = useEffectChainStore((s) => s.addEffect);
+  const addVst = useEffectChainStore((s) => s.addVst);
+  // VST3 plugins for the effects browser (hosted via pedalboard).
+  const vstPlugins = useVstStore((s) => s.plugins);
+  const vstScanning = useVstStore((s) => s.scanning);
+  const scanVst = useVstStore((s) => s.scan);
   const removeEffect = useEffectChainStore((s) => s.removeEffect);
   const updateParams = useEffectChainStore((s) => s.updateParams);
   const toggleEnabled = useEffectChainStore((s) => s.toggleEnabled);
@@ -493,6 +806,10 @@ export const MixView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'list' | 'tile'>('tile');
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
+  // The psychoacoustic effect focused in the Effect Stage (opens the rack there).
+  const [activePsychoId, setActivePsychoId] = useState<string | null>(null);
+  // The Magenta RT2 tool focused in the Effect Stage (Collider / Jam / MRT2).
+  const [activeMagentaId, setActiveMagentaId] = useState<string | null>(null);
   const [srcStats, setSrcStats] = useState<AudioStats | null>(null);
   const [outStats, setOutStats] = useState<AudioStats | null>(null);
   const [dragOverSource, setDragOverSource] = useState(false);
@@ -508,6 +825,14 @@ export const MixView: React.FC = () => {
   const sourceUrl = useMemo(() => (sourceFile ? URL.createObjectURL(sourceFile) : null), [sourceFile]);
   useEffect(() => () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); }, [sourceUrl]);
 
+  // Wire the psychoacoustic rack onto the footer's master insert so it is heard
+  // LIVE on the transport and is never rebuilt when a new clip is applied. Attached
+  // once for the session; an empty rack is a clean passthrough (see mixLiveRack).
+  useEffect(() => { attachMixLiveRack(); }, []);
+
+  // Populate the VST3 browser on first open (cached scan — cheap).
+  useEffect(() => { void scanVst(false); }, [scanVst]);
+
   useEffect(() => {
     if (!sourceFile) { setSrcStats(null); return; }
     analyzeAudio(sourceFile).then(setSrcStats).catch(() => setSrcStats(null));
@@ -520,6 +845,10 @@ export const MixView: React.FC = () => {
   const setSourceBoth = (file: File | null) => {
     setSource(file);
     useStudioStore.getState().setSourceFile(file);
+    // Bind the MIX working file to the footer transport so pressing Play auditions
+    // it LIVE through the master rack. The rack stays put across source swaps, so a
+    // new clip starts cleanly without tearing down or restarting the effects.
+    if (file) void usePlayerStore.getState().load(file, { label: file.name });
   };
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault(); setDragOverSource(false);
@@ -573,7 +902,23 @@ export const MixView: React.FC = () => {
       src.connect(inGain);
       src.start(0);
       const rendered = await offline.startRendering();
-      setOutputUrl(URL.createObjectURL(encodeWav(rendered)));
+      const wav = encodeWav(rendered);
+      setOutputUrl(URL.createObjectURL(wav));
+      // Persist the rendered result to the library (mirrors the backend chain's
+      // save). Without this the rack output only appears in the Output viz and
+      // is never saved.
+      const label = chainNow.filter((e) => e.enabled).map((e) => e.effect).join(' + ') || 'rack';
+      const title = `rack-${label.slice(0, 40)}.wav`;
+      try {
+        await useLibraryStore.getState().importEntry({
+          blob: wav,
+          filename: title,
+          mimeType: 'audio/wav',
+          metadata: { title, prompt: `Psychoacoustic rack: ${label}`, source: 'studio', tags: ['psychoacoustic-rack'] },
+        });
+      } catch (e) {
+        logError('studio', `Rack library save failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     } catch { /* non-fatal: leave the prior output in place */ } finally {
       decodeCtx.close().catch(() => {});
       setApplyingRack(false);
@@ -606,6 +951,8 @@ export const MixView: React.FC = () => {
   const allEffects = Object.values(EFFECT_CATALOG).flat();
   const activeEffects = activeCategory === 'all' ? allEffects : (EFFECT_CATALOG[activeCategory] || []);
   const chainEffectIds = new Set(chain.map((e) => e.effect));
+  const vstInChain = new Set(chain.filter((e) => e.vst).map((e) => e.vst!.plugin_path));
+  const addVstToChain = (pl: Vst3PluginInfo) => addVst({ plugin_path: pl.path, plugin_name: pl.name });
   const selectedEntry = chain.find((e) => e.id === selectedChainId) ?? chain[0] ?? null;
 
   // The instrument shown in the effect stage: an explicitly-picked Studio Module
@@ -616,9 +963,25 @@ export const MixView: React.FC = () => {
     ?? (mappedModuleId ? moduleById[mappedModuleId] ?? null : null);
 
   // Picking a module from the library toggles its instrument open/closed.
-  const handlePickModule = (id: string) => setActiveModuleId((cur) => (cur === id ? null : id));
+  const handlePickModule = (id: string) => { setActivePsychoId(null); setActiveMagentaId(null); setActiveModuleId((cur) => (cur === id ? null : id)); };
   // Selecting a chain entry hands the stage back to the effect→module mapping.
-  const selectChain = (id: string) => { setSelectedChainId(id); setActiveModuleId(null); };
+  const selectChain = (id: string) => { setActivePsychoId(null); setActiveMagentaId(null); setSelectedChainId(id); setActiveModuleId(null); };
+  // Picking a psychoacoustic tile adds it to the rack engine (once) and opens the
+  // rack in the Effect Stage; clicking the focused one again closes the stage.
+  const handlePickPsycho = (id: string) => {
+    if (activePsychoId === id) { setActivePsychoId(null); return; }
+    if (!rackChain.some((e) => e.effect === id)) rackAdd(id);
+    setActiveModuleId(null);
+    setActiveMagentaId(null);
+    setActivePsychoId(id);
+  };
+  // Picking a Magenta tool opens its generative instrument in the Effect Stage;
+  // clicking the focused one again closes it. Mutually exclusive with the above.
+  const activeMagentaTool: MagentaTool | null = activeMagentaId ? magentaToolById[activeMagentaId] ?? null : null;
+  const handlePickMagenta = (id: string) => {
+    setActivePsychoId(null); setActiveModuleId(null);
+    setActiveMagentaId((cur) => (cur === id ? null : id));
+  };
 
   const registry = buildMixRegistry({
     sourceUrl, outputUrl, srcStats, outStats, sourceFile,
@@ -633,10 +996,13 @@ export const MixView: React.FC = () => {
     onClearSource: () => setSourceBoth(null),
     isChainProcessing,
     onDownload: handleDownload, onSendToDAW: () => void handleSendToDAW(), onSendToInpaint: () => void handleSendToInpaint(),
-    activeCategory, setActiveCategory, allEffectCount: allEffects.length,
+    activeCategory, setActiveCategory, allEffectCount: allEffects.length + PSYCHO_MODULES.length + STUDIO_MODULES.length + vstPlugins.length,
     quickMaster, setQuickParam, applyQuickMaster, masterEntry: !!masterEntry,
     activeEffects, viewMode, setViewMode, addEffect, chainEffectIds,
+    vstPlugins, vstScanning, rescanVst: () => void scanVst(true), addVstToChain, vstInChain,
     onPickModule: handlePickModule, activeModuleId, activeModule,
+    onPickPsycho: handlePickPsycho, activePsychoId,
+    onPickMagenta: handlePickMagenta, activeMagentaId, activeMagentaTool,
     chain, selectedId: selectedChainId, setSelectedId: selectChain,
     removeEffect, updateParams, toggleEnabled, reorder, clearChain,
     outputFormat, setOutputFormat, showHistory, setShowHistory, processHistory,

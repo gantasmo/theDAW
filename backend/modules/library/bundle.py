@@ -31,6 +31,7 @@ def build_bundle_bytes(
     analysis: Optional[dict[str, Any]],
     stems: Iterable[dict[str, Any]] = (),
     midis: Iterable[dict[str, Any]] = (),
+    scores: Iterable[dict[str, Any]] = (),
     lineage_edges: Iterable[dict[str, Any]] = (),
 ) -> bytes:
     """Build the zip and return its bytes. Caller streams these to the
@@ -81,6 +82,15 @@ def build_bundle_bytes(
             mp = Path(midi.get("midi_path") or "")
             if mp.is_file():
                 zf.write(mp, arcname=f"midi/{mp.name}")
+        # Score / notation artifacts (sheets, tabs, arrangements, exports).
+        # Dedup by filename so multiple DB rows pointing at the same file
+        # don't collide in the zip.
+        seen_scores: set[str] = set()
+        for score in scores:
+            sp = Path(score.get("path") or "")
+            if sp.is_file() and sp.name not in seen_scores:
+                seen_scores.add(sp.name)
+                zf.write(sp, arcname=f"scores/{sp.name}")
 
         # README.
         readme_text = _render_readme(
@@ -93,6 +103,7 @@ def build_bundle_bytes(
             midi_count=sum(
                 1 for m in midis if Path(m.get("midi_path") or "").is_file()
             ),
+            scores_count=len(seen_scores),
         )
         zf.writestr("README.txt", readme_text)
 
@@ -107,6 +118,7 @@ def _render_readme(
     analysis: Optional[dict[str, Any]],
     stems_count: int,
     midi_count: int,
+    scores_count: int = 0,
 ) -> str:
     lines: list[str] = []
     lines.append("theDAW Track Bundle")
@@ -139,8 +151,9 @@ def _render_readme(
                 continue
             lines.append(f"  {k}: {v}")
         lines.append("")
-    lines.append(f"Stems: {stems_count}")
-    lines.append(f"MIDI:  {midi_count}")
+    lines.append(f"Stems:  {stems_count}")
+    lines.append(f"MIDI:   {midi_count}")
+    lines.append(f"Scores: {scores_count}")
     lines.append("")
     lines.append("Contents:")
     lines.append("  - <audio file>     the track itself")
@@ -150,4 +163,5 @@ def _render_readme(
     lines.append("  - prompts.txt      positive/negative/embedded prompts")
     lines.append("  - stems/           separated stems (if stems ran)")
     lines.append("  - midi/            MIDI transcriptions (if midi ran)")
+    lines.append("  - scores/          sheet music / tabs / arrangements (if any)")
     return "\n".join(lines) + "\n"

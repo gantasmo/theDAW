@@ -1,0 +1,10 @@
+{
+  "name": "xrcontrol",
+  "label": "XR Control Bus",
+  "enabled": true,
+  "icon": "Radio",
+  "sidebar": false,
+  "api_prefix": "/api/xr/control",
+  "backend": true,
+  "description": "Relay between theDAW (the browser, which owns the control manifest and the wired setters) and a theDAW-XR headset (which requests the manifest and sends control changes). Carries the control manifest plus control-set and control-changed messages so hand-tracked spatial controls in XR drive theDAW. Transport only: it holds no control state. Disable to close the bus."
+}

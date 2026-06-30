@@ -21,6 +21,13 @@ interface SectionProps {
    *  rail, which already has the rail-level collapse button — the
    *  inner chevron was a confusing duplicate handle. */
   collapsible?: boolean;
+  /** Fill the parent's remaining height instead of sizing to content.
+   *  The header stays fixed at the top and the body becomes a bounded
+   *  flex column (min-h-0) so a `flex-1 overflow-y-auto` child inside
+   *  scrolls on its own — i.e. a sticky header with a scrolling body.
+   *  Used by the LIBRARY panel. Implies non-resizable, no height
+   *  animation. */
+  fill?: boolean;
 }
 
 export const Section: React.FC<SectionProps> = ({
@@ -33,7 +40,11 @@ export const Section: React.FC<SectionProps> = ({
   minHeight = 80,
   maxContentHeight = 800,
   collapsible = true,
+  fill = false,
 }) => {
+  // Fill mode owns its own height via flex, so the drag-to-resize
+  // handle is disabled.
+  const canResize = fill ? false : resizable;
   // When collapsible=false the Section is locked open. defaultOpen
   // is ignored in that mode.
   const [isOpen, setIsOpen] = useState(collapsible ? defaultOpen : true);
@@ -67,9 +78,9 @@ export const Section: React.FC<SectionProps> = ({
   }, [isResizing, minHeight]);
 
   return (
-    <div className="hardware-card flex flex-col shrink-0 relative mb-1 last:mb-0">
+    <div className={`hardware-card flex flex-col relative mb-1 last:mb-0 ${fill ? 'flex-1 min-h-0' : 'shrink-0'}`}>
        <div
-         className={`flex items-center justify-between px-2 py-1.5 select-none bg-white/2 transition-colors ${
+         className={`flex items-center justify-between px-2 py-1.5 select-none bg-white/2 transition-colors shrink-0 ${
            collapsible ? 'cursor-pointer hover:bg-white/5' : ''
          }`}
          onClick={collapsible ? () => setIsOpen(!isOpen) : undefined}
@@ -88,19 +99,19 @@ export const Section: React.FC<SectionProps> = ({
        <AnimatePresence>
          {isOpen && (
            <motion.div
-             initial={{ height: 0, opacity: 0 }}
-             animate={{ height: height === 'auto' ? 'auto' : height, opacity: 1 }}
-             exit={{ height: 0, opacity: 0 }}
-             className="overflow-hidden flex flex-col"
+             initial={fill ? { opacity: 0 } : { height: 0, opacity: 0 }}
+             animate={fill ? { opacity: 1 } : { height: height === 'auto' ? 'auto' : height, opacity: 1 }}
+             exit={fill ? { opacity: 0 } : { height: 0, opacity: 0 }}
+             className={`overflow-hidden flex flex-col ${fill ? 'flex-1 min-h-0' : ''}`}
              ref={containerRef}
            >
               <div
-                className={`flex flex-col gap-2 pt-2 border-t border-white/5 p-2 flex-1 no-scrollbar overflow-x-hidden ${maxContentHeight !== null ? 'overflow-y-auto' : ''}`}
+                className={`flex flex-col gap-2 pt-2 border-t border-white/5 p-2 no-scrollbar overflow-x-hidden ${fill ? 'flex-1 min-h-0' : 'flex-1'} ${maxContentHeight !== null ? 'overflow-y-auto' : ''}`}
                 style={maxContentHeight !== null ? { maxHeight: `${maxContentHeight}px` } : undefined}
               >
                 {children}
               </div>
-              {resizable && (
+              {canResize && (
                 <div 
                   className="h-1.5 cursor-row-resize hover:bg-purple-500/20 transition-colors flex items-center justify-center group relative mt-1"
                   onMouseDown={(e) => {

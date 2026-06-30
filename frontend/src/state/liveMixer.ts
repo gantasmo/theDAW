@@ -764,6 +764,15 @@ export function isPlaying(): boolean {
   return playing;
 }
 
+/** Re-assert liveMixer as the active transport after a frozen-master audition.
+ *  Auditioning the rendered VST master loads a non-editor track into the player
+ *  (which clears the live hook), so switching EDIT back to Live mode calls this
+ *  to route the footer transport at the live multitrack mix again. */
+export function reactivate(): void {
+  setLiveTransport({ play, pause, stop, seek });
+  usePlayerStore.setState({ currentEntryId: EDITOR_ENTRY_ID, currentLabel: 'Editor Timeline' });
+}
+
 /** Register this module as playerStore's live transport so the footer's normal
  *  transport buttons drive it. Call on editor mount. Returns an unregister. */
 export function attach(): () => void {

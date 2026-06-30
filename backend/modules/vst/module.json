@@ -1,0 +1,10 @@
+{
+  "name": "vst",
+  "label": "VST Plugins",
+  "enabled": true,
+  "icon": "Cable",
+  "sidebar": false,
+  "api_prefix": "/api/vst",
+  "backend": true,
+  "description": "VST3 plugin hosting via pedalboard (Spotify) — scan, load, chain, process"
+}

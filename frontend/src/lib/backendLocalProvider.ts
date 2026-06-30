@@ -41,6 +41,11 @@ interface ServerRecord {
   chimera_sources?: string[];
   play_count?: number;
   last_played_at?: number | null;
+  // Enrichment attached by the backend's `_attach_analysis` (only present once
+  // the entry has been analyzed). Flat scalar analysis dict + parsed embedded
+  // file tags — see LibraryEntry.analysis / .embeddedTags.
+  analysis?: Record<string, unknown>;
+  embedded_tags?: Record<string, unknown>;
 }
 
 const toEntry = (r: ServerRecord): LibraryEntry => ({
@@ -68,6 +73,11 @@ const toEntry = (r: ServerRecord): LibraryEntry => ({
   chimeraSources: r.chimera_sources ?? [],
   playCount: r.play_count ?? 0,
   lastPlayedAt: r.last_played_at ?? null,
+  // Pass the backend analysis enrichment straight through (snake_case →
+  // camelCase only). Left undefined when the entry hasn't been analyzed, which
+  // the inspector + search treat as "no extra data" rather than empty objects.
+  analysis: r.analysis,
+  embeddedTags: r.embedded_tags,
 });
 
 const patchToServerKeys = (patch: LibraryEntryPatch): Record<string, unknown> => {

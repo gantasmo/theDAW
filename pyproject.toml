@@ -30,6 +30,9 @@ dependencies = [
     "httpx>=0.28.1",
     "psutil>=5.9.0",
     "librosa>=0.10.0",
+    # librosa depends on numba but leaves the floor broad enough for uv to pick
+    # numba 0.53 on Python 3.10, which pulls llvmlite 0.36 and cannot build.
+    "numba>=0.61.2",
     # edit-tool-stack (backend/modules/{mastering,restoration,enhance,creative_*,delivery,analyzer}):
     # scipy = linear-phase FIR design + dynamic-EQ DSP; pyloudnorm = pure-Python LUFS
     # cross-check used by the analyzer + metering (loudness itself comes from FFmpeg loudnorm).
@@ -72,6 +75,27 @@ dependencies = [
     # and updated often as site extractors change; keep a generous floor and let
     # `uv sync` pull the newest so YouTube/SoundCloud keep working.
     "yt-dlp>=2025.1.1",
+    # akvj native Kinect point cloud (backend/modules/akvj/kinect_sidecar.py).
+    # pyk4a-bundle ships its OWN matched k4a.dll + depthengine, so no separate
+    # Azure Kinect SDK install is needed; the sidecar just works. Windows x64 +
+    # Linux x64 only (no macOS wheel), gated so `uv sync` skips it elsewhere.
+    # websockets is the sidecar's WebSocket client to the relay.
+    "pyk4a-bundle ; (sys_platform == 'win32') or (sys_platform == 'linux' and platform_machine == 'x86_64')",
+    "websockets>=12.0",
+    # --- VST / DAW import / .tasmo project format (June 2026) ---
+    # VST3 plugin hosting via pedalboard (Spotify). JUCE-based, VST3+AudioUnit,
+    # GPL-3.0 (compatible with open-source theDAW). Windows/macOS/Linux.
+    "pedalboard>=0.9.23",
+    # Reaper .RPP project file parsing. MIT licensed.
+    "reaproj>=0.1.0",
+    # Binary serialization for .tasmo project files (MsgPack + ZIP).
+    "msgpack>=1.2.1",
+    # FL Studio .flp project parsing (Image-Line NEM binary format). PyPI.
+    "pyflp>=2.0.0",
+    # Audacity .aup3 project parsing. py-aup3 is GitHub-only (not on PyPI).
+    # The PyPI "aup-parser" package requires Python >=3.11 (we're on 3.10).
+    # Install manually: pip install git+https://github.com/mildsunrise/py-aup3.git
+    # The parser handles ImportError gracefully at runtime if not installed.
 ]
 
 [project.optional-dependencies]
@@ -150,4 +174,6 @@ exclude = [
     "stable_audio_3/training",
     # Vendored git submodule (third-party MRT2 port); not linted by the parent project.
     "sidecars/magenta-rt2-nvidia",
+    # Runtime-created isolated venv for the faster-whisper transcription sidecar.
+    "backend/modules/vocal/transcription/.whisper_venv",
 ]

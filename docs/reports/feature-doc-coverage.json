@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-06-23T01:58:50.774Z",
-  "repoRevision": "1854cc784e3a",
+  "generatedAt": "2026-06-28T22:23:39.240Z",
+  "repoRevision": "5b8cc6478016",
   "repomixContext": {
     "path": "repomix-output.md",
-    "present": false,
+    "present": true,
     "tracked": false,
-    "note": "Repomix context was not present for this run."
+    "note": "Used as local analysis context only. It is intentionally gitignored and must not be staged."
   },
   "features": [
     {
@@ -925,6 +925,7 @@
         "#6-4-1-microphone-recorder",
         "#13-4-per-entry-controls",
         "#13-7-midi-conversion",
+        "#13-9-format-conversion",
         "#19-16-midi",
         "#33-notation-score-tabs-and-arrangements"
       ],
@@ -1009,7 +1010,7 @@
         "#10-vj-tab",
         "#purpose",
         "#10-3-bridges",
-        "#10-6-autopilot-visual-effects",
+        "#10-9-bpm-sync-and-pose-control",
         "#13-8-video-and-image-media",
         "#19-17-vj"
       ],
@@ -1122,7 +1123,9 @@
         "#7-6-commit-edit",
         "#7-7-insert-fx-rack-psychoacoustic",
         "#7-8-spatializer-teleport-and-autopilot",
-        "#10-6-autopilot-visual-effects"
+        "#10-6-autopilot-visual-effects",
+        "#10-8-effect-chain",
+        "#10-9-bpm-sync-and-pose-control"
       ],
       "coverage": "documented",
       "notes": "Matched 6/6 guide terms."

@@ -315,6 +315,12 @@ const ROWS: Row[] = [
   ['icon-platform', 'iCON Platform / Qcon', 'iCON', 'mixer', ['platform m', 'platform nano', 'qcon', 'icon'], MCU],
   ['ssl-uf', 'SSL UF8 / UC1', 'SSL', 'mixer', ['ssl uf8', 'ssl uc1', 'uf8'], MCU],
 
+  /* ───────── Audima (expressive motion) ───────── */
+  // Six motion dimensions (Strike/Sway/Pulse/Glide/Press/Sculpt) read as
+  // continuous controls, plus the 8 encoders and the performance pads. The dims
+  // bind by learn (swayBus); this row only labels the physical surface.
+  ['audima-sway', 'Audima Sway', 'Audima', 'generic', ['sway', 'audima'], [K(1, 6, '6 DIMENSIONS'), K(1, 8, 'ENCODERS'), P(2, 8, 'PERF PADS')]],
+
   /* ───────── Generic fallbacks (lowest priority) ───────── */
   ['generic-16', 'Generic 16-channel', 'Generic', 'generic', [], [K(2, 8, 'KNOBS'), F(1, 8, 'FADERS'), B(2, 8, 'BUTTONS')]],
   ['generic-8', 'Generic 8-channel', 'Generic', 'generic', [], [K(1, 8, 'KNOBS'), F(1, 8, 'FADERS')]],
@@ -326,6 +332,11 @@ export const CONTROLLER_PROFILES: ControllerProfile[] = ROWS.map(([id, name, ven
 
 /** The on-screen GANTASMO XR twin surface (see WorldsCollidePanel). */
 export const GANTASMO_WORLDS_COLLIDE_ID = 'gantasmo-worlds-collide';
+
+/** The Audima Sway expressive-motion controller — pinned second in the SLIDE
+ *  picker (right below the GANTASMO twin) so the 6-dimension surface is one
+ *  click away. Its dims bind by learn via swayBus. */
+export const AUDIMA_SWAY_ID = 'audima-sway';
 
 // Default to the on-screen GANTASMO surface so it is front-and-centre with no
 // hardware connected. Auto-detect still switches to a real controller when one
