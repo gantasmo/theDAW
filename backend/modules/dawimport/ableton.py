@@ -55,7 +55,7 @@ def parse_als(path: str) -> DawProject:
     # Tracks
     tracks_elem = live_set.find("Tracks")
     if tracks_elem is not None:
-        _parse_tracks(tracks_elem, project)
+        _parse_tracks(tracks_elem, project, file_path)
 
     # Locators
     for loc_elem in live_set.iter("Locator"):
@@ -69,7 +69,7 @@ def parse_als(path: str) -> DawProject:
     return project
 
 
-def _parse_tracks(tracks_elem, project: DawProject) -> None:
+def _parse_tracks(tracks_elem, project: DawProject, als_path: Path) -> None:
     _tag_to_type = {
         "AudioTrack": "audio",
         "MidiTrack": "midi",
@@ -80,10 +80,10 @@ def _parse_tracks(tracks_elem, project: DawProject) -> None:
         track_type = _tag_to_type.get(track_elem.tag)
         if track_type is None:
             continue
-        project.tracks.append(_parse_track(track_elem, track_type))
+        project.tracks.append(_parse_track(track_elem, track_type, als_path))
 
 
-def _parse_track(track_elem, track_type: str) -> DawTrack:
+def _parse_track(track_elem, track_type: str, als_path: Path) -> DawTrack:
     name_elem = track_elem.find(".//Name/EffectiveName")
     name = name_elem.get("Value", "Track") if name_elem is not None else "Track"
 
@@ -110,9 +110,7 @@ def _parse_track(track_elem, track_type: str) -> DawTrack:
         if file_ref is None:
             file_ref = clip_elem.find(".//SourceProxy/SampleRef/FileRef")
         if file_ref is not None:
-            abs_p = file_ref.find("AbsolutePath")
-            if abs_p is not None and abs_p.get("Value"):
-                file_path = abs_p.get("Value")
+            file_path = _read_file_ref(file_ref, als_path=als_path)
         clips.append(
             DawClip(name=cname, start_time=0.0, end_time=4.0, file_path=file_path)
         )
@@ -151,6 +149,34 @@ def _read_float(elem, default: float) -> float:
         return float(elem.get("Value", str(default)))
     except (TypeError, ValueError):
         return default
+
+
+def _read_file_ref(file_ref, als_path: Path) -> str | None:
+    """Resolve an Ableton FileRef path.
+
+    Live sets commonly store project-local audio as ``RelativePath`` rather than
+    ``AbsolutePath``. Prefer existing paths so collected project folders work
+    without manual relinking.
+    """
+    candidates: list[Path] = []
+    for tag in ("AbsolutePath", "RelativePath", "Path"):
+        elem = file_ref.find(tag)
+        value = elem.get("Value") if elem is not None else None
+        if not value:
+            continue
+        p = Path(value).expanduser()
+        if p.is_absolute():
+            candidates.append(p)
+        else:
+            candidates.append(als_path.parent / p)
+            candidates.append(als_path.parent.parent / p)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate.resolve())
+    if candidates:
+        return str(candidates[0])
+    return None
 
 
 def _linear_to_db(gain: float) -> float:
