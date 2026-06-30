@@ -39,8 +39,8 @@ export const Shell: React.FC = () => {
   const toggleEditLayout = useEditLayoutStore((state) => state.toggle);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
-  const isDjWorkspace = centerTab === 'dj';
-  const showRightRail = isRightPanelOpen && !isDjWorkspace;
+  const isPerformanceWorkspace = centerTab === 'dj' || centerTab === 'session';
+  const showRightRail = isRightPanelOpen && !isPerformanceWorkspace;
   const [shareUrlOverride, setShareUrlOverride] = React.useState(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage.getItem('thedaw.shareUrlOverride') ?? '';
@@ -140,7 +140,7 @@ export const Shell: React.FC = () => {
   return (
     <div
       className="relative flex flex-col w-full bg-[#07050a] text-[#f5f3ff] overflow-hidden font-sans dense-layout"
-      style={{ height: isDjWorkspace ? 'calc(100vh / var(--layout-zoom))' : 'calc((100vh - 5rem) / var(--layout-zoom))' }}
+      style={{ height: isPerformanceWorkspace ? 'calc(100vh / var(--layout-zoom))' : 'calc((100vh - 5rem) / var(--layout-zoom))' }}
     >
       {/* Combined header + tab bar — logo (left), workspace tabs (center),
           Docs / Mobile / Settings icons (right). G-Search moved to the footer. */}
@@ -265,13 +265,13 @@ export const Shell: React.FC = () => {
           collapse toggle + resize handle (multiHeight / logHeight in
           bottomPanelStore) — expanding or resizing one does NOT
           affect the other. */}
-      {!isDjWorkspace && <ShellBottomDock />}
+      {!isPerformanceWorkspace && <ShellBottomDock />}
 
       {/* Library pull handle — root-level so it floats ABOVE every panel (bottom
           dock, log, maximized panels) and is never clipped by the work area's
           overflow. Vertically centered on the right edge. Click toggles the
           library; resize stays on the panel's inner edge. */}
-      {!isDjWorkspace && (
+      {!isPerformanceWorkspace && (
         <button
           type="button"
           onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}

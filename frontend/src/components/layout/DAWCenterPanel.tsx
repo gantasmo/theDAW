@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAppUiStore } from '../../state/appUiStore';
+import { TabErrorBoundary } from './TabErrorBoundary';
 
 /**
  * The center workspace — CenterTabBar at the top + the active tab's
@@ -28,6 +29,7 @@ import { useAppUiStore } from '../../state/appUiStore';
 const WaveformEditor = lazy(() => import('../audio/WaveformEditor').then((m) => ({ default: m.WaveformEditor })));
 const AdvancedView = lazy(() => import('../../views/AdvancedView').then((m) => ({ default: m.AdvancedView })));
 const MixView = lazy(() => import('../../views/MixView').then((m) => ({ default: m.MixView })));
+const SessionView = lazy(() => import('../../views/SessionView').then((m) => ({ default: m.SessionView })));
 const TrainView = lazy(() => import('../../views/TrainView').then((m) => ({ default: m.TrainView })));
 const LineageView = lazy(() => import('../library/LineageModal').then((m) => ({ default: m.LineageView })));
 const VJView = lazy(() => import('../../views/VJView').then((m) => ({ default: m.VJView })));
@@ -68,16 +70,29 @@ export const DAWCenterPanel: React.FC<{ onSwitchTab?: (tab: string) => void }> =
         <div className="flex-1 min-h-0 relative">
           {centerTab === 'train' && (
             <div className="absolute inset-0 overflow-hidden">
-              <Suspense fallback={<TabFallback />}><TrainView /></Suspense>
+              <TabErrorBoundary tabName="Train">
+                <Suspense fallback={<TabFallback />}><TrainView /></Suspense>
+              </TabErrorBoundary>
             </div>
           )}
           {centerTab === 'make' && (
             <div className="absolute inset-0 overflow-hidden">
-              <Suspense fallback={<TabFallback />}><AdvancedView /></Suspense>
+              <TabErrorBoundary tabName="Make">
+                <Suspense fallback={<TabFallback />}><AdvancedView /></Suspense>
+              </TabErrorBoundary>
             </div>
           )}
           {centerTab === 'edit' && (
-            <Suspense fallback={<TabFallback />}><WaveformEditor onSwitchTab={onSwitchTab} /></Suspense>
+            <TabErrorBoundary tabName="Edit">
+              <Suspense fallback={<TabFallback />}><WaveformEditor onSwitchTab={onSwitchTab} /></Suspense>
+            </TabErrorBoundary>
+          )}
+          {centerTab === 'session' && (
+            <div className="absolute inset-0 overflow-hidden">
+              <TabErrorBoundary tabName="Session">
+                <Suspense fallback={<TabFallback />}><SessionView /></Suspense>
+              </TabErrorBoundary>
+            </div>
           )}
           {centerTab === 'mix' && (
             // PROCESS → MIX. The MIX workspace on the Control-Surface editor
@@ -86,11 +101,15 @@ export const DAWCenterPanel: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             // chain) in the middle, and the effectStage below. Drag-arrangeable
             // in Design Mode like the DJ console.
             <div className="absolute inset-0 overflow-hidden">
-              <Suspense fallback={<TabFallback />}><MixView /></Suspense>
+              <TabErrorBoundary tabName="Mix">
+                <Suspense fallback={<TabFallback />}><MixView /></Suspense>
+              </TabErrorBoundary>
             </div>
           )}
           {centerTab === 'learn' && (
-            <Suspense fallback={<TabFallback />}><LineageView rootEntryId={null} /></Suspense>
+            <TabErrorBoundary tabName="Learn">
+              <Suspense fallback={<TabFallback />}><LineageView rootEntryId={null} /></Suspense>
+            </TabErrorBoundary>
           )}
 
           {/* DJ + VJ stay mounted once warmed; visibility toggles with
@@ -102,7 +121,9 @@ export const DAWCenterPanel: React.FC<{ onSwitchTab?: (tab: string) => void }> =
               className="absolute inset-0"
               style={{ display: centerTab === 'dj' ? undefined : 'none' }}
             >
-              <Suspense fallback={<TabFallback />}><DJView /></Suspense>
+              <TabErrorBoundary tabName="DJ">
+                <Suspense fallback={<TabFallback />}><DJView /></Suspense>
+              </TabErrorBoundary>
             </div>
           )}
           {warmedTabs.has('vj') && (
@@ -110,7 +131,9 @@ export const DAWCenterPanel: React.FC<{ onSwitchTab?: (tab: string) => void }> =
               className="absolute inset-0"
               style={{ display: centerTab === 'vj' ? undefined : 'none' }}
             >
-              <Suspense fallback={<TabFallback />}><VJView /></Suspense>
+              <TabErrorBoundary tabName="VJ">
+                <Suspense fallback={<TabFallback />}><VJView /></Suspense>
+              </TabErrorBoundary>
             </div>
           )}
         </div>
