@@ -8,9 +8,11 @@ file library) via a small JSON body, e.g. ``POST /api/dawimport/ableton`` with
 from __future__ import annotations
 
 import logging
+import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
@@ -68,6 +70,16 @@ def import_ableton(req: PathRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse .als: {e}")
     return project.to_dict()
+
+
+@router.get("/audio")
+def stream_imported_audio(path: str) -> FileResponse:
+    """Stream an audio file referenced by an imported DAW project."""
+    audio_path = Path(path).expanduser().resolve()
+    if not audio_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Audio file not found: {path}")
+    media_type = mimetypes.guess_type(str(audio_path))[0] or "application/octet-stream"
+    return FileResponse(str(audio_path), media_type=media_type, filename=audio_path.name)
 
 
 @router.post("/reaper")

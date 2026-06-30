@@ -43,6 +43,7 @@ def parse_als(path: str) -> DawProject:
             raise ValueError("Cannot find <LiveSet> in .als XML")
 
     project = DawProject(source_daw="ableton", name=file_path.stem)
+    project.scenes = _parse_scenes(live_set)
 
     # Tempo
     tempo_elem = live_set.find(".//MasterTrack/Mixer/Tempo/Manual")
@@ -69,6 +70,18 @@ def parse_als(path: str) -> DawProject:
     return project
 
 
+def _parse_scenes(live_set) -> list[str]:
+    scenes: list[str] = []
+    scenes_elem = live_set.find("Scenes")
+    if scenes_elem is None:
+        return scenes
+    for index, scene_elem in enumerate(scenes_elem.findall("Scene")):
+        name_elem = scene_elem.find("Name")
+        name = name_elem.get("Value") if name_elem is not None else None
+        scenes.append(name or f"Scene {index + 1}")
+    return scenes
+
+
 def _parse_tracks(tracks_elem, project: DawProject, als_path: Path) -> None:
     _tag_to_type = {
         "AudioTrack": "audio",
@@ -76,14 +89,22 @@ def _parse_tracks(tracks_elem, project: DawProject, als_path: Path) -> None:
         "ReturnTrack": "return",
         "MasterTrack": "master",
     }
+    track_index = 0
     for track_elem in tracks_elem:
         track_type = _tag_to_type.get(track_elem.tag)
         if track_type is None:
             continue
-        project.tracks.append(_parse_track(track_elem, track_type, als_path))
+        project.tracks.append(_parse_track(track_elem, track_type, track_index, project.scenes, als_path))
+        track_index += 1
 
 
-def _parse_track(track_elem, track_type: str, als_path: Path) -> DawTrack:
+def _parse_track(
+    track_elem,
+    track_type: str,
+    track_index: int,
+    scenes: list[str],
+    als_path: Path,
+) -> DawTrack:
     name_elem = track_elem.find(".//Name/EffectiveName")
     name = name_elem.get("Value", "Track") if name_elem is not None else "Track"
 
@@ -97,10 +118,11 @@ def _parse_track(track_elem, track_type: str, als_path: Path) -> DawTrack:
     mute = mute_elem.get("Value", "0") == "1" if mute_elem is not None else False
 
     clips: list[DawClip] = []
-    for slot in track_elem.iter("ClipSlot"):
-        clip_elem = slot.find(".//AudioClip")
+    slots = track_elem.findall("./DeviceChain/MainSequencer/ClipSlotList/ClipSlot")
+    for scene_index, slot in enumerate(slots):
+        clip_elem = slot.find("./ClipSlot/Value/AudioClip")
         if clip_elem is None:
-            clip_elem = slot.find(".//MidiClip")
+            clip_elem = slot.find("./ClipSlot/Value/MidiClip")
         if clip_elem is None:
             continue
         n = clip_elem.find("Name")
@@ -112,7 +134,16 @@ def _parse_track(track_elem, track_type: str, als_path: Path) -> DawTrack:
         if file_ref is not None:
             file_path = _read_file_ref(file_ref, als_path=als_path)
         clips.append(
-            DawClip(name=cname, start_time=0.0, end_time=4.0, file_path=file_path)
+            DawClip(
+                name=cname,
+                start_time=0.0,
+                end_time=4.0,
+                track_index=track_index,
+                scene_index=scene_index,
+                scene_name=scenes[scene_index] if scene_index < len(scenes) else None,
+                slot_index=scene_index,
+                file_path=file_path,
+            )
         )
 
     devices: list[DawDevice] = []

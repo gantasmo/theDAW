@@ -21,6 +21,10 @@ class DawClip:
     name: str
     start_time: float
     end_time: float
+    track_index: int | None = None
+    scene_index: int | None = None
+    scene_name: str | None = None
+    slot_index: int | None = None
     loop_start: float | None = None
     loop_end: float | None = None
     file_path: str | None = None
@@ -59,6 +63,7 @@ class DawProject:
     time_signature: tuple[int, int] = (4, 4)
     sample_rate: int = 44100
     tracks: list[DawTrack] = field(default_factory=list)
+    scenes: list[str] = field(default_factory=list)
     locators: list[DawLocator] = field(default_factory=list)
     plugins_used: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

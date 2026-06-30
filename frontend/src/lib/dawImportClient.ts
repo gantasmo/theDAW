@@ -5,6 +5,10 @@ export interface DawClip {
   name: string;
   start_time: number;
   end_time: number;
+  track_index?: number | null;
+  scene_index?: number | null;
+  scene_name?: string | null;
+  slot_index?: number | null;
   loop_start?: number | null;
   loop_end?: number | null;
   file_path: string | null;
@@ -45,6 +49,7 @@ export interface DawProject {
   time_signature: number[];
   sample_rate: number;
   tracks: DawTrack[];
+  scenes: string[];
   locators: DawLocator[];
   plugins_used: string[];
   warnings: string[];
@@ -98,6 +103,8 @@ export const DAW_LABELS: Record<string, string> = {
 
 export const canImport = (daw: string): boolean => daw in IMPORT_ENDPOINT;
 export const hasHint = (daw: string): boolean => daw in HINT_ENDPOINT;
+export const dawImportAudioUrl = (path: string): string =>
+  `/api/dawimport/audio?path=${encodeURIComponent(path)}`;
 
 export const dawApi = {
   detect: (path: string) => postJson<DawDetect>('/api/dawimport/detect', { path }),

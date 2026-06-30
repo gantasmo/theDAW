@@ -2,6 +2,7 @@
 
 import sys
 import os
+import gzip
 
 # Ensure project root is on path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -155,6 +156,67 @@ def test_ableton_parser_structure():
     # Can't test without a real .als file, but verify the function exists
     assert callable(parse_als)
     print("  ableton.parse_als callable OK")
+
+
+def test_ableton_parser_preserves_session_grid(tmp_path):
+    from backend.modules.dawimport.ableton import parse_als
+
+    sample = tmp_path / "kick.wav"
+    sample.write_bytes(b"RIFF....fake-wav")
+    als = tmp_path / "session.als"
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Ableton>
+  <LiveSet>
+    <Scenes>
+      <Scene><Name Value="Intro"/></Scene>
+      <Scene><Name Value="Drop"/></Scene>
+    </Scenes>
+    <Tracks>
+      <AudioTrack>
+        <Name><EffectiveName Value="Drums"/></Name>
+        <DeviceChain>
+          <Mixer><Volume><Manual Value="1"/></Volume><Pan><Manual Value="0"/></Pan></Mixer>
+          <MainSequencer>
+            <ClipSlotList>
+              <ClipSlot>
+                <ClipSlot>
+                  <Value>
+                    <AudioClip>
+                      <Name Value="Kick Intro"/>
+                      <SampleRef><FileRef><RelativePath Value="{sample.name}"/></FileRef></SampleRef>
+                    </AudioClip>
+                  </Value>
+                </ClipSlot>
+              </ClipSlot>
+              <ClipSlot>
+                <ClipSlot>
+                  <Value>
+                    <AudioClip>
+                      <Name Value="Kick Drop"/>
+                      <SampleRef><FileRef><RelativePath Value="{sample.name}"/></FileRef></SampleRef>
+                    </AudioClip>
+                  </Value>
+                </ClipSlot>
+              </ClipSlot>
+            </ClipSlotList>
+          </MainSequencer>
+        </DeviceChain>
+      </AudioTrack>
+    </Tracks>
+  </LiveSet>
+</Ableton>
+"""
+    als.write_bytes(gzip.compress(xml.encode("utf-8")))
+
+    project = parse_als(str(als))
+
+    assert project.scenes == ["Intro", "Drop"]
+    assert len(project.tracks) == 1
+    assert [clip.scene_index for clip in project.tracks[0].clips] == [0, 1]
+    assert [clip.scene_name for clip in project.tracks[0].clips] == ["Intro", "Drop"]
+    assert [clip.track_index for clip in project.tracks[0].clips] == [0, 0]
+    assert project.tracks[0].clips[0].file_path == str(sample)
+    print("  ableton session grid OK")
 
 
 def test_reaper_parser_structure():
