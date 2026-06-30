@@ -107,7 +107,7 @@ export default function App() {
   const isBackendReady = useStatusBarStore((s) => s.isBackendReady);
   const refreshHealth  = useStatusBarStore((s) => s.refreshHealth);
   const centerTab = useAppUiStore((s) => s.centerTab);
-  const isDjWorkspace = centerTab === 'dj';
+  const isPerformanceWorkspace = centerTab === 'dj' || centerTab === 'session';
 
   // Health polling lives here so it runs during the loading screen.
   // Exponential backoff: 1s → 2s → 4s → 8s → 16s until ready, then 30s steady.
@@ -365,7 +365,7 @@ export default function App() {
     <>
       {/* Main app always mounts so state initializes, but polls are gated on isBackendReady */}
       <Shell />
-      {!isDjWorkspace && (
+      {!isPerformanceWorkspace && (
         <>
           <PlayerFooter />
           <GantasmoOrb
