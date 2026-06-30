@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAppUiStore } from '../../state/appUiStore';
 import { TabErrorBoundary } from './TabErrorBoundary';
+import { SessionView } from '../../views/SessionView';
 
 /**
  * The center workspace — CenterTabBar at the top + the active tab's
@@ -29,7 +30,6 @@ import { TabErrorBoundary } from './TabErrorBoundary';
 const WaveformEditor = lazy(() => import('../audio/WaveformEditor').then((m) => ({ default: m.WaveformEditor })));
 const AdvancedView = lazy(() => import('../../views/AdvancedView').then((m) => ({ default: m.AdvancedView })));
 const MixView = lazy(() => import('../../views/MixView').then((m) => ({ default: m.MixView })));
-const SessionView = lazy(() => import('../../views/SessionView').then((m) => ({ default: m.SessionView })));
 const TrainView = lazy(() => import('../../views/TrainView').then((m) => ({ default: m.TrainView })));
 const LineageView = lazy(() => import('../library/LineageModal').then((m) => ({ default: m.LineageView })));
 const VJView = lazy(() => import('../../views/VJView').then((m) => ({ default: m.VJView })));
@@ -90,7 +90,7 @@ export const DAWCenterPanel: React.FC<{ onSwitchTab?: (tab: string) => void }> =
           {centerTab === 'session' && (
             <div className="absolute inset-0 overflow-hidden">
               <TabErrorBoundary tabName="Session">
-                <Suspense fallback={<TabFallback />}><SessionView /></Suspense>
+                <SessionView />
               </TabErrorBoundary>
             </div>
           )}
