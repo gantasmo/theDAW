@@ -296,9 +296,8 @@ export default function App() {
     // Imported-project controller auto-attach: drive the imported tracks/effects
     // from the mappings the source DAW project defined (no-ops with no bindings).
     const stopSwayImport = startSwayImportDriver();
-    // Body-pose source (camera, forwarded from the VJ). Publish its channels on
-    // the same bus; the pose values themselves arrive via poseBus regardless of MIDI.
-    registerXrControlSource(poseControlSource);
+    // Body-pose mirror only — the pose source itself is registered
+    // unconditionally in the XR-bus effect above (do not re-register here).
     const stopPoseMirror = startPoseXrMirror();
     // Stream the visualization feed (waveform pack) over the same bridge so a
     // theDAW-XR headset can render theDAW's live audio natively.
