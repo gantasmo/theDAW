@@ -76,10 +76,10 @@ const EjectSymbol: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 );
 
 const BEAT_SIZES: Array<{ beats: number; label: string }> = [
-  { beats: 0.25, label: '¼' }, { beats: 0.5, label: '½' }, { beats: 1, label: '1' }, { beats: 2, label: '2' }, { beats: 4, label: '4' },
+  { beats: 0.25, label: '1/4' }, { beats: 0.5, label: '1/2' }, { beats: 1, label: '1' }, { beats: 2, label: '2' }, { beats: 4, label: '4' },
 ];
 const ROLL_SIZES: Array<{ beats: number; label: string }> = [
-  { beats: 0.25, label: '¼' }, { beats: 0.5, label: '½' }, { beats: 1, label: '1' },
+  { beats: 0.25, label: '1/4' }, { beats: 0.5, label: '1/2' }, { beats: 1, label: '1' },
 ];
 const STEM_PAD_SLOTS = 6;
 const AUTO_GAIN_TARGET_DB = -12;
@@ -264,7 +264,11 @@ function useDeck(deckId: djEngine.DeckId, entryId: string | null, hasTrack: bool
   const gridBeats = grid?.beats ?? beats;
   const firstBeat = beats && beats.length > 0 ? beats[0] : null;
 
-  const cues = useDjCuesStore((s) => (entryId ? s.byEntry[entryId] : undefined));
+  const storedCues = useDjCuesStore((s) => (entryId ? s.byEntry[entryId] : undefined));
+  const cues = useMemo(
+    () => Array.from({ length: HOTCUE_SLOTS }, (_, i) => storedCues?.[i] ?? null),
+    [storedCues],
+  );
   const setCue = useDjCuesStore((s) => s.setCue);
   const clearCue = useDjCuesStore((s) => s.clearCue);
 
@@ -1688,7 +1692,7 @@ const CompactPerformancePads: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cy
       <div className="h-full w-full min-h-0 grid grid-cols-[0.8fr_1.15fr_1.35fr] gap-1.5 items-stretch">
         <div className="min-w-0 flex flex-col gap-1">
           <div className={`text-[7px] font-black uppercase tracking-widest ${accentText}`}>Hot Cues</div>
-          <div className="grid grid-cols-4 gap-1 flex-1 min-h-0">
+          <div className="grid grid-cols-4 grid-rows-2 gap-1 flex-1 min-h-0">
             {Array.from({ length: HOTCUE_SLOTS }, (_, i) => {
               const c = ctl.cues?.[i] ?? null;
               const set = c != null;
@@ -1703,7 +1707,7 @@ const CompactPerformancePads: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cy
                   onContextMenu={(e) => { e.preventDefault(); ctl.dropHotcue(i); }}
                   title={set ? `Hot cue ${i + 1} at ${fmtTime(c)} — click to jump, right-click to clear` : `Set hot cue ${i + 1}`}
                 >
-                  {padLabel('Cue', String(i + 1))}
+                  <span className="font-black leading-none">{`Cue${i + 1}`}</span>
                 </SlidePad>
               );
             })}

@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export const HOTCUE_SLOTS = 4;
+export const HOTCUE_SLOTS = 8;
 
 /** Each track maps to a fixed-length array of cue positions (sec) or null. */
 type CueArray = (number | null)[];
