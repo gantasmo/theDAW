@@ -9,7 +9,7 @@
  * Uniform chrome: widget panels adopt the hardware-card border/bg so every
  * panel edge reads the same; pinned panels stay transparent (their hosted
  * component supplies its own card). Per-panel padding (padPx) and mirror
- * (reversed widget order + per-widget mirror opt) come from the layout store.
+ * (horizontal order + per-widget mirror opt) come from the layout store.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { GripVertical, FlipHorizontal, Rows3, Columns3, SeparatorHorizontal, SplitSquareHorizontal, SplitSquareVertical, Grid2x2, CirclePlus, Link2, Combine, X } from 'lucide-react';
@@ -115,7 +115,7 @@ const PanelHeader: React.FC<{
       </button>
       <button
         onClick={() => store.getState().togglePanelMirror(nodeId)}
-        title={mirror ? 'Mirrored — click to un-mirror' : 'Mirror this panel (reverse order, flip icons)'}
+        title={mirror ? 'Mirrored — click to un-mirror' : 'Mirror this panel (horizontal order, flip icons)'}
         className={mirror ? 'text-amber-200' : 'text-purple-50/80 hover:text-white'}
       >
         <FlipHorizontal className="w-3 h-3" />
@@ -219,10 +219,12 @@ export const SurfacePanel: React.FC<{ nodeId: NodeId }> = ({ nodeId }) => {
   // (empty) gap instead of being clipped at the panel edge.
   const clip = isPinned ? 'overflow-hidden' : 'overflow-visible';
 
-  // Mirror reverses the visible widget order; the true store index is still
-  // passed to each cell so drag-reorder + resize stay correct.
+  // Mirror reverses horizontal widget order; vertical stacks keep their
+  // declared top-to-bottom order (for controls such as HI/MID/LO EQ bands).
+  // The true store index is still passed to each cell so drag-reorder + resize
+  // stay correct.
   const widgets = node.widgets;
-  const displayIds = node.mirror ? [...widgets].reverse() : widgets;
+  const displayIds = node.mirror && node.flow === 'row' ? [...widgets].reverse() : widgets;
 
   // Which edge a dragged panel/row is hovering, for directional docking.
   const computeEdge = (e: React.DragEvent): EdgeDir => {

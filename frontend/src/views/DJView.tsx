@@ -444,14 +444,14 @@ function EditableBpmField({
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 24;
+const DJ_LAYOUT_VERSION = 28;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
   root: 'root',
   nodes: {
-    root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 5.25, heroP: 1.45, browserDock: 3.45 } },
-    topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.25, mixer: 2.75, deckBcont: 4.25 } },
+    root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 5.5, heroP: 1.25, browserDock: 3.25 } },
+    topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.35, mixer: 2.9, deckBcont: 4.35 } },
     heroP: { id: 'heroP', type: 'panel', title: 'Waveforms', flow: 'row', widgets: [], pinned: 'hero' },
     browserDock: { id: 'browserDock', type: 'container', axis: 'row', children: ['browserLeft', 'libraryP'], fr: { browserLeft: 2.45, libraryP: 9.6 }, framed: true, frameTitle: 'Browser' },
     browserLeft: { id: 'browserLeft', type: 'container', axis: 'column', children: ['sourceTreeP', 'nextP'], fr: { sourceTreeP: 3.4, nextP: 1.25 } },
@@ -461,33 +461,33 @@ const defaultDjLayout: SurfaceLayout = {
     center: { id: 'center', type: 'container', axis: 'column', children: ['deckmix', 'fxrow'], fr: { deckmix: 5, fxrow: 2 } },
     deckmix: { id: 'deckmix', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.17953863997903, mixer: 5.180662235484642, deckBcont: 4.439799124536327 } },
     // ── Deck A (pad-rows wrapped with spacer panels in cont-* containers) ──
-    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'waveAOverview', 'cont-10-e11250c4', 'cont-A-transport', 'cont-A-stems', 'fxAP', 'perfAP'], fr: { 'pdA-head': 1.12, waveAOverview: 0.72, 'cont-10-e11250c4': 4.9, 'cont-A-transport': 1.02, 'cont-A-stems': 1.1, fxAP: 3.15, perfAP: 1.35 }, framed: true },
-    'pdA-head': { id: 'pdA-head', type: 'panel', title: 'A', flow: 'row', widgets: ['spacer:s-2-7f6f8905', 'keylockA', 'keyA', 'bpmA', 'headerA'], widgetFr: { keylockA: 0.49871465295629847, keyA: 0.8892624085426142, bpmA: 0.8514435436029266, headerA: 2.255932370970932, 'spacer:s-2-7f6f8905': 0.8892624085426142 }, widgetJustify: { headerA: 'start' }, widgetMargins: { 'spacer:s-2-7f6f8905': { t: 0, r: 8, b: 0, l: 0 } }, mirror: false, uniform: false },
+    deckAcont: { id: 'deckAcont', type: 'container', axis: 'column', children: ['pdA-head', 'waveAOverview', 'deckABody', 'pdA-trans'], fr: { 'pdA-head': 0.95, waveAOverview: 0.62, deckABody: 4.85, 'pdA-trans': 0.88 }, framed: true },
+    'pdA-head': { id: 'pdA-head', type: 'panel', title: 'A', flow: 'row', widgets: ['headerA', 'keylockA', 'keyA', 'bpmA'], widgetFr: { headerA: 2.35, keylockA: 0.45, keyA: 0.85, bpmA: 0.9 }, widgetJustify: { headerA: 'start' }, mirror: false, uniform: false },
     'pdA-jog': { id: 'pdA-jog', type: 'panel', title: 'A · Jog', flow: 'row', widgets: ['jogA'], widgetMargins: { jogA: { t: 1, r: 4, b: 3, l: 4 } }, mirror: true },
     'pdA-mode': { id: 'pdA-mode', type: 'panel', title: 'A · Mode', flow: 'column', widgets: ['syncLockA', 'headCueA'], mirror: true, uniform: true },
-    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'stopA', 'ejectA', 'syncA'], uniform: true, mirror: true },
+    'pdA-trans': { id: 'pdA-trans', type: 'panel', title: 'A · Transport', flow: 'row', widgets: ['cueA', 'playA', 'syncA', 'stopA', 'ejectA'], uniform: true, mirror: true },
     'pdA-stems': { id: 'pdA-stems', type: 'panel', title: 'A · Stems', flow: 'row', widgets: ['stemBankA'], mirror: true },
     'pdA-hc': { id: 'pdA-hc', type: 'panel', title: 'A · Hotcues', flow: 'row', widgets: ['hcA1', 'hcA2', 'hcA3', 'hcA4'], uniform: true, mirror: true },
     'pdA-loop': { id: 'pdA-loop', type: 'panel', title: 'A · Loop', flow: 'row', widgets: ['loopA_0', 'loopA_1', 'loopA_2', 'loopA_3', 'loopA_4', 'loopOutA'], uniform: true, mirror: true },
     'pdA-perf': { id: 'pdA-perf', type: 'panel', title: 'A · Perf', flow: 'row', widgets: ['rollA_0', 'rollA_1', 'rollA_2', 'slipA', 'jumpA_0', 'jumpA_1', 'jumpA_2', 'jumpA_3'], uniform: true, mirror: true },
     // ── Deck B ──
-    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'waveBOverview', 'cont-2-a0e79010', 'cont-B-transport', 'cont-B-stems', 'fxBP', 'perfBP'], fr: { 'pdB-head': 1.12, waveBOverview: 0.72, 'cont-2-a0e79010': 4.9, 'cont-B-transport': 1.02, 'cont-B-stems': 1.1, fxBP: 3.15, perfBP: 1.35 }, framed: true },
+    deckBcont: { id: 'deckBcont', type: 'container', axis: 'column', children: ['pdB-head', 'waveBOverview', 'deckBBody', 'pdB-trans'], fr: { 'pdB-head': 0.95, waveBOverview: 0.62, deckBBody: 4.85, 'pdB-trans': 0.88 }, framed: true },
     waveAOverview: { id: 'waveAOverview', type: 'panel', title: 'A · Overview', flow: 'row', widgets: [], pinned: 'waveAOverview', mirror: true },
     waveBOverview: { id: 'waveBOverview', type: 'panel', title: 'B · Overview', flow: 'row', widgets: [], pinned: 'waveBOverview' },
-    'pdB-head': { id: 'pdB-head', type: 'panel', title: 'B', flow: 'row', widgets: ['spacer:s-1-95993441', 'keylockB', 'keyB', 'bpmB', 'headerB'], widgetFr: { keylockB: 0.5522110739502047, keyB: 1.1040505388331472, bpmB: 1.039483463396507, headerB: 2.209123002601264, 'spacer:s-1-95993441': 0.4797473058342624 }, widgetJustify: { headerB: 'end' }, widgetMargins: { 'spacer:s-1-95993441': { t: 0, r: 0, b: 0, l: 64 } }, mirror: true, uniform: false },
+    'pdB-head': { id: 'pdB-head', type: 'panel', title: 'B', flow: 'row', widgets: ['bpmB', 'keyB', 'keylockB', 'headerB'], widgetFr: { keylockB: 0.45, keyB: 0.85, bpmB: 0.9, headerB: 2.35 }, widgetJustify: { headerB: 'end' }, mirror: true, uniform: false },
     'pdB-jog': { id: 'pdB-jog', type: 'panel', title: 'B · Jog', flow: 'row', widgets: ['jogB'], widgetMargins: { jogB: { t: 1, r: 4, b: 3, l: 4 } } },
     'pdB-mode': { id: 'pdB-mode', type: 'panel', title: 'B · Mode', flow: 'column', widgets: ['syncLockB', 'headCueB'], uniform: true },
-    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['cueB', 'playB', 'stopB', 'ejectB', 'syncB'], uniform: true },
+    'pdB-trans': { id: 'pdB-trans', type: 'panel', title: 'B · Transport', flow: 'row', widgets: ['ejectB', 'stopB', 'syncB', 'playB', 'cueB'], uniform: true },
     'pdB-stems': { id: 'pdB-stems', type: 'panel', title: 'B · Stems', flow: 'row', widgets: ['stemBankB'] },
     'pdB-hc': { id: 'pdB-hc', type: 'panel', title: 'B · Hotcues', flow: 'row', widgets: ['hcB1', 'hcB2', 'hcB3', 'hcB4'], uniform: true },
     'pdB-loop': { id: 'pdB-loop', type: 'panel', title: 'B · Loop', flow: 'row', widgets: ['loopB_0', 'loopB_1', 'loopB_2', 'loopB_3', 'loopB_4', 'loopOutB'], uniform: true },
     'pdB-perf': { id: 'pdB-perf', type: 'panel', title: 'B · Perf', flow: 'row', widgets: ['rollB_0', 'rollB_1', 'rollB_2', 'slipB', 'jumpB_0', 'jumpB_1', 'jumpB_2', 'jumpB_3'], uniform: true },
     // ── Mixer ──
-    mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 1, mixChans: 6, mixXfade: 1.6 }, framed: true },
-    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['spacer:s-24-02c5d864', 'pitchRange', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap', 'spacer:s-23-936b468e'], widgetMargins: { pitchRange: { t: 0, r: 5, b: 0, l: 5 }, qtz: { t: 0, r: 5, b: 0, l: 5 }, autoGain: { t: 0, r: 5, b: 0, l: 5 }, automix: { t: 0, r: 5, b: 0, l: 5 }, lim: { t: 0, r: 5, b: 0, l: 5 }, midiMap: { t: 0, r: 5, b: 0, l: 5 } }, uniform: true },
+    mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 1.05, mixChans: 6.05, mixXfade: 1.1 }, framed: true },
+    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['pitchRange', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap'], widgetMargins: { pitchRange: { t: 0, r: 1, b: 0, l: 1 }, qtz: { t: 0, r: 1, b: 0, l: 1 }, autoGain: { t: 0, r: 1, b: 0, l: 1 }, automix: { t: 0, r: 1, b: 0, l: 1 }, lim: { t: 0, r: 1, b: 0, l: 1 }, midiMap: { t: 0, r: 1, b: 0, l: 1 } }, uniform: true },
     mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['eqAP', 'chAP', 'chBP', 'eqBP'], fr: { eqAP: 1.35, chAP: 1.15, chBP: 1.15, eqBP: 1.35 } },
     pchAP: { id: 'pchAP', type: 'panel', title: 'Pitch A', flow: 'column', widgets: ['pitchA'], widgetMargins: { pitchA: { t: 3, r: 4, b: 3, l: 4 } }, mirror: true },
-    eqAP: { id: 'eqAP', type: 'panel', title: 'EQ A', flow: 'column', widgets: ['eqA.hi', 'eqA.mid', 'eqA.lo', 'fltA'], mirror: true },
+    eqAP: { id: 'eqAP', type: 'panel', title: 'EQ A', flow: 'column', widgets: ['eqA.hi', 'eqA.mid', 'eqA.lo', 'fltA'] },
     chAP: { id: 'chAP', type: 'panel', title: 'Ch A', flow: 'column', widgets: ['volA', 'gainA'], widgetFr: { gainA: 1, volA: 3 }, widgetMargins: { volA: { t: 8, r: 0, b: 8, l: 24 } }, mirror: true },
     chBP: { id: 'chBP', type: 'panel', title: 'Ch B', flow: 'column', widgets: ['gainB', 'volB'], widgetFr: { gainB: 1, volB: 3 }, widgetMargins: { volB: { t: 8, r: 24, b: 8, l: 0 } } },
     eqBP: { id: 'eqBP', type: 'panel', title: 'EQ B', flow: 'column', widgets: ['eqB.hi', 'eqB.mid', 'eqB.lo', 'fltB'] },
@@ -497,9 +497,11 @@ const defaultDjLayout: SurfaceLayout = {
     fxrow: { id: 'fxrow', type: 'container', axis: 'row', children: ['fxAP', 'nextP', 'fxBP'], fr: { fxAP: 0.7703206562266971, nextP: 1.9175988068605512, fxBP: 0.812080536912752 } },
     fxAP: { id: 'fxAP', type: 'panel', title: 'Onboard FX A', flow: 'row', widgets: [], pinned: 'fxA', mirror: true },
     perfAP: { id: 'perfAP', type: 'panel', title: 'Performance Pads A', flow: 'row', widgets: [], pinned: 'perfA', mirror: true },
+    deckControlsA: { id: 'deckControlsA', type: 'panel', title: 'Deck Controls A', flow: 'row', widgets: [], pinned: 'deckControlsA', mirror: true },
     nextP: { id: 'nextP', type: 'panel', title: 'Next', flow: 'row', widgets: [], pinned: 'next' },
     fxBP: { id: 'fxBP', type: 'panel', title: 'Onboard FX B', flow: 'row', widgets: [], pinned: 'fxB', uniform: false },
     perfBP: { id: 'perfBP', type: 'panel', title: 'Performance Pads B', flow: 'row', widgets: [], pinned: 'perfB', uniform: false },
+    deckControlsB: { id: 'deckControlsB', type: 'panel', title: 'Deck Controls B', flow: 'row', widgets: [], pinned: 'deckControlsB', uniform: false },
     browser: { id: 'browser', type: 'container', axis: 'column', children: ['sourceTreeP', 'libraryP'], fr: { sourceTreeP: 2, libraryP: 3 } },
     sourceTreeP: { id: 'sourceTreeP', type: 'panel', title: 'Sources', flow: 'row', widgets: [], pinned: 'sourceTree' },
     libraryP: { id: 'libraryP', type: 'panel', title: 'Library', flow: 'row', widgets: [], pinned: 'library', uniform: true },
@@ -518,6 +520,7 @@ const defaultDjLayout: SurfaceLayout = {
     'cont-9-aebcd780': { id: 'cont-9-aebcd780', type: 'container', axis: 'row', children: ['pdB-perf', 'panel-8-81228019'], fr: { 'pdB-perf': 1.5358851674641145, 'panel-8-81228019': 0.46411483253588537 } },
     // ── Deck A pad-row wrappers ──
     'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pchAP', 'pdA-jog', 'pdA-mode'], fr: { 'panel-11-95a4a261': 0.7, pchAP: 0.45, 'pdA-jog': 1.87, 'pdA-mode': 0.5 } },
+    deckABody: { id: 'deckABody', type: 'container', axis: 'row', children: ['deckControlsA', 'pdA-jog', 'pchAP'], fr: { deckControlsA: 3.45, 'pdA-jog': 1.12, pchAP: 0.4 } },
     'panel-11-95a4a261': { id: 'panel-11-95a4a261', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-26-79f129b0'] },
     'panel-A-transport-head': { id: 'panel-A-transport-head', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-A-transport-head'] },
     'cont-A-transport': { id: 'cont-A-transport', type: 'container', axis: 'row', children: ['panel-A-transport-head', 'pdA-trans'], fr: { 'panel-A-transport-head': 1.15, 'pdA-trans': 2.37 } },
@@ -529,6 +532,7 @@ const defaultDjLayout: SurfaceLayout = {
     'cont-16-c9fc3a59': { id: 'cont-16-c9fc3a59', type: 'container', axis: 'row', children: ['panel-15-4eb1b108', 'pdA-loop'], fr: { 'pdA-loop': 1.3664122137404573, 'panel-15-4eb1b108': 0.6335877862595417 } },
     'panel-17-44cba1fb': { id: 'panel-17-44cba1fb', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-27-8799ff7e'] },
     'cont-18-cd01de17': { id: 'cont-18-cd01de17', type: 'container', axis: 'row', children: ['panel-17-44cba1fb', 'pdA-perf'], fr: { 'pdA-perf': 1.4885496183206104, 'panel-17-44cba1fb': 0.5114503816793893 } },
+    deckBBody: { id: 'deckBBody', type: 'container', axis: 'row', children: ['pchBP', 'pdB-jog', 'deckControlsB'], fr: { pchBP: 0.4, 'pdB-jog': 1.12, deckControlsB: 3.45 } },
   },
 };
 
@@ -1758,6 +1762,174 @@ const CompactPerformancePads: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cy
   );
 };
 
+const DeckControlStrip: React.FC<{ deck: 'A' | 'B'; accent: 'purple' | 'cyan'; entryId: string | null; ctl: DeckCtl }> = ({ deck, accent, entryId, ctl }) => {
+  const color = DECK_RGB[accent];
+  const accentText = accent === 'purple' ? 'text-purple-300' : 'text-cyan-300';
+  const hasTrack = !!entryId;
+  const [fx, setFx] = useState<Record<djEngine.DjFx, number>>({ flanger: 0, reverb: 0, wahwah: 0 });
+  const [loopIndex, setLoopIndex] = useState(2);
+  const selectedLoop = BEAT_SIZES[loopIndex] ?? BEAT_SIZES[2];
+  const onFx = (k: djEngine.DjFx, v: number) => {
+    setFx((p) => ({ ...p, [k]: v }));
+    djEngine.setDeckFx(deck, k, v);
+  };
+  const fxRows: Array<{ key: djEngine.DjFx; label: string }> = [
+    { key: 'flanger', label: 'Beat Grid' },
+    { key: 'reverb', label: 'Reverb' },
+    { key: 'wahwah', label: 'Up Echo' },
+  ];
+  const visibleCueRows = 4;
+
+  return (
+    <div className="hardware-card h-full w-full min-h-0 min-w-0 overflow-hidden p-0 bg-[#111116] border-white/10">
+      <div className="h-full min-h-0 grid grid-cols-[2.65rem_minmax(0,1fr)]">
+        <div className="grid grid-rows-2 border-r border-white/8 bg-black/20">
+          <div className="relative border-b border-white/8 grid place-items-center">
+            <span className="rotate-[-90deg] text-[10px] font-black uppercase tracking-widest text-zinc-500">FX</span>
+            <span className="absolute bottom-2 h-2.5 w-2.5 rounded-full border border-white/20 bg-black shadow-inner" />
+          </div>
+          <div className="relative grid place-items-center">
+            <span className="rotate-[-90deg] text-[10px] font-black uppercase tracking-widest text-zinc-500">Pads</span>
+            <span className="absolute bottom-2 h-2.5 w-2.5 rounded-full border border-white/20 bg-black shadow-inner" />
+          </div>
+        </div>
+        <div className="min-w-0 min-h-0 grid grid-rows-[1fr_1fr]">
+          <div className="min-h-0 grid grid-cols-[1.55fr_0.72fr] border-b border-white/10">
+            <div className="min-w-0 min-h-0 flex flex-col justify-center gap-1.5 p-2">
+              {fxRows.map(({ key, label }) => (
+                <div key={key} className="grid grid-cols-[minmax(4.6rem,0.95fr)_minmax(2.75rem,0.72fr)_1.25rem] items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onFx(key, fx[key] > 0.001 ? 0 : key === 'reverb' ? 0.62 : 0.72)}
+                    disabled={!hasTrack}
+                    className={`h-8 min-w-0 border bg-black/70 px-2 text-left text-[10px] font-black uppercase tracking-wide transition-colors ${
+                      fx[key] > 0.001 ? `${accentText} border-current` : 'border-white/10 text-zinc-400 hover:border-white/25 hover:text-zinc-200'
+                    } disabled:opacity-30`}
+                    title={`Toggle ${label} on Deck ${deck}`}
+                  >
+                    <span className="block truncate">{label}</span>
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={fx[key]}
+                    disabled={!hasTrack}
+                    onChange={(e) => onFx(key, Number(e.currentTarget.value))}
+                    className="w-full min-w-0 accent-cyan-500 disabled:opacity-30"
+                    title={`${label} amount`}
+                  />
+                  <button
+                    type="button"
+                    disabled={!hasTrack}
+                    onClick={() => onFx(key, fx[key] > 0.001 ? 0 : 0.7)}
+                    className="h-7 w-5 grid place-items-center rounded border border-white/10 bg-black/50 text-zinc-500 hover:text-zinc-100 disabled:opacity-30"
+                    title={`${label} settings`}
+                  >
+                    <Gauge className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="min-w-0 min-h-0 border-l border-white/8 p-2 flex flex-col justify-center gap-1">
+              {Array.from({ length: visibleCueRows }, (_, i) => {
+                const c = ctl.cues?.[i] ?? null;
+                const set = c != null;
+                return (
+                  <div key={i} className="grid grid-cols-[1.8rem_minmax(0,1fr)_1.35rem] h-7">
+                    <button
+                      type="button"
+                      onClick={() => ctl.setHotcue(i)}
+                      disabled={!hasTrack}
+                      className={`border border-white/10 bg-black/60 text-[12px] font-black tabular-nums ${set ? accentText : 'text-zinc-500'} disabled:opacity-30`}
+                      title={set ? `Jump to cue ${i + 1} at ${fmtTime(c)}` : `Set cue ${i + 1}`}
+                    >
+                      {i + 1}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => ctl.setHotcue(i)}
+                      disabled={!hasTrack}
+                      className="min-w-0 border-y border-white/10 bg-[#17171c] px-1.5 text-left text-[10px] font-mono text-zinc-400 hover:text-zinc-100 disabled:opacity-30"
+                      title={set ? `Cue ${i + 1}: ${fmtTime(c)}` : `Empty cue ${i + 1}`}
+                    >
+                      <span className="block truncate">{set ? fmtTime(c) : ''}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => ctl.dropHotcue(i)}
+                      disabled={!set}
+                      className="grid place-items-center border border-white/10 bg-black/60 text-zinc-500 hover:text-rose-300 disabled:opacity-30"
+                      title={`Clear cue ${i + 1}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="min-h-0 grid grid-cols-[1.55fr_0.72fr]">
+            <div className="min-w-0 min-h-0 p-2">
+              <div className="h-8 mb-2 border border-white/10 bg-black/70 px-2 flex items-center gap-2">
+                <span className={`text-[11px] font-black uppercase tracking-wide ${accentText}`}>Stems 2.0</span>
+                <Scissors className="ml-auto h-3.5 w-3.5 text-zinc-500" />
+              </div>
+              <div className="h-[calc(100%-2.5rem)] min-h-0">
+                <StemPadBank deck={deck} entryId={entryId} color={color} ctl={ctl} />
+              </div>
+            </div>
+            <div className="min-w-0 min-h-0 border-l border-white/8 p-2 flex flex-col">
+              <div className="h-7 flex items-center justify-center text-center text-[7px] font-black uppercase tracking-normal text-zinc-500 leading-tight">Sample Record</div>
+              <div className="mt-auto grid grid-cols-[1.8rem_1fr_1.8rem] gap-1 h-9">
+                <button
+                  type="button"
+                  onClick={() => setLoopIndex((i) => Math.max(0, i - 1))}
+                  className="grid place-items-center border border-white/10 bg-black/60 text-zinc-400 hover:text-zinc-100"
+                  title="Shorter loop"
+                >
+                  <ChevronRight className="h-4 w-4 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => ctl.toggleBeatLoop(selectedLoop.beats)}
+                  disabled={!hasTrack}
+                  className={`border text-[14px] font-black tabular-nums ${
+                    ctl.loopActive && ctl.activeLoopBeats === selectedLoop.beats
+                      ? `${accentText} border-current bg-white/10`
+                      : 'border-white/10 bg-black/70 text-zinc-300 hover:text-white'
+                  } disabled:opacity-30`}
+                  title={`${selectedLoop.label}-beat loop`}
+                >
+                  {selectedLoop.label}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoopIndex((i) => Math.min(BEAT_SIZES.length - 1, i + 1))}
+                  className="grid place-items-center border border-white/10 bg-black/60 text-zinc-400 hover:text-zinc-100"
+                  title="Longer loop"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => ctl.loopActive ? ctl.exitLoop() : ctl.toggleBeatLoop(selectedLoop.beats)}
+                disabled={!hasTrack}
+                className="mt-2 h-8 border border-white/10 bg-black/70 text-[10px] font-black uppercase tracking-wide text-zinc-300 hover:text-white disabled:opacity-30"
+                title={ctl.loopActive ? 'Exit loop' : 'Record/arm loop'}
+              >
+                {ctl.loopActive ? 'Loop Out' : 'Rec'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ═══════════════════════════════ SideListLane ═══════════════════════════════ */
 
 /** Staging queue ("prepare / play-next") — a compact card in the center-bottom
@@ -2814,6 +2986,8 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   pinned('fxB', 'Onboard FX B', <OnboardFxPanel deck="B" accent="cyan" entryId={p.deckBTrack} ctl={p.ctlB} />);
   pinned('perfA', 'Performance Pads A', <CompactPerformancePads deck="A" accent="purple" entryId={p.deckATrack} ctl={p.ctlA} />);
   pinned('perfB', 'Performance Pads B', <CompactPerformancePads deck="B" accent="cyan" entryId={p.deckBTrack} ctl={p.ctlB} />);
+  pinned('deckControlsA', 'Deck Controls A', <DeckControlStrip deck="A" accent="purple" entryId={p.deckATrack} ctl={p.ctlA} />);
+  pinned('deckControlsB', 'Deck Controls B', <DeckControlStrip deck="B" accent="cyan" entryId={p.deckBTrack} ctl={p.ctlB} />);
   pinned('next', 'Next / Staging', <SideListLane onLoadDeck={p.loadDeck} />);
   pinned('sourceTree', 'Source Tree', <SourceTree source={p.source} setSource={p.setSource} libCount={p.libCount} />);
   pinned('library', 'Library', <TrackBrowser source={p.source} setSource={p.setSource} onLoadDeck={p.loadDeck} />);

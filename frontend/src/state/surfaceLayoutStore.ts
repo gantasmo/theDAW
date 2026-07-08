@@ -68,8 +68,8 @@ export interface PanelNode {
   widgetMargins?: Record<WidgetId, { t: number; r: number; b: number; l: number }>;
   /** Per-widget pad/button shape override. */
   widgetShapes?: Record<WidgetId, ButtonShape>;
-  /** Mirror this panel: reverse widget order + flip composite controls/icons
-   *  (left/right deck symmetry). */
+  /** Mirror this panel: reverse horizontal widget order + flip composite
+   *  controls/icons (left/right deck symmetry). */
   mirror?: boolean;
   /** Uniform control sizing: match same-kind control sizes (fill + equalize)
    *  within this panel. */

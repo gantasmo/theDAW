@@ -50,7 +50,7 @@ export type ButtonShape =
 
 /** Render-time hints the surface passes per cell. */
 export interface WidgetRenderOpts {
-  /** Mirror composite controls (reverse order + flip icon/name side). */
+  /** Mirror composite controls (flip icon/name side, horizontal internals). */
   mirror?: boolean;
   /** Content alignment within the cell. */
   justify?: 'start' | 'center' | 'end';
