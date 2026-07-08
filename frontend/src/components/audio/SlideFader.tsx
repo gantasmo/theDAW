@@ -45,9 +45,11 @@ interface SlideFaderProps {
   tint?: number;
   /** Value a double-click resets to. Defaults to 0 (clamped into range). */
   defaultValue?: number;
+  /** Slimmer presentation for dense mixer strips. */
+  compact?: boolean;
 }
 
-const SlideFaderImpl: React.FC<SlideFaderProps> = ({ label, value, onChange, min, max, step = 0.01, tipKey, rulerSide = 'left', tint, defaultValue }) => {
+const SlideFaderImpl: React.FC<SlideFaderProps> = ({ label, value, onChange, min, max, step = 0.01, tipKey, rulerSide = 'left', tint, defaultValue, compact = false }) => {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
   const [drag, setDrag] = useState(false);
@@ -103,11 +105,11 @@ const SlideFaderImpl: React.FC<SlideFaderProps> = ({ label, value, onChange, min
   // magnifying as the handle nears them (the SLIDE "bulge").
   const marks: React.ReactNode[] = [];
   const markDir = rulerSide === 'right' ? 1 : -1; // magnify outward (away from the track)
-  const TICKS = 20;                     // dense ruler — many ticks
+  const TICKS = compact ? 8 : 20;       // dense ruler; lighter in compact mixers
   for (let i = 0; i <= TICKS; i++) {
     const tt = i / TICKS;
     const p = smoothstep(1 - Math.abs(tt - t) / FOCUS);
-    const isMajor = i % 4 === 0;        // number every 4th tick (6 numbers)
+    const isMajor = !compact && i % 4 === 0; // compact mixer strips use ticks only
     const txt: RGB = [lerp(150, 255, p), lerp(150, 255, p), lerp(155, 255, p)];
     const tickCol: RGB = [lerp(150, base[0], p), lerp(150, base[1], p), lerp(155, base[2], p)];
     marks.push(
@@ -132,15 +134,15 @@ const SlideFaderImpl: React.FC<SlideFaderProps> = ({ label, value, onChange, min
 
   return (
     <div
-      className="flex flex-col items-center gap-1 min-w-0 h-full select-none"
+      className={`flex flex-col items-center min-w-0 h-full select-none ${compact ? 'gap-0.5' : 'gap-1'}`}
       style={{
         ...accentVars(colorT),
-        ['--body-w' as string]: '26px',
-        ['--track-w' as string]: '14px',
-        ['--track-inset' as string]: '8px',
-        ['--knob-cap' as string]: '18px',
-        ['--scale-w' as string]: '16px',
-        ['--scale-gap' as string]: '2px',
+        ['--body-w' as string]: compact ? '15px' : '26px',
+        ['--track-w' as string]: compact ? '7px' : '14px',
+        ['--track-inset' as string]: compact ? '4px' : '8px',
+        ['--knob-cap' as string]: compact ? '10px' : '18px',
+        ['--scale-w' as string]: compact ? '7px' : '16px',
+        ['--scale-gap' as string]: compact ? '0px' : '2px',
       }}
     >
       {tip ? <HoverTip text={tip}>{labelEl}</HoverTip> : labelEl}
@@ -175,18 +177,20 @@ const SlideFaderImpl: React.FC<SlideFaderProps> = ({ label, value, onChange, min
           </div>
         </div>
       </div>
-      <span
-        className="font-mono tabular-nums leading-none"
-        style={{
-          fontSize: active ? '11px' : '8.5px',
-          fontWeight: active ? 800 : 700,
-          color: 'var(--accent)',
-          textShadow: active ? '0 0 10px var(--accent-glow)' : 'none',
-          transition: 'font-size 0.1s ease, text-shadow 0.1s ease',
-        }}
-      >
-        {fmtNum(value)}
-      </span>
+      {!compact && (
+        <span
+          className="font-mono tabular-nums leading-none"
+          style={{
+            fontSize: active ? '11px' : '8.5px',
+            fontWeight: active ? 800 : 700,
+            color: 'var(--accent)',
+            textShadow: active ? '0 0 10px var(--accent-glow)' : 'none',
+            transition: 'font-size 0.1s ease, text-shadow 0.1s ease',
+          }}
+        >
+          {fmtNum(value)}
+        </span>
+      )}
     </div>
   );
 };

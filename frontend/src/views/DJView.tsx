@@ -54,7 +54,6 @@ import { SlideKnob } from '../components/audio/SlideKnob';
 import { SlideFader } from '../components/audio/SlideFader';
 import { SlidePad } from '../components/audio/SlidePad';
 import { SlideCrossfader } from '../components/audio/SlideCrossfader';
-import { RoundToggle } from '../components/audio/RoundToggle';
 import { JogWheel } from '../components/audio/JogWheel';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../components/ui/ContextMenu';
 import { sendSetToVj, sendTrackToVj, isVjSetTargetActive, type VjSetItem } from '../state/vjSetBus';
@@ -444,14 +443,14 @@ function EditableBpmField({
  * panels (hero waveforms, sampler, FX racks, Next lane, source tree, library)
  * host a whole component; every mixer + deck control is an individual widget the
  * user can relocate in Design Mode. Nothing moves until the user drags. */
-const DJ_LAYOUT_VERSION = 28;
+const DJ_LAYOUT_VERSION = 31;
 
 const defaultDjLayout: SurfaceLayout = {
   version: DJ_LAYOUT_VERSION,
   root: 'root',
   nodes: {
     root: { id: 'root', type: 'container', axis: 'column', children: ['topDecks', 'heroP', 'browserDock'], fr: { topDecks: 5.5, heroP: 1.25, browserDock: 3.25 } },
-    topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4.35, mixer: 2.9, deckBcont: 4.35 } },
+    topDecks: { id: 'topDecks', type: 'container', axis: 'row', children: ['deckAcont', 'mixer', 'deckBcont'], fr: { deckAcont: 4, mixer: 3.8, deckBcont: 4 } },
     heroP: { id: 'heroP', type: 'panel', title: 'Waveforms', flow: 'row', widgets: [], pinned: 'hero' },
     browserDock: { id: 'browserDock', type: 'container', axis: 'row', children: ['browserLeft', 'libraryP'], fr: { browserLeft: 2.45, libraryP: 9.6 }, framed: true, frameTitle: 'Browser' },
     browserLeft: { id: 'browserLeft', type: 'container', axis: 'column', children: ['sourceTreeP', 'nextP'], fr: { sourceTreeP: 3.4, nextP: 1.25 } },
@@ -483,13 +482,13 @@ const defaultDjLayout: SurfaceLayout = {
     'pdB-loop': { id: 'pdB-loop', type: 'panel', title: 'B · Loop', flow: 'row', widgets: ['loopB_0', 'loopB_1', 'loopB_2', 'loopB_3', 'loopB_4', 'loopOutB'], uniform: true },
     'pdB-perf': { id: 'pdB-perf', type: 'panel', title: 'B · Perf', flow: 'row', widgets: ['rollB_0', 'rollB_1', 'rollB_2', 'slipB', 'jumpB_0', 'jumpB_1', 'jumpB_2', 'jumpB_3'], uniform: true },
     // ── Mixer ──
-    mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 1.05, mixChans: 6.05, mixXfade: 1.1 }, framed: true },
-    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['pitchRange', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap'], widgetMargins: { pitchRange: { t: 0, r: 1, b: 0, l: 1 }, qtz: { t: 0, r: 1, b: 0, l: 1 }, autoGain: { t: 0, r: 1, b: 0, l: 1 }, automix: { t: 0, r: 1, b: 0, l: 1 }, lim: { t: 0, r: 1, b: 0, l: 1 }, midiMap: { t: 0, r: 1, b: 0, l: 1 } }, uniform: true },
-    mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['eqAP', 'chAP', 'chBP', 'eqBP'], fr: { eqAP: 1.35, chAP: 1.15, chBP: 1.15, eqBP: 1.35 } },
+    mixer: { id: 'mixer', type: 'container', axis: 'column', children: ['mixToggles', 'mixChans', 'mixXfade'], fr: { mixToggles: 0.82, mixChans: 6.45, mixXfade: 0.9 }, framed: true },
+    mixToggles: { id: 'mixToggles', type: 'panel', title: 'Modes', flow: 'row', widgets: ['pitchRange', 'qtz', 'autoGain', 'automix', 'lim', 'midiMap'], widgetFr: { pitchRange: 1.05, qtz: 0.82, autoGain: 0.9, automix: 1.08, lim: 0.82, midiMap: 0.92 }, widgetMargins: { pitchRange: { t: 0, r: 1, b: 0, l: 1 }, qtz: { t: 0, r: 1, b: 0, l: 1 }, autoGain: { t: 0, r: 1, b: 0, l: 1 }, automix: { t: 0, r: 1, b: 0, l: 1 }, lim: { t: 0, r: 1, b: 0, l: 1 }, midiMap: { t: 0, r: 1, b: 0, l: 1 } }, uniform: false },
+    mixChans: { id: 'mixChans', type: 'container', axis: 'row', children: ['eqAP', 'chAP', 'chBP', 'eqBP'], fr: { eqAP: 1.6, chAP: 0.8, chBP: 0.8, eqBP: 1.6 } },
     pchAP: { id: 'pchAP', type: 'panel', title: 'Pitch A', flow: 'column', widgets: ['pitchA'], widgetMargins: { pitchA: { t: 3, r: 4, b: 3, l: 4 } }, mirror: true },
     eqAP: { id: 'eqAP', type: 'panel', title: 'EQ A', flow: 'column', widgets: ['eqA.hi', 'eqA.mid', 'eqA.lo', 'fltA'] },
-    chAP: { id: 'chAP', type: 'panel', title: 'Ch A', flow: 'column', widgets: ['volA', 'gainA'], widgetFr: { gainA: 1, volA: 3 }, widgetMargins: { volA: { t: 8, r: 0, b: 8, l: 24 } }, mirror: true },
-    chBP: { id: 'chBP', type: 'panel', title: 'Ch B', flow: 'column', widgets: ['gainB', 'volB'], widgetFr: { gainB: 1, volB: 3 }, widgetMargins: { volB: { t: 8, r: 24, b: 8, l: 0 } } },
+    chAP: { id: 'chAP', type: 'panel', title: 'Ch A', flow: 'column', widgets: ['gainA', 'volA'], widgetFr: { gainA: 0.9, volA: 3.4 }, widgetMargins: { gainA: { t: 0, r: 0, b: 2, l: 0 }, volA: { t: 2, r: 0, b: 2, l: 4 } }, mirror: true },
+    chBP: { id: 'chBP', type: 'panel', title: 'Ch B', flow: 'column', widgets: ['gainB', 'volB'], widgetFr: { gainB: 0.9, volB: 3.4 }, widgetMargins: { gainB: { t: 0, r: 0, b: 2, l: 0 }, volB: { t: 2, r: 4, b: 2, l: 0 } } },
     eqBP: { id: 'eqBP', type: 'panel', title: 'EQ B', flow: 'column', widgets: ['eqB.hi', 'eqB.mid', 'eqB.lo', 'fltB'] },
     pchBP: { id: 'pchBP', type: 'panel', title: 'Pitch B', flow: 'column', widgets: ['pitchB'], widgetMargins: { pitchB: { t: 3, r: 4, b: 3, l: 4 } }, uniform: false },
     mixXfade: { id: 'mixXfade', type: 'panel', title: 'Crossfade', flow: 'row', widgets: ['spacer:s-22-ffca8259', 'crossfader', 'spacer:s-21-cb584c7d'], widgetFr: { 'spacer:s-22-ffca8259': 0.4556701030927834, crossfader: 2.039175257731959, 'spacer:s-21-cb584c7d': 0.5051546391752577 }, widgetMargins: { crossfader: { t: 16, r: 0, b: 0, l: 0 } }, uniform: false },
@@ -520,7 +519,7 @@ const defaultDjLayout: SurfaceLayout = {
     'cont-9-aebcd780': { id: 'cont-9-aebcd780', type: 'container', axis: 'row', children: ['pdB-perf', 'panel-8-81228019'], fr: { 'pdB-perf': 1.5358851674641145, 'panel-8-81228019': 0.46411483253588537 } },
     // ── Deck A pad-row wrappers ──
     'cont-10-e11250c4': { id: 'cont-10-e11250c4', type: 'container', axis: 'row', children: ['panel-11-95a4a261', 'pchAP', 'pdA-jog', 'pdA-mode'], fr: { 'panel-11-95a4a261': 0.7, pchAP: 0.45, 'pdA-jog': 1.87, 'pdA-mode': 0.5 } },
-    deckABody: { id: 'deckABody', type: 'container', axis: 'row', children: ['deckControlsA', 'pdA-jog', 'pchAP'], fr: { deckControlsA: 3.45, 'pdA-jog': 1.12, pchAP: 0.4 } },
+    deckABody: { id: 'deckABody', type: 'container', axis: 'row', children: ['deckControlsA', 'pdA-jog', 'pchAP'], fr: { deckControlsA: 3.45, 'pdA-jog': 0.95, pchAP: 0.36 } },
     'panel-11-95a4a261': { id: 'panel-11-95a4a261', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-26-79f129b0'] },
     'panel-A-transport-head': { id: 'panel-A-transport-head', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-A-transport-head'] },
     'cont-A-transport': { id: 'cont-A-transport', type: 'container', axis: 'row', children: ['panel-A-transport-head', 'pdA-trans'], fr: { 'panel-A-transport-head': 1.15, 'pdA-trans': 2.37 } },
@@ -532,7 +531,7 @@ const defaultDjLayout: SurfaceLayout = {
     'cont-16-c9fc3a59': { id: 'cont-16-c9fc3a59', type: 'container', axis: 'row', children: ['panel-15-4eb1b108', 'pdA-loop'], fr: { 'pdA-loop': 1.3664122137404573, 'panel-15-4eb1b108': 0.6335877862595417 } },
     'panel-17-44cba1fb': { id: 'panel-17-44cba1fb', type: 'panel', title: 'Panel', flow: 'row', widgets: ['spacer:s-27-8799ff7e'] },
     'cont-18-cd01de17': { id: 'cont-18-cd01de17', type: 'container', axis: 'row', children: ['panel-17-44cba1fb', 'pdA-perf'], fr: { 'pdA-perf': 1.4885496183206104, 'panel-17-44cba1fb': 0.5114503816793893 } },
-    deckBBody: { id: 'deckBBody', type: 'container', axis: 'row', children: ['pchBP', 'pdB-jog', 'deckControlsB'], fr: { pchBP: 0.4, 'pdB-jog': 1.12, deckControlsB: 3.45 } },
+    deckBBody: { id: 'deckBBody', type: 'container', axis: 'row', children: ['pchBP', 'pdB-jog', 'deckControlsB'], fr: { pchBP: 0.36, 'pdB-jog': 0.95, deckControlsB: 3.45 } },
   },
 };
 
@@ -2914,9 +2913,28 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
       : Math.min(byW, byH);
     return Math.min(base, byW, byH, cap);
   };
-  const knobSize = (s: { w: number; h: number }, opts?: SizeOpts) => Math.max(20, fitDim(s, opts, 26, 112));
-  const toggleBox = (s: { w: number; h: number }, opts?: SizeOpts) => Math.max(24, fitDim(s, opts, 12, 84));
+  const knobSize = (s: { w: number; h: number }, opts?: SizeOpts) => Math.max(18, fitDim(s, opts, 22, 54));
   const center = (node: React.ReactNode) => <div className="h-full w-full grid place-items-center overflow-hidden">{node}</div>;
+  const compactModeToggle = (
+    label: string,
+    Icon: React.ComponentType<{ className?: string }>,
+    on: boolean,
+    onChange: (v: boolean) => void,
+  ) => center(
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      title={label}
+      className={`h-full max-h-9 w-full min-w-0 rounded-md border px-1 grid grid-rows-[1fr_auto] place-items-center transition-colors ${
+        on
+          ? 'border-purple-400/60 bg-purple-500/20 text-purple-100 shadow-[0_0_10px_rgba(168,85,247,0.38)]'
+          : 'border-white/10 bg-black/25 text-zinc-500 hover:border-white/25 hover:text-zinc-200'
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5 min-h-0" />
+      <span className="max-w-full truncate text-[6.5px] font-black uppercase leading-none tracking-wider">{label}</span>
+    </button>
+  );
   // Pads render LANDSCAPE (like CUE/PLAY): fill the cell width, cap the height so
   // the button stays wider than tall, centred vertically in its cell.
   const padBox = (s: { w: number; h: number }, node: React.ReactNode) => (
@@ -3209,7 +3227,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
       eqKnob(`flt${d}`, 'Flt', d === 'A' ? p.filterA : p.filterB, (v) => p.onFilter(d, v), -1, 1, 0.01);
     }
     knob(`gain${d}`, 'Gain', grp, d === 'A' ? p.gainA : p.gainB, (v) => p.onGain(d, v), -12, 12, 0.5);
-    reg[`vol${d}`] = { id: `vol${d}`, label: `Vol ${d}`, group: grp, kind: 'fader', source: 'builtin', render: () => faderWrap(<SlideFader label={d} value={d === 'A' ? p.volA : p.volB} onChange={(v) => p.onVol(d, v)} min={0} max={1} step={0.01} rulerSide={d === 'B' ? 'right' : 'left'} />) };
+    reg[`vol${d}`] = { id: `vol${d}`, label: `Vol ${d}`, group: grp, kind: 'fader', source: 'builtin', render: () => faderWrap(<SlideFader label={d} value={d === 'A' ? p.volA : p.volB} onChange={(v) => p.onVol(d, v)} min={0} max={1} step={0.01} rulerSide={d === 'B' ? 'right' : 'left'} compact />) };
     const pitch = d === 'A' ? p.pitchA : p.pitchB;
     const bpm = d === 'A' ? p.bpmA : p.bpmB;
     const effBpm = bpm != null ? (bpm * (1 + pitch / 100)).toFixed(1) : '—';
@@ -3229,16 +3247,16 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
       type="button"
       onClick={() => p.setPitchRange(p.pitchRange === 10 ? 15 : 10)}
       title="Pitch range"
-      className="flex flex-col items-center justify-center gap-0.5 min-w-12 px-2 py-1 rounded-md border border-amber-400/50 bg-amber-500/15 text-amber-100 shadow-[0_0_14px_rgba(245,158,11,0.25)] hover:bg-amber-500/25 transition-colors"
+      className="h-full max-h-9 w-full min-w-0 rounded-md border border-amber-400/50 bg-amber-500/15 px-1 py-0.5 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.22)] hover:bg-amber-500/25 transition-colors grid place-items-center"
     >
-      <span className="text-[7px] font-black uppercase tracking-wider leading-none">Range</span>
-      <span className="text-[12px] font-black font-mono tabular-nums leading-none">±{p.pitchRange}%</span>
+      <span className="text-[6.5px] font-black uppercase tracking-wider leading-none">Range</span>
+      <span className="text-[10px] font-black font-mono tabular-nums leading-none">±{p.pitchRange}%</span>
     </button>
   ) };
-  reg.qtz = { id: 'qtz', label: 'Quantize', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Qtz" icon={Magnet} on={p.quantize} onChange={p.setQuantize} box={toggleBox(s, opts)} />) };
-  reg.autoGain = { id: 'autoGain', label: 'Auto-gain', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Gain" icon={Gauge} on={p.autoGain} onChange={p.setAutoGain} box={toggleBox(s, opts)} />) };
-  reg.lim = { id: 'lim', label: 'Limiter', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="Lim" icon={Shield} on={p.limiterOn} onChange={(v) => { p.setLimiterOn(v); djEngine.setLimiter(v); }} box={toggleBox(s, opts)} />) };
-  reg.midiMap = { id: 'midiMap', label: 'MIDI Map', group: 'Mixer', kind: 'toggle', source: 'builtin', render: (s, opts) => center(<RoundToggle label="MIDI" icon={Piano} on={p.midiMapOn} onChange={() => p.onToggleMidiMap()} box={toggleBox(s, opts)} />) };
+  reg.qtz = { id: 'qtz', label: 'Quantize', group: 'Mixer', kind: 'toggle', source: 'builtin', render: () => compactModeToggle('Qtz', Magnet, p.quantize, p.setQuantize) };
+  reg.autoGain = { id: 'autoGain', label: 'Auto-gain', group: 'Mixer', kind: 'toggle', source: 'builtin', render: () => compactModeToggle('Gain', Gauge, p.autoGain, p.setAutoGain) };
+  reg.lim = { id: 'lim', label: 'Limiter', group: 'Mixer', kind: 'toggle', source: 'builtin', render: () => compactModeToggle('Lim', Shield, p.limiterOn, (v) => { p.setLimiterOn(v); djEngine.setLimiter(v); }) };
+  reg.midiMap = { id: 'midiMap', label: 'MIDI Map', group: 'Mixer', kind: 'toggle', source: 'builtin', render: () => compactModeToggle('MIDI', Piano, p.midiMapOn, () => p.onToggleMidiMap()) };
 
   reg.crossfader = { id: 'crossfader', label: 'Crossfader', group: 'Mixer', kind: 'crossfader', source: 'builtin', render: () => (
     <div className="h-full w-full flex flex-col justify-center px-1">
@@ -3252,7 +3270,7 @@ function buildDjRegistry(p: DjRegArgs): WidgetRegistry {
   ) };
 
   reg.automix = { id: 'automix', label: 'Automix', group: 'Mixer', kind: 'button', source: 'builtin', render: () => center(
-    <button onClick={p.onToggleAutomix} title="Automix — auto-sequence + beatmatch-crossfade the active set" className={`px-3 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border transition-colors ${p.automixOn ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200 animate-pulse' : 'border-white/10 text-zinc-400 hover:text-zinc-100 hover:border-white/25'}`}>{p.automixOn ? 'Automix ●' : 'Automix'}</button>
+    <button onClick={p.onToggleAutomix} title="Automix — auto-sequence + beatmatch-crossfade the active set" className={`h-full max-h-9 w-full min-w-0 rounded-md px-1 py-0.5 text-[6.5px] font-black uppercase tracking-wider border transition-colors ${p.automixOn ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200 animate-pulse' : 'border-white/10 bg-black/25 text-zinc-500 hover:text-zinc-100 hover:border-white/25'}`}>{p.automixOn ? 'Auto On' : 'Automix'}</button>
   ) };
 
   reg.keymatch = { id: 'keymatch', label: 'Key Match', group: 'Mixer', kind: 'button', source: 'builtin', render: () => center(
