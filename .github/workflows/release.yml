@@ -44,6 +44,13 @@ env:
   # Container image name on the GitHub Container Registry. KEEP IN SYNC
   # with the image name documented in docs/RELEASING.md.
   IMAGE_NAME: ghcr.io/gantasmo/thedaw
+  # SwayCommand (the SWAY tab's cockpit) is a PRIVATE repo under a different
+  # account. The installer jobs check it out with the SWAY_REPO_TOKEN secret
+  # and build the embed bundle from it (electron-ui/scripts/fetch-sway-build.mjs
+  # via SWAY_PROJECT). SWAY_REF pins the commit the packaged app ships; bump it
+  # deliberately, the same way VJ_COMMIT is pinned in fetch-vj-build.mjs.
+  SWAY_REPO: danieljtrujillo/SwayCommand
+  SWAY_REF: 5fb092d3641f2d279f5ca13b010e96a370d9d32c
 
 jobs:
   # Resolves the release version and fails fast on any version drift
@@ -82,17 +89,15 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      # The installer builds stage the SwayCommand embed bundle from a release
-      # of the PRIVATE danieljtrujillo/SwayCommand repo, which the built-in
-      # GITHUB_TOKEN cannot read (electron-ui/scripts/fetch-sway-build.mjs).
-      # Fail here, in seconds, rather than twenty minutes into both installer
-      # jobs. v0.1.4 died exactly that way.
+      # The installer jobs check out the PRIVATE SwayCommand repo, which the
+      # built-in GITHUB_TOKEN cannot read. Fail here, in seconds, rather than
+      # twenty minutes into both installer jobs. v0.1.4 died exactly that way.
       - name: Check that SWAY_REPO_TOKEN is available to the installer builds
         env:
           SWAY_REPO_TOKEN: ${{ secrets.SWAY_REPO_TOKEN }}
         run: |
           if [ -z "$SWAY_REPO_TOKEN" ]; then
-            echo "::error::The SWAY_REPO_TOKEN repository secret is not set. Add a fine-grained PAT with 'Contents: read' on danieljtrujillo/SwayCommand as SWAY_REPO_TOKEN (Settings > Secrets and variables > Actions), then re-run. See docs/RELEASING.md."
+            echo "::error::The SWAY_REPO_TOKEN repository secret is not set. Add a fine-grained PAT with 'Contents: read' on ${SWAY_REPO} as SWAY_REPO_TOKEN (Settings > Secrets and variables > Actions), then re-run the failed jobs. See docs/RELEASING.md."
             exit 1
           fi
           echo "SWAY_REPO_TOKEN is set."
@@ -142,9 +147,19 @@ jobs:
       - name: Install electron-ui dependencies
         run: npm ci
         working-directory: electron-ui
+      # SwayCommand is private: check it out with the PAT at the pinned commit
+      # and point the fetch script at it. The script installs its deps and runs
+      # `npm run build:renderer:embed` (renderer only; no Electron download).
+      - name: Check out SwayCommand
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.SWAY_REPO }}
+          ref: ${{ env.SWAY_REF }}
+          token: ${{ secrets.SWAY_REPO_TOKEN }}
+          path: SwayCommand
       - name: Build the Windows installer
         env:
-          SWAY_REPO_TOKEN: ${{ secrets.SWAY_REPO_TOKEN }}
+          SWAY_PROJECT: ${{ github.workspace }}/SwayCommand
         run: npm run dist:win:ci
         working-directory: electron-ui
       - uses: actions/upload-artifact@v7
@@ -203,9 +218,19 @@ jobs:
       # purely defensive so the build cannot fail on a missing directory.
       - name: Ensure the bundled-tools directory exists
         run: mkdir -p electron-ui/resources/tools
+      # SwayCommand is private: check it out with the PAT at the pinned commit
+      # and point the fetch script at it. The script installs its deps and runs
+      # `npm run build:renderer:embed` (renderer only; no Electron download).
+      - name: Check out SwayCommand
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.SWAY_REPO }}
+          ref: ${{ env.SWAY_REF }}
+          token: ${{ secrets.SWAY_REPO_TOKEN }}
+          path: SwayCommand
       - name: Build the macOS disk image
         env:
-          SWAY_REPO_TOKEN: ${{ secrets.SWAY_REPO_TOKEN }}
+          SWAY_PROJECT: ${{ github.workspace }}/SwayCommand
         run: npm run dist:mac:ci
         working-directory: electron-ui
       - uses: actions/upload-artifact@v7
