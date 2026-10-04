@@ -906,6 +906,22 @@ function createWindow(): void {
       return false
     }
   }
+  // F9 starts and stops the screen recorder. The key is taken here, before the
+  // page sees it, so it works whichever frame has focus (an embedded page
+  // keeps its own key events). The toggle runs with the gesture flag because
+  // the page's getDisplayMedia call needs user activation, and a key the page
+  // never receives gives it none.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.key !== 'F9' || input.isAutoRepeat) return
+    if (input.control || input.alt || input.meta || input.shift) return
+    event.preventDefault()
+    const wc = mainWindow?.webContents
+    if (!wc || wc.isDestroyed()) return
+    wc.executeJavaScript("window.dispatchEvent(new CustomEvent('thedaw:screen-record-toggle'))", true).catch(
+      () => undefined,
+    )
+  })
+
   mainWindow.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
     if (isExternal(url)) {
       void shell.openExternal(url)
@@ -1647,6 +1663,29 @@ if (gotSingleInstanceLock) app.whenReady().then(async () => {
   const ses = session.defaultSession
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(true))
   ses.setPermissionCheckHandler(() => true)
+  // Screen recording (frontend/src/lib/screenRecorder.ts). The app window asks
+  // for its own picture and sound through getDisplayMedia, and it is granted
+  // the frame that asked: the window's content and the audio of everything in
+  // it, with no picker. enableLocalEcho keeps that audio on the speakers while
+  // it is captured. Any other frame (an embedded page) is refused.
+  ses.setDisplayMediaRequestHandler((request, callback) => {
+    const frame = request.frame
+    const own = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.mainFrame : null
+    if (!frame || !own || frame.frameTreeNodeId !== own.frameTreeNodeId) {
+      // No stream for a video request is how a request is refused; Electron
+      // throws on it here and rejects the page's promise.
+      try {
+        callback({})
+      } catch {
+        // refused
+      }
+      return
+    }
+    callback({
+      video: frame,
+      ...(request.audioRequested ? { audio: frame, enableLocalEcho: true } : {}),
+    })
+  })
   watchDownloads(ses)
 
   registerIpcHandlers()

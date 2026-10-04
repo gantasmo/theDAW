@@ -37,6 +37,7 @@ import { HomeScreen, useHomeScreenStore } from '../home/HomeScreen';
 import { OnboardingTour } from '../../onboarding/OnboardingTour';
 import { FeatureNotes } from '../../onboarding/FeatureNotes';
 import { HelpSearchPopover } from '../../onboarding/HelpSearchPopover';
+import { ScreenRecordButton } from './ScreenRecordButton';
 import { useOnboardingStore } from '../../onboarding/onboardingStore';
 import { TopBarButton } from './TopBarButton';
 import { ImportMenu, IMPORT_AUDIO_EVENT } from './ImportMenu';
@@ -420,7 +421,7 @@ export const Shell: React.FC = () => {
       }}
     >
       {/* Combined header + tab bar — logo (left), workspace tabs (center),
-          Fullscreen / Mobile / Help / Import / app-menu (right). G-Search moved to the footer.
+          Screen record / Fullscreen / Mobile / Help / Import / app-menu (right). G-Search moved to the footer.
 
           z-40 is about what DROPS OUT of this row, not about the row: the app
           menu, the import menu and the help search hang below it, over the library rail (z-20)
@@ -451,7 +452,8 @@ export const Shell: React.FC = () => {
         />
 
         <div className="flex items-center gap-2.5 shrink-0">
-          {/* Order: Fullscreen, Mobile, Help, Import, then the app menu (hamburger) on the far right. */}
+          {/* Order: Screen record, Fullscreen, Mobile, Help, Import, then the app menu (hamburger) on the far right. */}
+          <ScreenRecordButton />
           <FullscreenToggle />
           <TopBarButton
             onClick={() => setShareOpen(true)}

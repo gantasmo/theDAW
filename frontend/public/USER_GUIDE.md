@@ -184,13 +184,15 @@ cd frontend && npm run dev
 
 The application window has five regions:
 
-- **Full-width header** (top): the theDAW logo, the center workspace tabs, and five actions on the right: **Fullscreen**, mobile access QR/link, the **?** help search, **IMPORT**, and the app menu (§37).
+- **Full-width header** (top): the theDAW logo, the center workspace tabs, and six actions on the right: **Record**, **Fullscreen**, mobile access QR/link, the **?** help search, **IMPORT**, and the app menu (§37).
 - **Center workspace**: the center tab bar at the top and the active workspace below it, including that tab's own controls and run action.
 - **Library rail** (right, collapsible): browse and route library material without leaving the active workspace.
 - **Global bottom dock**: the bottom multi-tab panel and the processing log, side by side.
 - **Player footer** (bottom): a fixed transport bar.
 
-**Full-width header:** a fixed bar spanning the entire window width. It holds the theDAW logo dot, the center tab bar, and the five right-hand actions above, in that order. **Fullscreen** is the first of them, immediately left of mobile access: it toggles browser fullscreen on `document.documentElement`, and its icon flips back when Esc leaves fullscreen. Settings opens only from the app menu — the header gear was retired; Docs opens from inside the **?** help popover; the global search moved to the player footer; and the AI Assistant orb is a free-floating draggable element over the app rather than a header button. There is no left panel and no left-panel toggle; the only collapsible side panel is the Library rail on the right.
+**Full-width header:** a fixed bar spanning the entire window width. It holds the theDAW logo dot, the center tab bar, and the six right-hand actions above, in that order. **Fullscreen** follows **Record**, immediately left of mobile access: it toggles browser fullscreen on `document.documentElement`, and its icon flips back when Esc leaves fullscreen. Settings opens only from the app menu — the header gear was retired; Docs opens from inside the **?** help popover; the global search moved to the player footer; and the AI Assistant orb is a free-floating draggable element over the app rather than a header button. There is no left panel and no left-panel toggle; the only collapsible side panel is the Library rail on the right.
+
+**Record:** the camera key, or F9, records the theDAW window with its own sound into a WebM file (VP9 video, stereo Opus audio at the level you hear). While it records, the key is a red stop key with the elapsed time; stopping saves the file. In the desktop app the window records itself with no picker, the file goes into Downloads with its path in the LOG and the Recent menus, and F9 works while an embedded frame such as the SWAY cockpit has focus. In a browser, Chrome asks which surface to share and offers this tab first.
 
 **The ? help search:** the **?** button opens a search over the feature registry — the same entries the Feature Tour and the pinned Feature Notes read, so the three can never drift apart. Type what you are after and each hit says what the thing is, how to use it, and which tab it lives in; **LOCATE** hands the id to the solo spotlight, which switches workspace, opens the panel the control lives in, and rings the real control on the real screen. The field takes focus on open, Down steps into the results, Up comes back out of the top of them, Enter locates the best hit, and Escape closes and hands focus back to the button. **Docs** sits beside the input and still opens this manual untouched.
 
@@ -1029,7 +1031,9 @@ Shown until the first generation. It contains a **Go generate something** button
 
 The library splits its contents into four sub-tabs: **Tracks**, **Stems**, **MIDI**, and **Video**. Stems and MIDI are first-class items rather than attachments to a parent track. Each row plays through the shared engine, can be favorited, and can be deleted on its own without touching the source track.
 
-A stem row plays its separated audio and shows the separation model. Its right-click menu sends the stem to a new editor track, to the tail of the first track, to Init audio, to Inpaint, or to the Chimera stack, and offers a `.wav` download. A MIDI row plays through the synth and can be sent to the Piano Roll, the Step Sequencer, or (rendered to audio) to the editor, Init audio, Inpaint, or Chimera, with a `.mid` download. Favoriting or deleting a stem or MIDI row affects only that row, never its parent entry.
+A stem row plays its separated audio and shows the separation model. Its right-click menu sends the stem to a new editor track, to the tail of the first track, to Init audio, to Inpaint, or to the Chimera stack, and offers a `.wav` download. A MIDI row plays through the synth and can be sent to the Piano Roll, the Step Sequencer, or (rendered to audio) to the editor, Init audio, Inpaint, or Chimera, with a `.mid` download. Its menu also brings every stem MIDI of the row's song in at once, and never the full-mix MIDI. **All stems to piano roll** puts one roll part per stem into the MIDI tab in place of the roll's parts, and a song with one stem sends it into the part being edited. **All stems to EDIT as tracks** puts one EDIT track per stem at the start of the timeline, in one undo step. Each part or track is named for its stem and plays its stem's instrument, the drums on channel 10 on a drum track, and each roll part takes the next free channel. Every note stays at the second it was transcribed at, on one tempo map the stems share, and a stem's pitch wheel becomes its notes' own bends. Both items show the number of stems beside them, and a song with no stem MIDI shows them off with "no stems". A stem whose file does not load is named in the LOG, and the other stems come in without it. Favoriting or deleting a stem or MIDI row affects only that row, never its parent entry.
+
+A MIDI row dragged onto an EDIT lane lands as one piano-roll clip that plays the file's own program. A drum file plays its kit on a drum track. On a drum track that has a kit of its own, a drum file on program 0, which a writer puts on channel 10 when it names no kit, plays the track's kit. A blank lane (no clips, no instrument) takes the file's kind, drum or melodic, and the file's program. A lane of the other kind that holds clips or an instrument keeps its voice, the file goes on a new track, and the LOG says why. The clip opens in the piano roll as a percussion part for a drum file, and MATCH keeps its notes at their seconds.
 
 ### 13.13 Media roots: entries whose audio lives outside the library
 
@@ -1134,7 +1138,8 @@ The Play button starts a step-based clock that advances `currentStep` and trigge
 
 ### 15.4 BPM and Grid Length
 
-- **BPM** sets the tempo for playback and offline render. Range: 40 to 240.
+- **BPM** sets the roll's starting tempo for playback and offline render. Range: 20 to 300.
+- **KEEP TIME**, beside BPM, decides what a new BPM does to the notes. On, every note keeps its time in seconds, so a transcription stays on the audio it came from. Off, every note keeps its place in the bar and plays faster or slower. It starts on for a roll whose parts came from a song's audio and off for a roll written on the grid. A press holds for that roll, also while the MIDI tab is closed and opened again. A controller knob mapped to BPM sets the tempo through the same choice. A BPM typed with KEEP TIME on writes to the LOG how many notes kept their time in seconds.
 - **Total Steps** defines the loop length in 16th-note steps. Longer values extend the grid horizontally.
 
 ### 15.5 MIDI Import and Export
@@ -1155,6 +1160,29 @@ Clips in the waveform editor whose `sourceKind` is `'piano-roll'` display an **E
 The **Instrument** picker chooses how the Piano Roll's notes sound, both for preview and for the soundfont-backed render. The default is **Basic (sawtooth)**, the lightweight built-in synth. The **General MIDI** group selects any of the 128 GM programs, played through a bundled SoundFont (`gm.sf3`) on the SpessaSynth engine; the soundfont warms up on first use and falls back to the sawtooth if it cannot load.
 
 The picker also lists procedural synth voices grouped as **Bass**, **Lead / Chord**, **FX**, **Psychoacoustic** (phantom-sub, binaural, Shepard, difference-tone, and related voices), and **Talk-Box** (formant-filtered vowel voices in Bass, Tenor, Countertenor, Alto, and Soprano ranges, each with five sung vowels). A Talk-Box voice runs a sawtooth glottal source through a bank of formant filters, so each vowel reads as a sung "ah/eh/ee/oh/oo." The selected instrument also drives live MIDI playback in the timeline (see §7.10).
+
+A part can also play through a **VST3 instrument**. The part's **Sound** select in the MIDI tab's parts column lists the scanned VST3 instruments under **VST3 instruments**, the same list EDIT's MIDI track VST slot offers, and the rescan key beside the label runs the scan again. With one chosen, a **VST3 instrument** box opens under the select: the plugin's name (press it to open the plugin's own window over the roll; what you set there is kept with the part and saved with the project), a status dot and word (**Live**, **Opening**, **Fallback**, **Off**), a power key that switches the plugin off and on with its settings kept, and an X that takes it away. PLAY, a note drawn or clicked on the keyboard, the arpeggiator and a hardware key all sound through the plugin, on the roll's tempo and transport. **Fallback** picks the General MIDI program the part plays whenever the plugin cannot (while it opens, if it fails to load, or with no live VST host installed) and that a MIDI export writes; a plugin that fails says so in the LOG and the part plays that program. **Articulations** picks how the plugin is told a note's articulation: keyswitch notes from C0, or UACC on CC 32. The EDIT key sends the plugin with the part onto its EDIT track's VST slot, where every bounce, freeze and export prints it.
+
+### 15.9 Transcriptions and MATCH
+
+A part whose notes were timed against a song's audio is marked as such: a LIBRARY MIDI row sent to the piano roll, **All stems to piano roll**, a MIDI row dropped on EDIT and opened in the roll, and the notes of a vocal take. **MATCH** gives the roll the song's tempo and meter, and every marked part keeps its notes at their seconds under the new tempo, so a transcription stays on the song. Every other part keeps its place in the bar. MATCH's status line says how many notes from the song's audio kept their time. The mark travels with the part in its EDIT clip, in a `.tasmo` and in a MIDI file the roll writes. Recording over the part with a MIDI keyboard and **CLEAR** remove it, and so does importing any other file into the part. A stem sent into one part while other parts hold notes lands at its transcribed seconds on the roll's tempo map, also after MATCH has changed that map.
+
+### 15.10 CLEAN
+
+**CLEAN**, after **TRANSFORM** on the MIDI tab's action rail, opens a card with two tools for tidying a transcription. Both work on the selected notes, else on every note of the part being edited.
+
+- **ONE AT A TIME** reduces the notes to one line. Its **Keep** choice picks **Top line** (where notes overlap the higher note stays, for a melody), **Bottom line** (the lower note stays, for a bass line) or **Latest note** (each note cuts the one before it, as a monophonic synth plays). A pitch struck again while it still sounds cuts the note it repeats and plays on.
+- **KEEP RANGE** removes every note below **LOW** or above **HIGH**, both MIDI note numbers shown with their note names. The range starts at the part instrument's range, else at the lowest and highest pitch of the notes.
+
+Each tool is one undo step, keeps the notes it left selected, and writes what it did to the LOG.
+
+### 15.11 A stem's instrument on import
+
+basic-pitch writes its transcriptions on General MIDI program 4, Electric Piano 1. A part that arrives on program 4 from a file named for a song stem takes that stem's instrument: the voice for vocals, the electric bass, the electric guitar, the piano, the organ, and a drum kit on channel 10 for drums and for each piece of a split kit (kick, snare, toms, hi-hat, cymbals). A part the file left unnamed takes the stem's name. The stem comes from the LIBRARY row, or from the file's name (`bass.mid`) when the file comes in through the MIDI tab's **IMPORT** and its **As EDIT tracks**, EDIT's MIDI drop or the LIBRARY's **Import a .mid file into the piano roll** key. A stem that names no instrument (other, the full mix, no_vocals) keeps the file's program. A stem sent into the part being edited replaces the part's instrument, and a part named for its old instrument takes the new instrument's name. A name you gave the part stays.
+
+### 15.12 Pitch wheel under chords
+
+A MIDI file that moves one channel's pitch wheel under overlapping notes is read note by note. While one note sounds, the wheel becomes that note's own bend. While several sound, the wheel is left out and the chord plays unbent. The LOG says how many notes took their bend and warns how many chords play unbent. A channel that plays one note at a time keeps its bend lane and curve, and a file the roll wrote keeps its lanes' curves as written. **IMPORT**, **Send to piano roll**, **As EDIT tracks** and EDIT's MIDI drop all read files this way.
 
 ---
 
