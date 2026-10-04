@@ -24,7 +24,12 @@
  */
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
+  LAN_CACHE_DIR,
   LAN_HTTPS_DEFAULT_PORT,
   describeLanHttps,
   lanHttpsOptions,
@@ -152,6 +157,24 @@ assert.equal(
       `lanHttpsOptions(${JSON.stringify(env)}) must refuse rather than serve a broken listener`,
     );
   }
+}
+
+// ── each dev server keeps its own dependency cache ─────────────────────────
+// The desktop shell runs two dev servers at once: its renderer server and this
+// LAN server, a different Vite with a different config. On one shared cache
+// folder each rebuilt the other's cache and replaced the files it was serving,
+// and the window stayed black after the boot cinematic. So the LAN server and
+// the desktop renderer each name a folder of their own, and neither is Vite's
+// default, which the browser-mode server uses.
+{
+  const VITE_DEFAULT = 'node_modules/.vite';
+  assert.notEqual(LAN_CACHE_DIR, VITE_DEFAULT, 'the LAN server leaves the default cache alone');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const desktop = readFileSync(resolve(here, '../../../electron-ui/electron.vite.config.ts'), 'utf8');
+  const named = /cacheDir:\s*resolve\(__dirname,\s*'\.\.\/frontend\/(node_modules\/[^']+)'\)/.exec(desktop);
+  assert.ok(named, 'the desktop renderer server names its own cacheDir');
+  assert.notEqual(named![1], VITE_DEFAULT, 'the desktop renderer leaves the default cache alone');
+  assert.notEqual(named![1], LAN_CACHE_DIR, 'the desktop renderer and the LAN server do not share a cache');
 }
 
 console.log('lanHttps: all assertions passed');

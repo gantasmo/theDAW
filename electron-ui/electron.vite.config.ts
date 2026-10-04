@@ -44,6 +44,14 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, '../frontend'),
+    // The desktop window's own dependency cache. Vite's default,
+    // frontend/node_modules/.vite, is shared with every other dev server
+    // started from the frontend folder: the LAN HTTPS server this shell spawns
+    // (frontend/vite.lan.config.ts) and the browser-mode server. Those run a
+    // different Vite with a different config, so each rebuilt the shared cache
+    // under its own file names and the window was left asking for chunks that
+    // had been replaced: a black screen after the boot cinematic.
+    cacheDir: resolve(__dirname, '../frontend/node_modules/.vite-desktop'),
     customLogger: plainLogger,
     build: {
       outDir: resolve(__dirname, 'out/renderer'),

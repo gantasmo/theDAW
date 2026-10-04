@@ -84,9 +84,22 @@ export function lanHttpsOptions(
   return { port, https: { cert: read(certPath), key: read(keyPath) } };
 }
 
+/**
+ * The LAN server's own dependency cache, apart from `node_modules/.vite`.
+ *
+ * In desktop mode this server starts a few seconds after the Electron shell's
+ * renderer server (electron-ui/electron.vite.config.ts), which is a different
+ * Vite with a different config. Sharing one cache folder, each found the
+ * other's cache, rebuilt it under its own file names, and replaced the folder
+ * the other was serving from. The window then asked for dependency chunks that
+ * no longer existed and stayed black after the boot cinematic, until a second
+ * launch happened to finish in the other order.
+ */
+export const LAN_CACHE_DIR = 'node_modules/.vite-lan';
+
 export default defineConfig(async (env) => {
   const cfg = (await (base as unknown as (e: typeof env) => Promise<UserConfig> | UserConfig)(env)) as UserConfig;
   const { port, https } = lanHttpsOptions(process.env);
   const server = { ...(cfg.server ?? {}), port, https, host: '0.0.0.0', strictPort: true };
-  return { ...cfg, server };
+  return { ...cfg, cacheDir: LAN_CACHE_DIR, server };
 });
