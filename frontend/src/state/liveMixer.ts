@@ -38,7 +38,9 @@
  * play, same as a hardware mixer wouldn't re-cut tape mid-take. The one
  * exception is a MIDI clip EDIT's synths play live: lib/editMidiScheduler
  * re-reads the clips on every tick, so its notes, program, gain and fades
- * follow an edit made while playing.
+ * follow an edit made while playing. A volume or pan automation lane edited
+ * while playing is written onto its param again as well
+ * (`rearmEditedNativeLanes`).
  */
 import {
   useEditorStore,
@@ -335,11 +337,13 @@ function effectiveVol(t: EditorTrack, anySolo: boolean): number {
 }
 
 /** Keys of native (vol/pan) targets that have an enabled automation lane, so the
- *  manual reconcile leaves those params to the scheduled envelope while playing. */
-function automatedNativeKeys(): Set<string> {
+ *  manual reconcile leaves those params to the scheduled envelope while playing.
+ *  A lane with no points schedules nothing (`scheduleAutomation`), so it is not
+ *  counted and its fader still decides. Exported for its test. */
+export function automatedNativeKeys(): Set<string> {
   const keys = new Set<string>();
   for (const lane of useEditorStore.getState().automationLanes) {
-    if (!lane.enabled) continue;
+    if (!lane.enabled || lane.points.length === 0) continue;
     const k = lane.target.kind;
     if (k === 'trackVolume' || k === 'trackPan') keys.add(automationTargetKey(lane.target));
   }
@@ -2887,7 +2891,8 @@ export function applyEnvelopeEvents(
 
 /** Re-arm ONE native lane's envelope on its AudioParam from `fromSec`. Used by
  *  play/seek (via `scheduleAutomation`) and by a touch punch-out, which hands the
- *  param back to the lane the gesture just wrote into.
+ *  param back to the lane the gesture just wrote into. A lane edited while
+ *  playing is re-armed through it as well (`rearmEditedNativeLanes`).
  *
  *  VOLUME is written at the chain input and takes no delay — its breakpoints land
  *  on the same node time the clip scheduler maps them to. PAN is written after the
@@ -2916,6 +2921,10 @@ function scheduleLaneNative(lane: AutomationLane, fromSec: number): void {
 
 /** Schedule every enabled native lane's envelope from `fromSec`. */
 function scheduleAutomation(fromSec: number): void {
+  // Every lane is armed from the store here, so an edit still waiting for its
+  // re-arm is covered. Its diff was taken against the pass being replaced and
+  // must not be applied to this one.
+  dropPendingRearm();
   const ed = useEditorStore.getState();
   const holds = ed.automationHolds;
   for (const lane of ed.automationLanes) {
@@ -3077,6 +3086,155 @@ export function automationReleaseNative(target: AutomationTarget): void {
   );
   if (!lane || !lane.enabled || lane.points.length === 0) return;
   scheduleLaneNative(lane, currentTransportSec());
+}
+
+/** One step of a native-lane re-arm: what happens to one volume or pan param. */
+export interface NativeLaneRearmStep {
+  key: string;
+  target: AutomationTarget;
+  action: 'schedule' | 'release';
+  /** On a `schedule`, the lane to arm. On a `release`, the lane the param is
+   *  taken from, read for the value it is playing. */
+  lane?: AutomationLane;
+}
+
+/**
+ * What an edit to the automation lanes means for the native (volume / pan)
+ * params of a pass that is already playing. `prev` and `next` are the lane list
+ * before and after the edit, `holds` is the store's `automationHolds`.
+ *
+ * Only `trackVolume` and `trackPan` lanes are read. An FX lane is sampled every
+ * frame by the lookahead writer and a MIDI CC lane by the MIDI scheduler, so
+ * both follow an edit already.
+ *
+ * A lane OWNS its param when it is enabled and has at least one point, the rule
+ * `scheduleAutomation` and `automatedNativeKeys` apply. Per target:
+ *
+ *   - The same lane object on both sides is skipped. The store replaces only the
+ *     lane it edits, so every other lane keeps its identity.
+ *   - A target with a hold is skipped. A record pass is riding that param, and
+ *     `scheduleAutomation` makes the same exception.
+ *   - A lane that owns the param after the edit is a `schedule`: its envelope is
+ *     written again from the transport position.
+ *   - A lane that owned the param before and does not now (its last point
+ *     deleted, the lane disabled, the lane removed) is a `release`: the param
+ *     goes back to the fader, from the value that lane is playing.
+ *   - A lane that owns it on neither side changes nothing. The fader had the
+ *     param and keeps it.
+ *
+ * Pure, so the rule is tested without an AudioContext.
+ */
+export function nativeLaneRearmPlan(
+  prev: readonly AutomationLane[],
+  next: readonly AutomationLane[],
+  holds: Record<string, unknown>,
+): NativeLaneRearmStep[] {
+  const owns = (lane: AutomationLane): boolean => lane.enabled && lane.points.length > 0;
+  const nativeByKey = (lanes: readonly AutomationLane[]): Map<string, AutomationLane> => {
+    const byKey = new Map<string, AutomationLane>();
+    for (const lane of lanes) {
+      if (lane.target.kind !== 'trackVolume' && lane.target.kind !== 'trackPan') continue;
+      const key = automationTargetKey(lane.target);
+      // Two lanes on one target (only a damaged file has them): the last one that
+      // owns the param is the one `scheduleAutomation` leaves on it.
+      const seen = byKey.get(key);
+      if (!seen || owns(lane) || !owns(seen)) byKey.set(key, lane);
+    }
+    return byKey;
+  };
+  const before = nativeByKey(prev);
+  const after = nativeByKey(next);
+  const plan: NativeLaneRearmStep[] = [];
+  for (const [key, lane] of after) {
+    const was = before.get(key);
+    if (was === lane || holds[key]) continue;
+    if (owns(lane)) plan.push({ key, target: lane.target, action: 'schedule', lane });
+    else if (was && owns(was)) plan.push({ key, target: lane.target, action: 'release', lane: was });
+  }
+  for (const [key, was] of before) {
+    if (after.has(key) || holds[key] || !owns(was)) continue;
+    plan.push({ key, target: was.target, action: 'release', lane: was }); // the lane is gone
+  }
+  return plan;
+}
+
+/** How long an edit waits for its re-arm, and so the shortest gap between two.
+ *  A keyframe drag writes its lane on every pointer move, and each re-arm
+ *  cancels and rewrites a whole envelope. */
+const REARM_MIN_MS = 30;
+/** The lane list the live params were last armed from, kept while an edit to it
+ *  has not been applied yet. Null when the params are up to date. */
+let rearmFromLanes: readonly AutomationLane[] | null = null;
+let rearmTimer = 0; // setTimeout handle while a re-arm is waiting
+
+/**
+ * The automation lanes were edited while playing: put the edit on the live
+ * volume / pan params. `start()` writes each envelope once, so without this an
+ * edit is heard only after the next play or seek.
+ *
+ * ONE re-arm runs REARM_MIN_MS after the first edit it covers and reads the
+ * lanes as they are then. So a drag re-arms at most once per wait, its last
+ * write is always applied, and an edit made of several store writes is applied
+ * whole, never from inside the first of them.
+ *
+ * `prev` is the lane list from before the edit. The first one not yet applied
+ * is kept, so the re-arm diffs from the lanes the params are really on.
+ */
+function rearmEditedNativeLanes(prev: readonly AutomationLane[]): void {
+  if (rearmFromLanes === null) rearmFromLanes = prev;
+  if (!rearmTimer) rearmTimer = window.setTimeout(applyNativeLaneRearm, REARM_MIN_MS);
+}
+
+/** Run the waiting re-arm: plan it from the store as it is now, then write each step. */
+function applyNativeLaneRearm(): void {
+  rearmTimer = 0;
+  const from = rearmFromLanes;
+  rearmFromLanes = null;
+  if (!from || !playing) return;
+  const ed = useEditorStore.getState();
+  const fromSec = currentTransportSec();
+  for (const step of nativeLaneRearmPlan(from, ed.automationLanes, ed.automationHolds)) {
+    // The guard `scheduleAutomation` uses: a lane that cannot be written is a
+    // lane that does not play, and the other lanes still get theirs.
+    try {
+      if (step.action === 'release') releaseNativeToFader(step.target, ed.tracks, step.lane, fromSec);
+      else if (step.lane) scheduleLaneNative(step.lane, fromSec);
+    } catch (e) {
+      logError('editor', `Automation lane skipped: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
+
+/** Hand a native param back to its fader: drop what the lane had scheduled and
+ *  glide to the stored value, the write `applyMixLive` makes.
+ *
+ *  `was` is the lane the param was armed from. Its value at `fromSec` is pinned
+ *  first, the same anchor `scheduleLaneNative` writes after its cancel. A cancel
+ *  in the middle of a ramp puts the param back at the ramp's start, and without
+ *  the pin the glide would open with that step. */
+function releaseNativeToFader(
+  target: AutomationTarget,
+  tracks: readonly EditorTrack[],
+  was: AutomationLane | undefined,
+  fromSec: number,
+): void {
+  const param = nativeParamFor(target);
+  const track = tracks.find((t) => t.id === target.trackId);
+  if (!param || !track) return; // no live strip, or the track went with its lane
+  const now = getEngineCtx().currentTime;
+  const leaving = was ? sampleLane(was, fromSec) : null;
+  param.cancelScheduledValues(now);
+  if (leaving !== null) param.setValueAtTime(leaving, now);
+  param.setTargetAtTime(
+    target.kind === 'trackVolume' ? volumeOf(track) : clamp(track.pan, -1, 1), now, RAMP_TC,
+  );
+}
+
+/** Forget a re-arm that has not run. A pass that ended has nothing left to
+ *  write to, and a pass being armed takes every lane from the store. */
+function dropPendingRearm(): void {
+  if (rearmTimer) { window.clearTimeout(rearmTimer); rearmTimer = 0; }
+  rearmFromLanes = null;
 }
 
 /** One note of a MIDI clip on the transport, in seconds. */
@@ -3666,6 +3824,7 @@ function clearSources(): void {
   }
   midiEnvGains = new Map();
   stopFxAutomation();
+  dropPendingRearm(); // stop, pause, the end and a restart all end the pass here
 }
 
 function stopClock(): void {
@@ -3925,6 +4084,13 @@ async function start(fromSec: number): Promise<void> {
         if (state.automationMode === 'write') {
           useEditorStore.getState().beginAutomationPass(currentTransportSec());
         }
+      }
+      // A volume or pan lane edited mid-playback: a keyframe added, dragged or
+      // deleted, a lane bypassed or cleared, an undo. Gated on the slice
+      // reference like the others, so the 60 Hz playhead tick never reaches it.
+      // The plan then skips every lane object the edit left alone.
+      if (state.automationLanes !== prev.automationLanes) {
+        rearmEditedNativeLanes(prev.automationLanes);
       }
       // Clip mute is the one clip property applied live; every other clip edit
       // is structural and lands on the next (re)schedule.

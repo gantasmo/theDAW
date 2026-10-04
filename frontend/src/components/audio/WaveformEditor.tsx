@@ -23,6 +23,9 @@ import { MagentaToolStage } from './MagentaToolStage';
 import { TrackVstInstrument } from './TrackVstInstrument';
 import { MAGENTA_TOOLS, magentaToolById, type MagentaTool } from '../../lib/magentaToolCatalog';
 import { AutomationLane } from './AutomationLane';
+import { TrackVolumeLines } from './TrackVolumeLine';
+import { volumeBand } from '../../lib/volumeLine';
+import { addVolumeKeyframe } from '../../state/volumeKeyframes';
 import { buildAddAutomationLaneOptions } from './automationLaneOptions';
 import { RACK_EFFECTS, getRackEffect, buildEffectChain, ensureChopModule } from '../../lib/rackEffects';
 import { decodeClipBlob, releaseDecoded } from '../../lib/decodeCache';
@@ -1873,6 +1876,18 @@ const EDIT_SHORTCUTS: Array<{ group: string; keys: Array<[string, string]> }> = 
     ],
   },
   {
+    group: 'Volume line',
+    keys: [
+      ['Drag the line', 'Track volume, or the stretch between two keyframes'],
+      ['Right-click the line', 'Add a keyframe'],
+      ['Drag a keyframe', 'Move it (Shift: fine, Alt: off the grid)'],
+      ['↑ / ↓', 'Selected keyframe 0.1 dB (Shift: 1 dB)'],
+      ['← / →', 'Selected keyframe one grid step in time'],
+      ['Enter', 'Type the selected keyframe volume'],
+      ['Del', 'Delete the selected keyframe'],
+    ],
+  },
+  {
     group: 'View',
     keys: [
       ['+ / -', 'Zoom in / out'],
@@ -3112,6 +3127,8 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
   const clickProfile = useTimelinePrefs((s) => s.clickProfile);
   /** Grid style (F05): tier opacities, bar width, lane-divider alpha. */
   const gridStyle = useTimelinePrefs((s) => s.grid);
+  /** Each track's volume drawn over its lane, with its keyframes (TrackVolumeLine). */
+  const showVolumeLine = useTimelinePrefs((s) => s.showVolumeLine);
   /** Redraw key for the canvas grid: its line colour comes from the theme. */
   const editThemeId = useEditThemeStore((s) => s.themeId);
 
@@ -8274,12 +8291,18 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             {automationLanes.map((lane) => {
               const tk = lane.target.kind;
               if (tk !== 'trackVolume' && tk !== 'trackPan' && tk !== 'trackFx' && tk !== 'trackMidiCc') return null;
+              // Outside automation edit mode the volume line draws and edits a
+              // track's volume lane (TrackVolumeLines, below).
+              if (tk === 'trackVolume' && showVolumeLine && !automationEdit) return null;
               const editable = automationEdit && lane.id === activeLaneId;
               if (lane.points.length === 0 && !editable) return null;
               const trackIdx = tracks.findIndex((t) => t.id === lane.target.trackId);
               if (trackIdx < 0) return null;
               const vis = laneVisual(lane);
               if (!vis) return null;
+              // A volume lane is drawn in the band the volume line uses, so its
+              // curve sits at the same height in both modes.
+              const band = tk === 'trackVolume' ? volumeBand(trackH) : { top: 0, height: trackH };
               return (
                 /* An editable lane owns its own wheel (curve nudges); display
                    contents keeps the lane's own absolute layout. */
@@ -8288,8 +8311,8 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
                     lane={lane}
                     zoom={zoom}
                     width={timelineWidthPx}
-                    height={trackH}
-                    top={trackIdx * trackH}
+                    height={band.height}
+                    top={trackIdx * trackH + band.top}
                     color={vis.color}
                     toNorm={vis.toNorm}
                     fromNorm={vis.fromNorm}
@@ -8298,6 +8321,31 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
                 </div>
               );
             })}
+
+            {/* The volume line: each track's volume drawn over its lane. A bare
+                line is the track fader, so its drag takes the header fader's own
+                path; a keyframed one is the track's volume lane. Only the line
+                and its keyframes take the pointer. Automation edit mode draws
+                volume lanes with the lane editor above, and the cut tool leaves
+                the lines inert so a cut never moves one. */}
+            {showVolumeLine && !automationEdit && (
+              <TrackVolumeLines
+                tracks={tracks}
+                lanes={automationLanes}
+                zoom={zoom}
+                trackHeight={trackH}
+                width={timelineWidthPx}
+                fromSec={viewport.width > 0 ? viewport.scrollLeft / zoom : 0}
+                toSec={viewport.width > 0 ? (viewport.scrollLeft + viewport.width) / zoom : timelineWidthPx / zoom}
+                interactive={tool !== 'cut'}
+                snap={snapSec}
+                timeStep={nudgeStepSec}
+                onFaderChange={(trackId, v) => writeFader('trackVolume', trackId, v)}
+                onFaderGestureStart={(trackId) => armAutomation(faderTarget('trackVolume', trackId))}
+                onFaderGestureEnd={(trackId) => endAutomation(faderTarget('trackVolume', trackId))}
+                onKeyframeSelected={() => { setSelectedClipIds([]); setSelected(null); }}
+              />
+            )}
 
             {/* Master-FX automation strip (only while editing automation; master
                 lanes have no track row of their own). */}
@@ -8573,6 +8621,16 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
               setGainPanel({ clipId: payload.clipId, x: pos?.x ?? 240, y: pos?.y ?? 200 });
             },
           });
+          if (showVolumeLine) {
+            items.push({
+              type: 'item',
+              label: 'Add volume keyframe',
+              icon: <Volume2 className="w-3 h-3" />,
+              hint: `${payload.atSec.toFixed(2)}s`,
+              title: 'Add a keyframe to this track\'s volume line here.',
+              onSelect: () => { addVolumeKeyframe(clip.trackId, payload.atSec); },
+            });
+          }
         }
         // A crossfade is offered only when the selection IS one: two clips on
         // one track with something to cross over. The hint is the length, so
@@ -9218,6 +9276,21 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
           { type: 'separator' },
           ...addToTrackItems(target, addMenu.position, (entry) => !isAddSourceEntry(entry)),
         ];
+        // On a lane (not the slot below the last one): a keyframe on that
+        // track's volume line, at the time the menu opened at.
+        const volumeTrackId = target.trackId;
+        if (showVolumeLine && volumeTrackId) {
+          items.push(
+            { type: 'separator' },
+            {
+              type: 'item',
+              label: 'Add volume keyframe',
+              icon: <Volume2 className="w-3 h-3" />,
+              title: 'Add a keyframe to this track\'s volume line here.',
+              onSelect: () => { addVolumeKeyframe(volumeTrackId, target.atSec); },
+            },
+          );
+        }
         return (
           <ContextMenu
             position={addMenu.position}

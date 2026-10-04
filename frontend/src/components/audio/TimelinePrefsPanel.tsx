@@ -74,6 +74,7 @@ export function TimelinePrefsPanel(p: {
   const gridPreset = useTimelinePrefs((s) => s.gridPreset);
   const grid = useTimelinePrefs((s) => s.grid);
   const showMasterTrack = useTimelinePrefs((s) => s.showMasterTrack);
+  const showVolumeLine = useTimelinePrefs((s) => s.showVolumeLine);
   const setWheelProfile = useTimelinePrefs((s) => s.setWheelProfile);
   const setFineZoomSpeed = useTimelinePrefs((s) => s.setFineZoomSpeed);
   const setCoarseZoomSpeed = useTimelinePrefs((s) => s.setCoarseZoomSpeed);
@@ -82,6 +83,7 @@ export function TimelinePrefsPanel(p: {
   const setGrid = useTimelinePrefs((s) => s.setGrid);
   const setGridVisible = useTimelinePrefs((s) => s.setGridVisible);
   const setShowMasterTrack = useTimelinePrefs((s) => s.setShowMasterTrack);
+  const setShowVolumeLine = useTimelinePrefs((s) => s.setShowVolumeLine);
   const reset = useTimelinePrefs((s) => s.reset);
 
   // The panel portals outside the Shell's `.edit-theme-scope`, so it carries
@@ -358,6 +360,30 @@ export function TimelinePrefsPanel(p: {
           </div>
           <span className={HINT}>
             Pins the master above the tracks. It is a view of the master you already have.
+          </span>
+        </section>
+
+        {/* VOLUME LINE */}
+        <section aria-labelledby="timeline-volume-line-title" className="flex flex-col gap-2">
+          <h3 id="timeline-volume-line-title" className={SECTION_TITLE}>
+            Volume line
+          </h3>
+          <div className="flex items-center gap-2">
+            <input
+              id="timeline-show-volume-line"
+              name="timeline-show-volume-line"
+              type="checkbox"
+              checked={showVolumeLine}
+              onChange={(e) => setShowVolumeLine(e.target.checked)}
+              aria-describedby="timeline-show-volume-line-desc"
+              className="accent-[rgb(var(--et-accent))]"
+            />
+            <label htmlFor="timeline-show-volume-line" className="font-bold">
+              Show volume line
+            </label>
+          </div>
+          <span id="timeline-show-volume-line-desc" className={HINT}>
+            Draws each track's volume over its lane. Drag it to set the level. Right-click it to add a keyframe.
           </span>
         </section>
 

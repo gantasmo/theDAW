@@ -541,6 +541,8 @@ Live MIDI is opt-in: it activates only when the soundfont is in use, or a per-cl
 
 An automation lane draws one parameter's value curve over a timeline row (`AutomationLane`). Each lane targets a single automatable parameter, so track volume, track pan, and an insert-FX parameter each get their own lane and are edited on their own. Read-only lanes render the curve without accepting pointer input, so clip editing underneath stays unaffected.
 
+Track volume also has a line of its own on every track row. Drag the line to set the level. Right-click it to add a keyframe, drag a keyframe to move it, and select one to nudge it with the arrow keys or type its level in dB. See the volume line section of the automation guide.
+
 An editable lane accepts breakpoint edits directly on the curve. Click an empty area of the curve to add a breakpoint at that time and value. Drag a point to move it; a dragged point is clamped between its neighbors so points never cross in time. Right-click a point, or Alt-click it, to delete it. Pointer math uses bounding-rectangle ratios, so edits stay accurate under the shell's CSS zoom.
 
 **WRITE record mode** captures automation from live moves. With WRITE armed, moving a target parameter during transport writes breakpoints into that parameter's lane, timestamped against the editor transport clock rather than wall time, so a recorded move lines up with the audio on the next pass. Recorded lanes then edit as ordinary breakpoint curves, and they bake into COMMIT EDIT through the same offline graph as the rest of the mix (§7.6).

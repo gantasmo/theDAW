@@ -15,8 +15,9 @@ lane.
 
 Four kinds of parameter can carry a lane.
 
-- Track volume draws a green curve over the track row. Its values run from zero
-  at the bottom upward.
+- Track volume draws a green curve over the track row, inside the band the
+  volume line uses. Its values run from zero at the bottom of the band to unity
+  at the top.
 - Track pan draws a blue curve over the track row. Its values run from full left
   to full right.
 - Each parameter of a per-track rack effect draws an amber curve, scaled to that
@@ -27,6 +28,43 @@ Four kinds of parameter can carry a lane.
 An OWL-Pad drag moves two parameters at once (x and y), so it records into two
 lanes together. Any effect control that changes more than one parameter in a
 single move records each changed key into its own lane.
+
+## The volume line
+
+Every track row draws its volume as a green line across the lane, below the clip
+title strip. The top of its band is unity (0 dB) and the bottom is silence.
+
+A track with no volume keyframes shows a flat line at the fader's value. Drag
+the line up or down to move the fader.
+
+Right-click the line, or double-click it, to add a keyframe at that time. The
+keyframe takes the line's value at that point, so the level does not jump. From
+the first keyframe on, the line is the track's volume lane and the header fader
+shows an A.
+
+- Drag a keyframe to move it in time and level. It stays between its two
+  neighbours. Time snaps to the grid, and Alt places it freely. Shift makes the
+  drag fine.
+- Drag the line between two keyframes to raise or lower both together.
+- Click a keyframe to select it. Its level shows beside it in dB.
+- With a keyframe selected, Up and Down change it by 0.1 dB, or by 1 dB with
+  Shift. Left and Right move it one grid step.
+- Press Enter, double-click the keyframe, or click its dB readout to type a
+  level. `-inf` silences it.
+- Delete removes the selected keyframe. Alt-click removes a keyframe directly.
+- Right-click a keyframe for Set volume, Unity, Delete, Bypass and Clear.
+
+The clip menu and the timeline's add menu both carry Add volume keyframe, which
+places one at the pointer's time on that track.
+
+A change made while the transport rolls is heard at once. Escape during a drag
+puts the line back. Each drag is one undo step.
+
+Bypass keeps the keyframes and hands the level back to the fader, and the line
+then draws dashed. Clear removes every keyframe on the track.
+
+The cut tool leaves the line alone, so a cut never moves it. Timeline
+preferences has Show volume line to hide the lines.
 
 ## Record a lane with WRITE
 
@@ -71,6 +109,10 @@ row. Volume reads green, pan reads blue, and effect parameters read amber.
 Read-only lanes draw with a thinner, fainter line and pass pointer events
 through to the clips beneath them. Master effect lanes appear only while edit
 mode is on, inside the Master FX strip under the last track.
+
+While edit mode is off, a track's volume lane is drawn and edited by the volume
+line. While edit mode is on, the volume lines are hidden and the lane editor
+draws volume lanes in the same band.
 
 During playback with edit mode off and one or more enabled lanes, the on-screen
 controls follow the recorded values for display, while the audio follows the

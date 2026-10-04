@@ -74,6 +74,8 @@ export interface TimelinePrefsState {
   grid: GridStyle;
   /** Pinned master row visibility (view-only pref). */
   showMasterTrack: boolean;
+  /** Volume line drawn over each track lane (view-only pref). */
+  showVolumeLine: boolean;
   setWheelProfile(id: WheelProfileId): void;
   setFineZoomSpeed(v: number): void;
   setCoarseZoomSpeed(v: number): void;
@@ -85,6 +87,7 @@ export interface TimelinePrefsState {
   setGrid(patch: Partial<GridStyle>): void;
   setGridVisible(v: boolean): void;
   setShowMasterTrack(v: boolean): void;
+  setShowVolumeLine(v: boolean): void;
   /** Every field back to its default. */
   reset(): void;
 }
@@ -92,6 +95,7 @@ export interface TimelinePrefsState {
 type PrefsData = Pick<
   TimelinePrefsState,
   'wheelProfile' | 'fineZoomSpeed' | 'coarseZoomSpeed' | 'clickProfile' | 'gridPreset' | 'grid' | 'showMasterTrack'
+  | 'showVolumeLine'
 >;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -116,6 +120,7 @@ function defaultData(): PrefsData {
     gridPreset: DEFAULT_GRID_PRESET,
     grid: { visible: true, ...GRID_PRESETS.normal },
     showMasterTrack: true,
+    showVolumeLine: true,
   };
 }
 
@@ -154,6 +159,7 @@ export function sanitizeTimelinePrefs<S extends PrefsData>(persisted: unknown, c
     gridPreset: oneOf(ALL_PRESETS, p.gridPreset) ? p.gridPreset : d.gridPreset,
     grid: patchGrid(d.grid, isRecord(p.grid) ? p.grid : {}),
     showMasterTrack: typeof p.showMasterTrack === 'boolean' ? p.showMasterTrack : d.showMasterTrack,
+    showVolumeLine: typeof p.showVolumeLine === 'boolean' ? p.showVolumeLine : d.showVolumeLine,
   };
 }
 
@@ -191,6 +197,9 @@ export const useTimelinePrefs = create<TimelinePrefsState>()(
       setShowMasterTrack: (v) => {
         if (typeof v === 'boolean') set({ showMasterTrack: v });
       },
+      setShowVolumeLine: (v) => {
+        if (typeof v === 'boolean') set({ showVolumeLine: v });
+      },
       reset: () => set(defaultData()),
     }),
     {
@@ -205,6 +214,7 @@ export const useTimelinePrefs = create<TimelinePrefsState>()(
         gridPreset: s.gridPreset,
         grid: s.grid,
         showMasterTrack: s.showMasterTrack,
+        showVolumeLine: s.showVolumeLine,
       }),
       merge: (persisted, current) => sanitizeTimelinePrefs(persisted, current),
       migrate: (persisted) => sanitizeTimelinePrefs(persisted, defaultData()),
