@@ -1218,18 +1218,39 @@ const isGridClip = (c: Pick<TasmoLoadedClip, 'scene_index' | 'slot_index'>): boo
  * A PERFORM track's inserts in the file shape.
  *
  * A track opened from a .tasmo writes the file's own chain: PERFORM builds one
- * device per insert (lib/tasmoToSession) and changes none of them, and mapping
+ * device per insert (lib/tasmoToSession) and edits none of them, and mapping
  * them back through dawDeviceToEffectNode would match an insert's name against
  * the rack, turning an effect an older import stored under a studio catalog id
  * ("compression", "reverb_delay") into the rack effect it resembles, enabled.
- * A DAW import's devices, and a chain whose length no longer matches the
- * file's, are mapped (VST3 -> real, creative FX -> rack, EQ/comp/reverb ->
- * preserved), in order.
+ * A DAW import's devices, the devices PERFORM put after the file's own, and a
+ * chain shorter than the file's, are mapped (VST3 -> real, creative FX ->
+ * rack, EQ/comp/reverb -> preserved), in order.
  */
 function trackInsertsToTasmo(t: DawProject['tracks'][number]): EffectChainNode[] {
   const devices = t.devices ?? [];
   const own = t.tasmo?.effect_chain;
-  if (own && own.length === devices.length) return own;
+  // PERFORM changes a chain in two ways, and both keep the file's inserts in
+  // place: a slot is bypassed (the device's own flag), and an effect or a
+  // plugin is put on the END of the list. So the file's nodes are written as
+  // they were, each with its device's bypass, and only the devices past them
+  // are mapped.
+  if (own && own.length <= devices.length) {
+    const kept = own.map((n, i) => {
+      const d = devices[i];
+      let node = !!n.bypass === !!d.bypass ? n : { ...n, bypass: !!d.bypass };
+      // A plugin whose window was opened in PERFORM holds a newer state than
+      // the file's node (state/performVstState keeps it on the device).
+      if (node.vst_state && d.raw_state && d.raw_state !== node.vst_state.raw_state) {
+        node = {
+          ...node,
+          vst_state: { ...node.vst_state, raw_state: d.raw_state, ...(d.state_host ? { state_host: d.state_host } : {}) },
+        };
+      }
+      return node;
+    });
+    if (own.length === devices.length) return kept.every((n, i) => n === own[i]) ? own : kept;
+    return [...kept, ...devices.slice(own.length).map(dawDeviceToEffectNode)];
+  }
   return devices.map(dawDeviceToEffectNode);
 }
 

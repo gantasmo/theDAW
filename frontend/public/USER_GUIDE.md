@@ -2487,7 +2487,9 @@ A `.tasmo` path opens directly in the grid. Any other project path goes through 
 
 Once a project loads, the grid (`DawSessionGrid`) fills the workspace with the project's scenes and clips laid out for launching. The header shows the project name and tempo, the scene count, and the track count. Columns are tracks and rows are scenes: launching a row stops what is playing and fires that whole row, while clicking a single cell layers it over what is already running, so a bassline can hold while the drums change. A launch-quantize control delays launches to the next bar boundary.
 
-Each column also carries a **live effect chain** built from the project's saved devices, so an imported or authored set arrives with its filters, delays and creative FX already running, and metering is post-FX. Built-in effects are audible live; VST3 plugins stay listed but silent until the track is frozen or rendered.
+Each column also carries a **live effect chain** built from the project's saved devices, so an imported or authored set arrives with its filters, delays and creative FX already running, and metering is post-FX. Built-in effects play live, and VST3 plugins play live in theDAW's plugin host.
+
+The rail's **Params** tab lists every track. Each track's add menu holds the whole rack catalog and every scanned VST3 plugin; a pick goes on the end of that track's chain, the column plays it at once, and its slot opens: a rack effect shows its controls, a plugin shows its own parameter list. Each slot has a bypass dot. **Window** opens a plugin's own window, sized to the plugin; what is set there is kept on the slot. Save writes the added devices after the file's own, each slot's bypass, and each plugin's state.
 
 ### 35.3 Routing panel — the SwayCommand deck
 
@@ -2495,7 +2497,7 @@ A **Routing** toggle in the header opens the routing panel (`PerformRoutingPanel
 
 The factory map is knobs on CC 20–27, the XY pad on CC 50 (X) and CC 38 (Y), the pulse/press/sway gestures on CC 35/36/37, and the sixteen pads on notes 24–39. Buttons have no factory code and are bound by learn: arm a transport function, then press the button.
 
-A control can drive a track's **volume** or **mute**, or any **parameter of any effect** in that track's live chain, with its own value range — an inverted range is how a filter that closes as you turn up is authored. Pads launch scenes, and can also **punch effects**: bound to an effect parameter, a pad pushes it while held and releases it on lift, or latches it on alternate presses. The shipped templates put scenes on pads 1–8 and punches on pads 9–16.
+A control can drive a track's **volume** or **mute**, or any **parameter of any effect** in that track's live chain (a hosted plugin's parameters included; the deck's FX picker carries the same add menu for a track that holds nothing), with its own value range — an inverted range is how a filter that closes as you turn up is authored. Pads launch scenes, and can also **punch effects**: bound to an effect parameter, a pad pushes it while held and releases it on lift, or latches it on alternate presses. The shipped templates put scenes on pads 1–8 and punches on pads 9–16.
 
 All of it is captured into the project when it is saved as `.tasmo` and restored on open. Full walkthrough: [guides/sway-perform-live.md](guides/sway-perform-live.md).
 

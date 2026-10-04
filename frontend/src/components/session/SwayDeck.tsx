@@ -7,7 +7,10 @@
  *   pads      -> launch a scene (bound by the pad's chromatic note)
  *   knobs / XY / gestures -> a track's volume or mute, or ANY parameter of the
  *                            track's live FX chain (the same chain the grid
- *                            plays through), on the factory CC for that control
+ *                            plays through: rack effects and hosted VST3
+ *                            plugins), on the factory CC for that control. The
+ *                            FX picker also takes any rack effect or scanned
+ *                            plugin onto the track, so no track is without one.
  *   buttons   -> a transport function, bound by learn (press the real button)
  *
  * Live values animate the schematic exactly as the cockpit draws them: knob
@@ -16,9 +19,18 @@
 import React from 'react';
 import { X, Zap } from 'lucide-react';
 import type { DawProject } from '../../lib/dawImportClient';
-import { performScenes, performTracks } from '../../lib/performModel';
-import { dawDeviceToEffectNode } from '../../lib/dawEffectMap';
-import { getRackEffect } from '../../lib/rackEffects';
+import {
+  performFxParamOptions,
+  performScenes,
+  performSlots,
+  performTracks,
+  type PerformFxParamOption,
+} from '../../lib/performModel';
+import { vstSessions } from '../../lib/vstLive/sessionRegistry';
+import { usePerformRailStore, syncPerformTrackChain } from '../../state/performRailStore';
+import { useVstLiveStore } from '../../state/vstLiveStore';
+import { useVstParamStore } from '../../state/vstParamStore';
+import { PerformSlotAdd } from './PerformSlotAdd';
 import {
   usePerformRoutingStore,
   performCtrlLabel,
@@ -40,56 +52,8 @@ const ctlLabel = (ctl: string): string => {
   return ctl.replace('gesture:', '').toUpperCase();
 };
 
-interface FxParamOption {
-  deviceIndex: number;
-  deviceLabel: string;
-  effect: string;
-  paramKey: string;
-  min: number;
-  max: number;
-}
-
-/** The routable FX params of one track, indexed EXACTLY like the Perform
- *  grid's chain entries (flattened non-instrument, non-rack devices; plugin
- *  entries exist in the index but are not routable).
- *
- *  THE PLUGIN EXCLUSION STAYS, and not for the reason it was written. "A VST3
- *  cannot run in the live graph" is no longer true — the Perform grid hosts
- *  one per entry now. What is still true is that a controller route needs a
- *  NAMED, BOUNDED parameter: `min`, `max` and a stable key, so a knob can be
- *  scaled onto it and a saved binding can find it again. A VST3 plugin has
- *  none of that here — its parameters are opaque indices whose names and
- *  ranges only exist inside a RUNNING host, and this function is pure over a
- *  parsed project file, evaluated before any host is spawned. Routing one
- *  would mean binding hardware to `p17` of a plugin nobody has loaded yet.
- *  (Routing live plugin parameters needs the host's `params` list and is a
- *  feature of its own, not a filter to delete.) */
-function fxParamsForTrack(project: DawProject, trackIndex: number): FxParamOption[] {
-  const track = performTracks(project)[trackIndex];
-  if (!track) return [];
-  const out: FxParamOption[] = [];
-  const devices = (track.devices ?? []).filter((d) => !d.is_instrument && !d.is_rack);
-  devices.forEach((d, i) => {
-    const node = dawDeviceToEffectNode(d);
-    // Belt and braces: for a plugin, `effect_name` is the DEVICE's name, so the
-    // rack lookup below is what actually excludes it. Both are kept — see the
-    // doc comment for why a plugin has nothing routable to offer here.
-    if (node.effect_name === 'vst3') return;
-    const def = getRackEffect(node.effect_name);
-    if (!def) return;
-    for (const p of def.params) {
-      out.push({
-        deviceIndex: i,
-        deviceLabel: d.name || def.label,
-        effect: node.effect_name,
-        paramKey: p.key,
-        min: p.min,
-        max: p.max,
-      });
-    }
-  });
-  return out;
-}
+/** One FX parameter option's identity in the picker. */
+const fxKey = (f: PerformFxParamOption): string => `${f.deviceIndex}:${f.paramKey}`;
 
 export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
@@ -181,11 +145,57 @@ export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
 
   const [pickTrack, setPickTrack] = React.useState(0);
   const [pickKind, setPickKind] = React.useState<'volume' | 'mute' | 'fx'>('volume');
-  const [pickFx, setPickFx] = React.useState(0);
-  const fxOptions = React.useMemo(
-    () => fxParamsForTrack(project, pickTrack),
-    [project, pickTrack],
-  );
+  /** The picked FX parameter, as `<deviceIndex>:<paramKey>`: a plugin lists
+   *  its parameters when its host answers, so a position in the list moves. */
+  const [pickFx, setPickFx] = React.useState('');
+  const devicesVersion = usePerformRailStore((st) => st.devicesVersion);
+  /** The hosted plugins on the picked track, by chain entry id. */
+  const vstIds = React.useMemo(() => {
+    // A device list lives on its track object; the version is what says it changed.
+    void devicesVersion;
+    const track = tracks[pickTrack];
+    return track ? performSlots(track, pickTrack).filter((x) => x.kind === 'vst').map((x) => x.entry.id) : [];
+  }, [tracks, pickTrack, devicesVersion]);
+  // One word per plugin for where it is, and how many parameters it has
+  // listed: strings, so a parameter VALUE moving re-renders nothing here.
+  const vstStatusKey = useVstLiveStore((st) => vstIds.map((id) => st.entries[id]?.status ?? 'off').join('|'));
+  const vstListKey = useVstParamStore((st) => vstIds.map((id) => st.lists[id]?.length ?? 0).join('|'));
+  const fxOptions = React.useMemo(() => {
+    void devicesVersion;
+    void vstListKey;
+    const track = tracks[pickTrack];
+    return track ? performFxParamOptions(track, pickTrack, useVstParamStore.getState().lists) : [];
+  }, [tracks, pickTrack, devicesVersion, vstListKey]);
+  const pickedFx = fxOptions.find((f) => fxKey(f) === pickFx) ?? fxOptions[0];
+
+  // A plugin's parameters exist only while its host runs. The column's chain
+  // is built on its first launch, so the FX picker builds it when a track with
+  // a plugin is picked, then asks each running plugin for its list once.
+  const vstIdsKey = vstIds.join('|');
+  const wantsFx = cc != null && pickKind === 'fx';
+  React.useEffect(() => {
+    if (wantsFx && vstIdsKey) syncPerformTrackChain(pickTrack);
+  }, [wantsFx, vstIdsKey, pickTrack]);
+  React.useEffect(() => {
+    if (!wantsFx) return;
+    const statuses = vstStatusKey.split('|');
+    const listed = vstListKey.split('|');
+    vstIdsKey.split('|').forEach((id, i) => {
+      if (!id || statuses[i] !== 'live' || listed[i] !== '0') return;
+      (vstSessions.get(id)?.client as { getParams?: () => void } | undefined)?.getParams?.();
+    });
+  }, [wantsFx, vstIdsKey, vstStatusKey, vstListKey]);
+
+  // An effect put on the track from here: the picker moves to its first
+  // parameter as soon as it has one (a plugin lists its own once it runs).
+  const [wantDevice, setWantDevice] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (wantDevice == null) return;
+    const first = fxOptions.find((f) => f.deviceIndex === wantDevice);
+    if (!first) return;
+    setPickFx(fxKey(first));
+    setWantDevice(null);
+  }, [wantDevice, fxOptions]);
 
   const addRoute = () => {
     if (cc == null) return;
@@ -193,7 +203,7 @@ export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
     const base = { channel: -1, number: cc, isNote: false, trackIndex: pickTrack };
     let mod: CcMod;
     if (pickKind === 'fx') {
-      const fx = fxOptions[pickFx];
+      const fx = pickedFx;
       if (!fx) return;
       mod = {
         ...base,
@@ -203,7 +213,7 @@ export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
         paramKey: fx.paramKey,
         min: fx.min,
         max: fx.max,
-        label: `${trackName} · ${fx.deviceLabel} · ${fx.paramKey}`,
+        label: `${trackName} · ${fx.deviceLabel} · ${fx.paramLabel}`,
       };
     } else {
       mod = {
@@ -331,8 +341,8 @@ export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
                     id="deck-route-track"
                     name="deck-route-track"
                     value={pickTrack}
-                    onChange={(e) => { setPickTrack(Number(e.target.value)); setPickFx(0); }}
-                    className="bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[9px] text-zinc-200 outline-none focus:border-cyan-500/50"
+                    onChange={(e) => { setPickTrack(Number(e.target.value)); setPickFx(''); setWantDevice(null); }}
+                    className="bg-black/60 border border-white/10 rounded px-1 py-0.5 font-sans text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500/50"
                   >
                     {tracks.map((t, i) => (
                       <option key={`${t.name}-${i}`} value={i}>{String(i + 1).padStart(2, '0')} {t.name}</option>
@@ -371,20 +381,31 @@ export const SwayDeck: React.FC<{ project: DawProject }> = ({ project }) => {
                       <select
                         id="deck-route-fx"
                         name="deck-route-fx"
-                        value={pickFx}
-                        onChange={(e) => setPickFx(Number(e.target.value))}
-                        className="bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[9px] text-zinc-200 outline-none focus:border-cyan-500/50"
+                        value={pickedFx ? fxKey(pickedFx) : ''}
+                        onChange={(e) => setPickFx(e.target.value)}
+                        className="bg-black/60 border border-white/10 rounded px-1 py-0.5 font-sans text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500/50"
                       >
                         {fxOptions.length === 0 ? (
-                          <option value={0}>no live FX on this track</option>
+                          <option value="">
+                            {vstIds.length === 0
+                              ? 'Add an effect below'
+                              : /live|starting/.test(vstStatusKey)
+                                ? 'Reading plugin parameters…'
+                                : 'Plugin is not running'}
+                          </option>
                         ) : (
-                          fxOptions.map((f, i) => (
-                            <option key={`${f.deviceIndex}-${f.paramKey}`} value={i}>
-                              {f.deviceLabel} · {f.paramKey}
+                          fxOptions.map((f) => (
+                            <option key={fxKey(f)} value={fxKey(f)}>
+                              {f.deviceLabel} · {f.paramLabel}
                             </option>
                           ))
                         )}
                       </select>
+                      {/* Any rack effect or scanned plugin goes onto the picked
+                          track from here; its parameters join the list above. */}
+                      {tracks[pickTrack] && (
+                        <PerformSlotAdd trackIndex={pickTrack} track={tracks[pickTrack]} onPlaced={setWantDevice} />
+                      )}
                     </>
                   )}
                 </div>

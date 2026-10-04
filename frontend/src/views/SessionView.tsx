@@ -11,6 +11,7 @@ import { PathInput } from '../components/ui/PathInput';
 import { DawSessionGrid } from '../components/session/DawSessionGrid';
 import { PerformRoutingPanel } from '../components/session/PerformRoutingPanel';
 import { PerformRail } from '../components/session/PerformRail';
+import { PerformVstWindow } from '../components/session/PerformVstWindow';
 import { usePerformRailStore } from '../state/performRailStore';
 import { InfiNightCredit } from '../components/ui/Credit';
 import { importDawProjectToEditor } from '../lib/dawProjectToEditor';
@@ -358,6 +359,9 @@ export const SessionView: React.FC = () => {
             and live effect parameters. Collapsible, expandable, resizable. */}
         {project && <PerformRail project={project} />}
       </div>
+
+      {/* The window a track's hosted plugin opens its own editor in. */}
+      <PerformVstWindow />
 
     </div>
   );

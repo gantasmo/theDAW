@@ -167,6 +167,8 @@ in PERFORM depends on the node kind:
 
 A VST3 node on a column runs in theDAW's live VST host, the same host that plays VST3 inserts on the EDIT timeline. The plugin follows the grid as its transport. The first clip that starts while the grid is stopped starts the transport at the grid's beat and tempo, a tempo change while the grid plays reaches the plugin, and Stop, or leaving PERFORM, stops it. A plugin whose host opens after the grid started is told where the grid has got to, so a tempo-synced delay or gate lands on the grid's beat. A plugin that cannot open passes the column's audio through. A plugin from a set imported from another DAW opens at its defaults, since neither host reads another DAW's preset data.
 
+Any column can take more. The rail's **Params** tab lists every track with an add menu holding the whole rack catalog and every scanned VST3 plugin; a pick goes on the end of the track's chain and the column plays it at once. A rack effect's slot shows its controls, a plugin's slot shows the plugin's own parameter list, and each slot has a bypass dot. **Window** opens the plugin's own window, sized to the plugin, and what is set there is kept on the slot. The deck's FX picker reads the same chain, so a knob, an XY axis or a gesture can drive a plugin's parameter as well as a rack effect's. Save writes the added devices after the file's own inserts, each slot's bypass, and each plugin's state.
+
 Three built-ins are backed by AudioWorklets — **Chop**, the **Ares** grain stage,
 and the **Kargyraa Sub** octave divider. PERFORM preloads all three when the grid
 mounts, so a set using them is at full strength on first launch.

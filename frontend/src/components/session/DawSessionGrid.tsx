@@ -27,7 +27,7 @@ import { subscribeToMidi } from '../../state/midiBus';
 import { subscribeSwayValue } from '../../state/swayBus';
 import { enableMidi } from '../../state/midiTriggerStore';
 import { usePerformRoutingStore, ctrlMatches } from '../../state/performRouting';
-import { registerPerformChainPush } from '../../state/performRailStore';
+import { registerPerformChainPush, registerPerformChainSync } from '../../state/performRailStore';
 import { logError } from '../../state/logStore';
 import { ccModFxRoute } from './ccModFxRouteModel';
 import { pushLiveParam } from '../../lib/vstLive/liveParamSink';
@@ -667,6 +667,20 @@ export const DawSessionGrid: React.FC<DawSessionGridProps> = ({ project, fill = 
 
   React.useEffect(() => disposeTrackChains, [disposeTrackChains]);
 
+  /** The values moved on a running chain entry (a rail control, a controller
+   *  route), by entry id. A re-wire hands every kept instance its entry's
+   *  params again, so without these an effect put in a slot would send every
+   *  other effect on the column back to the values the set was loaded with. */
+  const liveParamsRef = React.useRef<Map<string, Record<string, number>>>(new Map());
+
+  const pushEntryParams = React.useCallback(
+    (handle: ChainHandle | null, entryId: string, params: Record<string, number>) => {
+      liveParamsRef.current.set(entryId, { ...liveParamsRef.current.get(entryId), ...params });
+      handle?.updateParams(entryId, params);
+    },
+    [],
+  );
+
   // The right rail's PARAMS tab edits device params through this bridge —
   // same entry ids the CC routes drive, same lazily-built live chains.
   React.useEffect(() => {
@@ -674,9 +688,40 @@ export const DawSessionGrid: React.FC<DawSessionGridProps> = ({ project, fill = 
       const track = tracksRef.current[trackIndex];
       if (!track) return;
       const chain = ensureTrackChain(trackIndex, track);
-      chain.handle?.updateParams(`perform-${trackIndex}-${deviceIndex}`, params);
+      pushEntryParams(chain.handle, `perform-${trackIndex}-${deviceIndex}`, params);
     });
     return () => registerPerformChainPush(null);
+  }, [ensureTrackChain, pushEntryParams]);
+
+  // A slot filled or bypassed from the rail: the column's chain is re-wired to
+  // the track's device list as it now stands. Entry ids are positions, and a
+  // picked device goes on the end, so every instance already running is kept.
+  React.useEffect(() => {
+    registerPerformChainSync((trackIndex) => {
+      const track = tracksRef.current[trackIndex];
+      if (!track) return;
+      const chain = ensureTrackChain(trackIndex, track);
+      const entries = performChainEntries(track, trackIndex).map((e) => {
+        const moved = liveParamsRef.current.get(e.id);
+        return moved ? { ...e, params: { ...e.params, ...moved } } : e;
+      });
+      try {
+        if (chain.handle) {
+          chain.handle.rebuild(entries);
+        } else {
+          // The first build failed and left a straight wire; build again from
+          // the list as it is now.
+          try { chain.input.disconnect(); } catch { /* nothing wired */ }
+          chain.handle = buildEffectChain(getEngineCtx(), chain.input, chain.output, entries);
+        }
+      } catch (e) {
+        logError('perform', `Track FX chain failed for "${track.name}": ${e instanceof Error ? e.message : String(e)}`);
+        if (!chain.handle) {
+          try { chain.input.connect(chain.output); } catch { /* already wired */ }
+        }
+      }
+    });
+    return () => registerPerformChainSync(null);
   }, [ensureTrackChain]);
 
   /** Stopping the transport is the one unquantized command: it clears every
@@ -1255,11 +1300,11 @@ export const DawSessionGrid: React.FC<DawSessionGridProps> = ({ project, fill = 
         // The plugin gets the value at about 60 Hz; the store gets ONE write
         // at gesture end, so undo has one step per knob sweep either way.
         if (
-          pushLiveParam(entryId, paramKey, normalized, (v) => chain.handle?.updateParams(entryId, { [paramKey]: v }))
+          pushLiveParam(entryId, paramKey, normalized, (v) => pushEntryParams(chain.handle, entryId, { [paramKey]: v }))
         ) {
           return;
         }
-        chain.handle?.updateParams(entryId, { [paramKey]: scaled });
+        pushEntryParams(chain.handle, entryId, { [paramKey]: scaled });
         return;
       }
       const cur = mixRef.current.get(cm.trackIndex) ?? { vol: 1, mute: false };
@@ -1268,7 +1313,7 @@ export const DawSessionGrid: React.FC<DawSessionGridProps> = ({ project, fill = 
       mixRef.current.set(cm.trackIndex, cur);
       applyMixToTrack(cm.trackIndex);
     };
-  }, [applyMixToTrack, ensureTrackChain]);
+  }, [applyMixToTrack, ensureTrackChain, pushEntryParams]);
 
   React.useEffect(() => {
     const unsub = subscribeSwayValue((dim, value) => {

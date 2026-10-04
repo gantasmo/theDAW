@@ -5,66 +5,37 @@
  *   chip wall above the grid. Now a searchable, grouped, scrollable list of
  *   compact rows (label + source + remove) that costs the grid no height.
  *
- *   PARAMS — the selected effect's parameters. Pick any track device; its
- *   rack descriptors render as tendril controls whose edits push straight
- *   into the grid's RUNNING chain instance (same entry ids the CC routes
- *   drive), so tweaks are audible live. A hosted VST3 device PROCESSES live
- *   (the grid spawns a host process for it) but has no parameters to offer
- *   here — see `railDevices`.
+ *   PARAMS — every track's effect slots. Each track lists its devices and
+ *   takes any rack effect or scanned VST3 plugin through the add area EDIT's
+ *   racks use. Pick a device: a rack effect's descriptors render as tendril
+ *   controls, a hosted plugin's own parameters render as its running host
+ *   lists them, and edits push straight into the grid's RUNNING chain
+ *   instance (same entry ids the CC routes drive), so tweaks are audible live.
  */
 import React, { useMemo, useState } from 'react';
-import { ChevronsRight, Search, X } from 'lucide-react';
+import { AppWindow, ChevronsRight, Search, X } from 'lucide-react';
 import type { DawProject, DawTrack } from '../../lib/dawImportClient';
-import { performTracks } from '../../lib/performModel';
-import { dawDeviceToEffectNode, isHostedPluginDevice } from '../../lib/dawEffectMap';
+import { performSlots, performTracks, type PerformSlot } from '../../lib/performModel';
 import { getRackEffect, rackEffectDefaults } from '../../lib/rackEffects';
 import { effectiveZoom } from '../../lib/canvasScale';
 import { usePerformRoutingStore } from '../../state/performRouting';
-import { usePerformRailStore, pushPerformDeviceParams } from '../../state/performRailStore';
+import { usePerformRailStore, pushPerformDeviceParams, syncPerformTrackChain } from '../../state/performRailStore';
 import { SWAY_DIMS, type SwayDim } from '../../state/swayBus';
 import { TendrilParam } from '../nodefi/NodefiControls';
+import { PerformSlotAdd } from './PerformSlotAdd';
+import { VstLiveRowBadge } from '../audio/VstLiveRowBadge';
+import { VstParamPanel } from '../audio/VstParamPanel';
+import { useVstEditorStore } from '../../state/vstEditorStore';
+import { keepPerformVstState } from '../../state/performVstState';
 
 const PERFORM_ACCENT = '#34d399';
 
-interface RailDevice {
-  deviceIndex: number;
-  name: string;
-  effect: string;
-  params: Record<string, number>;
-  /** This rail can edit the device: it resolved to a rack effect, so there are
-   *  descriptors (key/min/max/step) to build tendril controls from. */
-  live: boolean;
-  /** A re-hostable plugin. It IS in the live graph — the Perform grid spawns a
-   *  native host for it — but its parameters are opaque indices the plugin only
-   *  reports at runtime, so they belong to its own GUI, not to this rail. */
-  hosted: boolean;
-}
-
-/** The grid's device indexing: instruments/racks filtered out, order kept. */
-function railDevices(track: DawTrack): RailDevice[] {
-  return (track.devices ?? [])
-    .filter((d) => !d.is_instrument && !d.is_rack)
-    .map((d, i) => {
-      const node = dawDeviceToEffectNode(d);
-      return {
-        deviceIndex: i,
-        name: d.name || node.effect_name,
-        effect: node.effect_name,
-        params: (node.parameters ?? {}) as Record<string, number>,
-        // The `vst3` exclusion that used to sit here is KEPT, but for its real
-        // reason, not the one it was written for. It was "VST3 cannot run in
-        // the live graph", which is no longer true. What IS still true is that
-        // a VST3 plugin exposes no static parameter catalog: its parameters are
-        // indices discovered from the running host, with no key/min/max/step to
-        // render a tendril from — and this rail is built from a parsed project
-        // before any host exists. (The check also never fired: for a plugin
-        // `effect_name` is the DEVICE's name, so the rack lookup beside it is
-        // what excluded it.)
-        live: !!getRackEffect(node.effect_name),
-        hosted: isHostedPluginDevice(d),
-      };
-    });
-}
+/** The rail's edits are single pushes into the running chain; there is no
+ *  undo step to bracket, so a plugin panel's gesture marks do nothing here. */
+const NO_GESTURE = (): void => {};
+/** What a plugin's own window hands back when it runs as a separate copy (no
+ *  live host): kept on the slot's device, like a live host's capture. */
+const KEEP_WINDOW_STATE = (entryId: string, rawState: string): void => keepPerformVstState(entryId, rawState, 'pedalboard');
 
 function RoutesTab({ tracks }: { tracks: DawTrack[] }): React.ReactElement {
   const ccMods = usePerformRoutingStore((s) => s.ccMods);
@@ -168,88 +139,122 @@ function ParamsTab({ tracks }: { tracks: DawTrack[] }): React.ReactElement {
   const selTrack = usePerformRailStore((s) => s.selTrack);
   const selDevice = usePerformRailStore((s) => s.selDevice);
   const select = usePerformRailStore((s) => s.select);
-
-  const perTrack = useMemo(
-    () => tracks.map((t, ti) => ({ track: t, trackIndex: ti, devices: railDevices(t) })),
-    [tracks],
-  );
+  const devicesVersion = usePerformRailStore((s) => s.devicesVersion);
+  const bumpDevices = usePerformRailStore((s) => s.bumpDevices);
+  const perTrack = useMemo(() => {
+    // A device list lives on its track object; the version is what says it changed.
+    void devicesVersion;
+    return tracks.map((t, ti) => ({ track: t, trackIndex: ti, slots: performSlots(t, ti) }));
+  }, [tracks, devicesVersion]);
   const selected = useMemo(() => {
     if (selTrack === null || selDevice === null) return null;
-    const d = perTrack[selTrack]?.devices.find((x) => x.deviceIndex === selDevice) ?? null;
-    return d ? { trackIndex: selTrack, device: d } : null;
+    const slot = perTrack[selTrack]?.slots.find((x) => x.deviceIndex === selDevice) ?? null;
+    return slot ? { trackIndex: selTrack, slot } : null;
   }, [perTrack, selTrack, selDevice]);
 
   // Values start from the device's authored params over the effect defaults;
   // edits go straight into the running chain (which keeps sticky state).
   const [values, setValues] = useState<Record<string, number>>({});
-  const selKey = selected ? `${selected.trackIndex}-${selected.device.deviceIndex}` : '';
+  const selKey = selected ? `${selected.trackIndex}-${selected.slot.deviceIndex}` : '';
   const lastKeyRef = React.useRef('');
   if (selKey !== lastKeyRef.current) {
     lastKeyRef.current = selKey;
-    setValues(selected ? { ...rackEffectDefaults(selected.device.effect), ...selected.device.params } : {});
+    setValues(selected ? { ...rackEffectDefaults(selected.slot.entry.effect), ...selected.slot.entry.params } : {});
   }
 
-  const def = selected ? getRackEffect(selected.device.effect) : undefined;
+  // A column's chain is built on its first launch. A plugin picked here has to
+  // be running for its parameters to be listed, so its column is built now.
+  const selIsVst = selected?.slot.kind === 'vst';
+  const selTrackIndex = selected?.trackIndex ?? -1;
+  React.useEffect(() => {
+    if (selIsVst && selTrackIndex >= 0) syncPerformTrackChain(selTrackIndex);
+  }, [selIsVst, selTrackIndex, selKey]);
+
+  const toggleBypass = (trackIndex: number, slot: PerformSlot): void => {
+    slot.device.bypass = !slot.device.bypass;
+    syncPerformTrackChain(trackIndex);
+    bumpDevices();
+  };
+
+  const def = selected ? getRackEffect(selected.slot.entry.effect) : undefined;
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-2 pb-2 space-y-2">
-      <div className="pt-1 space-y-1.5">
-        {perTrack.map(({ track, trackIndex, devices }) =>
-          devices.length ? (
-            <div key={trackIndex}>
-              <div className="mono-label mb-0.5 truncate">{track.name || `Track ${trackIndex + 1}`}</div>
+      <div className="pt-1 space-y-2.5">
+        {perTrack.map(({ track, trackIndex, slots }) => {
+          const trackName = track.name || `Track ${trackIndex + 1}`;
+          return (
+            <section key={trackIndex} aria-label={`${trackName} effects`}>
+              <div className="mb-0.5 truncate font-sans text-xs font-bold uppercase tracking-wide text-zinc-400">
+                {trackName}
+              </div>
               <div className="space-y-0.5">
-                {devices.map((d) => {
-                  const active = selected?.trackIndex === trackIndex && selected.device.deviceIndex === d.deviceIndex;
+                {slots.map((slot) => {
+                  const active = selected?.trackIndex === trackIndex && selected.slot.deviceIndex === slot.deviceIndex;
+                  const enabled = slot.entry.enabled;
                   return (
-                    <button
-                      key={d.deviceIndex}
-                      type="button"
-                      onClick={() => select(trackIndex, d.deviceIndex)}
-                      aria-pressed={active}
-                      title={
-                        d.live
-                          ? `Edit ${d.name} live`
-                          : d.hosted
-                            ? `${d.name} — processing live in its own plugin host; its controls are in the plugin's own window`
-                            : `${d.name} — unknown device, preserved but not live-editable here`
-                      }
-                      className={`w-full flex items-center gap-1.5 rounded border px-1.5 py-1 text-left transition-colors ${
-                        active
-                          ? 'text-(--text-primary)'
-                          : 'border-white/8 bg-white/2 text-zinc-400 hover:text-zinc-100 hover:border-white/20'
+                    <div
+                      key={slot.deviceIndex}
+                      className={`flex items-center gap-1.5 rounded border px-1.5 py-1 transition-colors ${
+                        active ? '' : 'border-white/8 bg-white/2 hover:border-white/20'
                       }`}
                       style={active ? { borderColor: `${PERFORM_ACCENT}aa`, background: `${PERFORM_ACCENT}14` } : undefined}
                     >
-                      <span className="min-w-0 flex-1 truncate text-[10px] font-mono font-semibold">{d.name}</span>
-                      {!d.live && (
-                        // A hosted plugin is NOT inert any more — it is
-                        // processing — so calling it that would be a lie the
-                        // user can hear. It simply has no controls here.
-                        <span
-                          className={`shrink-0 text-[9px] font-mono ${d.hosted ? 'text-teal-400/70' : 'text-zinc-600'}`}
-                        >
-                          {d.hosted ? 'plugin' : 'inert'}
-                        </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleBypass(trackIndex, slot)}
+                        aria-pressed={enabled}
+                        aria-label={enabled ? `Bypass ${slot.name}` : `Enable ${slot.name}`}
+                        title={enabled ? 'Bypass' : 'Enable'}
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full border ${
+                          enabled
+                            ? 'border-emerald-300 bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+                            : 'border-zinc-600 bg-transparent'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => select(trackIndex, slot.deviceIndex)}
+                        aria-pressed={active}
+                        title={
+                          slot.kind === 'inert'
+                            ? `${slot.name} — a device from another DAW with no match here; it passes audio through`
+                            : `Edit ${slot.name} live`
+                        }
+                        className={`min-w-0 flex-1 truncate text-left font-sans text-xs font-bold ${
+                          active ? 'text-(--text-primary)' : 'text-zinc-400 hover:text-zinc-100'
+                        }`}
+                      >
+                        {slot.name}
+                      </button>
+                      {slot.kind === 'vst' && <VstLiveRowBadge entry={slot.entry} label={slot.name} />}
+                      {slot.kind === 'inert' && (
+                        <span className="shrink-0 font-sans text-xs font-bold text-zinc-600">Inert</span>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
-            </div>
-          ) : null,
-        )}
-        {perTrack.every((t) => t.devices.length === 0) && (
-          <div className="text-[10px] font-mono text-zinc-500 px-1 py-2">No effect devices in this set.</div>
-        )}
+              {/* Every track takes every rack effect and every scanned plugin;
+                  the pick starts processing and its controls open below. */}
+              <div className="mt-1">
+                <PerformSlotAdd
+                  trackIndex={trackIndex}
+                  track={track}
+                  onPlaced={(deviceIndex) => select(trackIndex, deviceIndex)}
+                />
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {selected && (
         <div className="border-t border-white/10 pt-1.5 space-y-2">
-          <div className="mono-label truncate">
-            {selected.device.name} — {def?.label ?? selected.device.effect}
+          <div className="truncate font-sans text-xs font-bold uppercase tracking-wide text-zinc-300">
+            {selected.slot.name}
           </div>
-          {def && selected.device.live ? (
+          {def ? (
             def.params.map((p) => (
               <TendrilParam
                 key={p.key}
@@ -264,15 +269,34 @@ function ParamsTab({ tracks }: { tracks: DawTrack[] }): React.ReactElement {
                 accent={PERFORM_ACCENT}
                 onChange={(v) => {
                   setValues((cur) => ({ ...cur, [p.key]: v }));
-                  pushPerformDeviceParams(selected.trackIndex, selected.device.deviceIndex, { [p.key]: v });
+                  pushPerformDeviceParams(selected.trackIndex, selected.slot.deviceIndex, { [p.key]: v });
                 }}
               />
             ))
+          ) : selected.slot.kind === 'vst' ? (
+            <>
+              {/* The plugin's own window (PerformVstWindow holds it). */}
+              <button
+                type="button"
+                onClick={() => useVstEditorStore.getState().open(selected.slot.entry, KEEP_WINDOW_STATE)}
+                aria-label={`Open the ${selected.slot.name} window`}
+                title="Open the plugin's own window"
+                className="inline-flex items-center gap-1.5 rounded border border-teal-500/40 bg-teal-500/15 px-2 py-1 font-sans text-xs font-bold text-teal-200 hover:bg-teal-500/25"
+              >
+                <AppWindow className="h-3.5 w-3.5" /> Window
+              </button>
+              {/* The plugin's own parameter list, as its running host reports it. */}
+              <VstParamPanel
+                entry={selected.slot.entry}
+                idPrefix={`perform-vst-${selKey}`}
+                onWrite={(params) => pushPerformDeviceParams(selected.trackIndex, selected.slot.deviceIndex, params)}
+                onGestureStart={NO_GESTURE}
+                onGestureEnd={NO_GESTURE}
+              />
+            </>
           ) : (
-            <div className="text-[10px] font-mono text-zinc-500">
-              {selected.device.hosted
-                ? 'This plugin is processing live in its own host — open its own window to edit it.'
-                : 'This device is preserved in the set but has no live parameters here.'}
+            <div className="font-sans text-xs font-bold text-zinc-500">
+              This device is preserved in the set but has no live parameters here.
             </div>
           )}
         </div>

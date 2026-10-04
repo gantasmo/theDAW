@@ -780,9 +780,6 @@ export const FxChainList: React.FC<FxChainListProps> = ({
   // reference for a lane with no chain yet; see its comment.
   const chain = useEditorStore((s) => chainInState(s, scope));
   const openWindows = useEffectWindowStore((s) => s.windows);
-  const vstInstallFolder = useVstStore((s) => s.installFolder);
-  const [showVstBrowser, setShowVstBrowser] = useState(false);
-  const addEffectId = `fx-add-effect-${useId()}`;
   const listRef = useRef<HTMLDivElement | null>(null);
   const rowsRef = useRef<HTMLDivElement | null>(null);
   // A row added while the rows scroll lands at the bottom, out of view; bring
@@ -881,91 +878,140 @@ export const FxChainList: React.FC<FxChainListProps> = ({
       )}
 
       {/* ONE add area: built-ins and VSTs together, no separate sections. */}
-      {(onAddEffect || onAddVst) && (
-        <div className="shrink-0 flex flex-col gap-1 border-t border-white/10 pt-1.5">
-          <div className="flex items-center gap-1.5">
-            {onAddEffect && (
-              <>
-                <label htmlFor={addEffectId} className="sr-only">Add effect</label>
-                <select
-                  id={addEffectId}
-                  name="fx-add-effect"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) onAddEffect(e.target.value);
-                    e.target.value = '';
-                  }}
-                  className="form-select flex-1 min-w-0 px-1.5 py-1 font-sans font-bold text-xs"
-                >
-                  <option value="">+ Add effect…</option>
-                  {RACK_EFFECTS.map((def) => (
-                    <option key={def.id} value={def.id}>{def.label}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            {onAddVst && (
+      <FxAddMenu
+        onAddEffect={onAddEffect}
+        onAddVst={onAddVst}
+        vstPlugins={vstPlugins}
+        vstScanning={vstScanning}
+        onRescanVst={onRescanVst}
+        inChain={(pl) => chain.some((e) => e.vst?.plugin_path === pl.path)}
+      />
+    </div>
+  );
+};
+
+// ── FxAddMenu: the one add area every effect slot shares ────────────────────
+
+export interface FxAddMenuProps {
+  /** Add a built-in rack effect (undefined hides the rack-add select). */
+  onAddEffect?: (effectId: string) => void;
+  /** Add a VST3 (undefined hides the plugin browser). */
+  onAddVst?: (plugin: Vst3PluginInfo) => void;
+  vstPlugins?: Vst3PluginInfo[];
+  vstScanning?: boolean;
+  onRescanVst?: () => void;
+  /** Whether the slot's chain already holds this plugin; its row then reads as
+   *  the one that opens the plugin's controls. */
+  inChain?: (plugin: Vst3PluginInfo) => boolean;
+}
+
+/**
+ * The add area of an effect slot: every rack effect in one select, and the
+ * scanned VST3 plugins in a browser behind the VST button. It holds no chain
+ * of its own, so a slot whose chain lives outside the editor store (a PERFORM
+ * column) offers the same catalog through the same controls as EDIT's racks.
+ */
+export const FxAddMenu: React.FC<FxAddMenuProps> = ({
+  onAddEffect,
+  onAddVst,
+  vstPlugins = [],
+  vstScanning = false,
+  onRescanVst,
+  inChain: isInChain,
+}) => {
+  const vstInstallFolder = useVstStore((s) => s.installFolder);
+  const [showVstBrowser, setShowVstBrowser] = useState(false);
+  const addEffectId = `fx-add-effect-${useId()}`;
+  const vstBrowserId = `fx-add-vst-${useId()}`;
+  if (!onAddEffect && !onAddVst) return null;
+  return (
+    <div className="shrink-0 flex flex-col gap-1 border-t border-white/10 pt-1.5">
+      <div className="flex items-center gap-1.5">
+        {onAddEffect && (
+          <>
+            <label htmlFor={addEffectId} className="sr-only">Add effect</label>
+            <select
+              id={addEffectId}
+              name="fx-add-effect"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) onAddEffect(e.target.value);
+                e.target.value = '';
+              }}
+              className="form-select flex-1 min-w-0 px-1.5 py-1 font-sans font-bold text-xs"
+            >
+              <option value="">+ Add effect…</option>
+              {RACK_EFFECTS.map((def) => (
+                <option key={def.id} value={def.id}>{def.label}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {onAddVst && (
+          <button
+            type="button"
+            onClick={() => setShowVstBrowser((v) => !v)}
+            aria-pressed={showVstBrowser}
+            aria-expanded={showVstBrowser}
+            aria-controls={showVstBrowser ? vstBrowserId : undefined}
+            title="Add a VST3 plugin"
+            className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded border font-display text-xs font-bold uppercase tracking-wider transition-colors ${
+              showVstBrowser ? 'border-teal-500/40 bg-teal-500/15 text-teal-200' : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Plug className="w-3 h-3" /> VST
+          </button>
+        )}
+      </div>
+      {onAddVst && showVstBrowser && (
+        <div id={vstBrowserId} className="flex flex-col gap-0.5">
+          <div className="flex items-center justify-between">
+            <span className="font-display text-xs font-bold uppercase tracking-wider text-zinc-400">Plugins ({vstPlugins.length})</span>
+            {onRescanVst && (
               <button
-                onClick={() => setShowVstBrowser((v) => !v)}
-                aria-pressed={showVstBrowser}
-                title="Add a VST3 plugin"
-                className={`shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded border font-display text-xs font-bold uppercase tracking-wider transition-colors ${
-                  showVstBrowser ? 'border-teal-500/40 bg-teal-500/15 text-teal-200' : 'border-white/10 text-zinc-400 hover:bg-white/5 hover:text-white'
-                }`}
+                type="button"
+                onClick={onRescanVst}
+                disabled={vstScanning}
+                className="btn-ghost inline-flex items-center gap-1 disabled:opacity-40"
+                title="Rescan VST3 folders"
+                aria-label="Rescan VST3 folders"
               >
-                <Plug className="w-3 h-3" /> VST
+                {vstScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               </button>
             )}
           </div>
-          {onAddVst && showVstBrowser && (
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center justify-between">
-                <span className="font-display text-xs font-bold uppercase tracking-wider text-zinc-400">Plugins ({vstPlugins.length})</span>
-                {onRescanVst && (
+          {vstPlugins.length === 0 ? (
+            <p className="font-sans text-xs font-bold text-zinc-500 leading-relaxed">
+              {vstScanning ? 'Scanning…' : `No VST3 plugins found. ${vst3InstallHint(vstInstallFolder)}`}
+            </p>
+          ) : (
+            <div className="max-h-32 overflow-y-auto flex flex-col gap-0.5">
+              {vstPlugins.map((pl) => {
+                const inChain = isInChain?.(pl) ?? false;
+                // The plugin's OWN name once the backend probe has read it;
+                // the file stem is only the fallback. The vendor rides
+                // alongside as a muted secondary label, so two plugins that
+                // share a short name stay tellable apart.
+                const name = pl.display_name || pl.name;
+                return (
                   <button
-                    onClick={onRescanVst}
-                    disabled={vstScanning}
-                    className="btn-ghost inline-flex items-center gap-1 disabled:opacity-40"
-                    title="Rescan VST3 folders"
-                    aria-label="Rescan VST3 folders"
+                    key={pl.path}
+                    type="button"
+                    onClick={() => onAddVst(pl)}
+                    title={inChain ? `Open ${name} controls` : `Insert ${name}`}
+                    className={`flex items-center gap-1.5 text-left px-1.5 py-1 rounded font-sans text-xs font-bold truncate transition-colors border ${
+                      inChain ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'text-zinc-400 hover:bg-white/5 hover:text-white border-transparent'
+                    }`}
                   >
-                    {vstScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    <Plug className="w-3 h-3 text-teal-300 shrink-0" />
+                    <span className="flex-1 min-w-0 truncate">{name}</span>
+                    {pl.manufacturer && (
+                      <span className="shrink-0 max-w-20 truncate font-sans text-xs font-bold text-zinc-600">{pl.manufacturer}</span>
+                    )}
+                    {!inChain && <Plus className="w-3 h-3 text-zinc-500 shrink-0" />}
                   </button>
-                )}
-              </div>
-              {vstPlugins.length === 0 ? (
-                <p className="font-sans text-xs font-bold text-zinc-500 leading-relaxed">
-                  {vstScanning ? 'Scanning…' : `No VST3 plugins found. ${vst3InstallHint(vstInstallFolder)}`}
-                </p>
-              ) : (
-                <div className="max-h-32 overflow-y-auto flex flex-col gap-0.5">
-                  {vstPlugins.map((pl) => {
-                    const inChain = chain.some((e) => e.vst?.plugin_path === pl.path);
-                    // The plugin's OWN name once the backend probe has read it;
-                    // the file stem is only the fallback. The vendor rides
-                    // alongside as a muted secondary label, so two plugins that
-                    // share a short name stay tellable apart.
-                    const name = pl.display_name || pl.name;
-                    return (
-                      <button
-                        key={pl.path}
-                        onClick={() => onAddVst(pl)}
-                        title={inChain ? `Open ${name} controls` : `Insert ${name}`}
-                        className={`flex items-center gap-1.5 text-left px-1.5 py-1 rounded font-sans text-xs font-bold truncate transition-colors border ${
-                          inChain ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'text-zinc-400 hover:bg-white/5 hover:text-white border-transparent'
-                        }`}
-                      >
-                        <Plug className="w-3 h-3 text-teal-300 shrink-0" />
-                        <span className="flex-1 min-w-0 truncate">{name}</span>
-                        {pl.manufacturer && (
-                          <span className="shrink-0 max-w-20 truncate font-sans text-xs font-bold text-zinc-600">{pl.manufacturer}</span>
-                        )}
-                        {!inChain && <Plus className="w-3 h-3 text-zinc-500 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                );
+              })}
             </div>
           )}
         </div>
