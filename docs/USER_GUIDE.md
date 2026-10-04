@@ -470,6 +470,10 @@ Built-in effects, VST3 plugins and `.gan` web plugins are **one concept** here. 
 
 Either button opens a compact chain list in which built-in, VST and GAN rows look and behave identically. Clicking a row opens **that entry's own floating control window** — a plugin's native UI, a `.gan` surface, or the built-in's parameter tiles — which you can drag anywhere and leave open while you work. Windows are keyed to the chain entry, so reopening one focuses the window you already have instead of stacking duplicates.
 
+A plugin's window takes the size of the plugin's own editor and follows a plugin that resizes its view; it grows up to the whole screen less an 8 px gap before it scrolls. Grips on the right edge, the bottom edge and the corner size any effect window, and a double-click on the corner fits it to the plugin again. Opening the window of a plugin whose host is still loading waits for it, up to 35 s (45 s when the host starts cold).
+
+A press anywhere outside the track FX rack, the master FX panel and the effect windows closes all of them. A press inside one of them, on an **FX** button or in a menu keeps them open. Metamorph, the automation panel and Inpaint are tool modes and stay open.
+
 Each chain is ordered. The **+ Add effect…** dropdown appends an effect; per-effect controls bypass it, move it earlier or later in the chain, and remove it. Parameters are SLIDE sliders that update the running audio without a rebuild, and moving one parameter never disturbs the others.
 
 Nineteen processors are available, and the same factories run live and in the offline bounce:
@@ -527,7 +531,7 @@ Twelve motion modes are available: Static, Orbit H CW, Orbit H CCW, Orbit Fronta
 
 ### 7.9 Metamorph: Granular Identity-Bleed Morph
 
-Open **Metamorph** from the toolbar's **TOOLS ▾** dropdown to morph one sound into another in real time. Pick a **Donor A (identity)** and a **Host B (structure)** from either the current timeline clips or the library. Metamorph rebuilds Host B out of grains taken from Donor A, so the output keeps B's structure in A's voice.
+Open **Metamorph** from the toolbar's **TOOLS** menu (the wrench key) to morph one sound into another in real time. Pick a **Donor A (identity)** and a **Host B (structure)** from either the current timeline clips or the library. Metamorph rebuilds Host B out of grains taken from Donor A, so the output keeps B's structure in A's voice.
 
 Eight sliders shape the result: **Bleed** (dry host through to full mosaic), **Grain** (grain size in seconds), **Rate** (grains per second), **Spray** (start and timing jitter), **Match** (selection strictness), **Sync** (lock grains to the host's beat grid), **Favor** (bias toward punchy donor grains), and **Gain** (output trim). **Play** auditions the morph live; **Send to editor** renders one pass and drops it on a new track as an ordinary clip, ready to trim, FX, and export.
 

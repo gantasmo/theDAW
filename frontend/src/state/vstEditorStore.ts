@@ -21,7 +21,7 @@ import { create } from 'zustand';
 import { useAppUiStore, type CenterTab } from './appUiStore';
 import { useStatusBarStore } from './statusBarStore';
 import { useVstEditorPrefs, type VstEditorMode } from './vstEditorPrefsStore';
-import { vstApi, getNativeWindowHandle, setLiveEditorRectRouter } from '../lib/vstClient';
+import { vstApi, getNativeWindowHandle, setLiveEditorRectRouter, setLiveEditorSizeRouter } from '../lib/vstClient';
 import { setVstLiveStateSink, vstSessions, type VstLiveSession } from '../lib/vstLive/sessionRegistry';
 import { useVstLiveStore } from './vstLiveStore';
 import { beginUndoStep, useEditorStore } from './editorStore';
@@ -163,8 +163,11 @@ interface LiveEditorRequest {
 let currentLiveRequest: LiveEditorRequest | null = null;
 
 /** How long 'Edit GUI' waits for a `starting` live session to become `live`
- *  before it gives up — see `waitForLiveThenOpen`. */
-export const LIVE_STARTING_WAIT_MS = 5000;
+ *  before it gives up — see `waitForLiveThenOpen`. The backend gives a host 30 s
+ *  to load its plugin (`DEFAULT_SPAWN_TIMEOUT` in backend/modules/vst/live_host.py)
+ *  and reports the failure itself after that, so the wait outlasts it: a plugin
+ *  that takes ten seconds to load opens its window when it is ready. */
+export const LIVE_STARTING_WAIT_MS = 35_000;
 
 /** Test seam for `waitForLiveThenOpen`'s bounded wait: real timers by
  *  default, a fake clock in tests (so a test never actually waits 5 s). */
@@ -195,7 +198,7 @@ export function __setLiveSessionLookupForTest(
 
 /** How long a COLD start may take before 'Edit GUI' gives up: the host process has to spawn and
  *  the plugin has to load (a mastering suite takes several seconds), unlike the warm case above. */
-export const LIVE_COLD_START_WAIT_MS = 30000;
+export const LIVE_COLD_START_WAIT_MS = 45_000;
 
 /** The registry surface open() needs to START a live session for the editor window. */
 export interface LiveSessionHolder {
@@ -589,6 +592,7 @@ function closeLiveEditor(): void {
   if (!rec) return;
   liveEditor = null;
   setLiveEditorRectRouter(null);
+  setLiveEditorSizeRouter(null);
   window.clearInterval(rec.stateTimer);
   if (rec.paramTimer) {
     window.clearTimeout(rec.paramTimer);
@@ -694,6 +698,9 @@ async function openLiveEditor(
     w: priorRect && priorRect.w > 0 ? priorRect.w : Math.round(480 * dpr),
     h: priorRect && priorRect.h > 0 ? priorRect.h : Math.round(320 * dpr),
   };
+  // The host acknowledges this request by repeating its box; the live store
+  // needs to know the box to tell that acknowledgement from the editor's size.
+  useVstLiveStore.getState().setEditorRequest(entry.id, embedded ? { w: initialRect.w, h: initialRect.h } : null);
   session.client.openEditor(embedded ? { parentHwnd: hwnd, ...initialRect, title: name } : { title: name });
   currentLiveRequest = {
     entry,
@@ -756,6 +763,14 @@ async function openLiveEditor(
       h: Math.round(r.h),
     });
     return true;
+  });
+
+  // The embedded editor's size comes from the session too: the host reports it
+  // when the editor opens and again whenever the plugin resizes its view.
+  setLiveEditorSizeRouter((p) => {
+    if (p !== path) return undefined;
+    if (!embedded) return null;
+    return useVstLiveStore.getState().entries[entry.id]?.editorSize ?? null;
   });
 
   liveEditor = rec;

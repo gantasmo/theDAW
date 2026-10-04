@@ -91,6 +91,22 @@ export function setLiveEditorRectRouter(router: LiveEditorRectRouter | null): vo
   liveEditorRectRouter = router;
 }
 
+/** The size of a plugin's LIVE editor in physical px: `null` while the host has
+ *  not reported one, `undefined` when the path is not this router's plugin. */
+type LiveEditorSizeRouter = (pluginPath: string) => { w: number; h: number } | null | undefined;
+
+let liveEditorSizeRouter: LiveEditorSizeRouter | null = null;
+
+/**
+ * Point `vstApi.editorSize` at a live host session (or `null` to read the
+ * offline sidecar's size file again). The live host reports its editor's size
+ * on the session's socket and writes no size file, so without this a live
+ * editor never had a size and its window stayed at the opening box.
+ */
+export function setLiveEditorSizeRouter(router: LiveEditorSizeRouter | null): void {
+  liveEditorSizeRouter = router;
+}
+
 export const vstApi = {
   // `install_folder`: the folder the scan reads for installed plugins, which an
   // empty plugin list names (vstStore vst3InstallHint).
@@ -136,8 +152,11 @@ export const vstApi = {
   editorResult: (pluginPath: string) =>
     getJson<VstEditorResult>(`/api/vst/editor-result?plugin_path=${encodeURIComponent(pluginPath)}`),
   // The editor's natural (physical px) size, so the host can size its scroll area.
-  editorSize: (pluginPath: string) =>
-    getJson<{ status: string; w?: number; h?: number }>(`/api/vst/editor-size?plugin_path=${encodeURIComponent(pluginPath)}`),
+  editorSize: (pluginPath: string): Promise<{ status: string; w?: number; h?: number }> => {
+    const live = liveEditorSizeRouter?.(pluginPath);
+    if (live !== undefined) return Promise.resolve(live ? { status: 'ok', w: live.w, h: live.h } : { status: 'none' });
+    return getJson<{ status: string; w?: number; h?: number }>(`/api/vst/editor-size?plugin_path=${encodeURIComponent(pluginPath)}`);
+  },
 };
 
 /**

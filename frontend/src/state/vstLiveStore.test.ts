@@ -243,4 +243,43 @@ const PLUGIN: VstLivePlugin = {
   assert.deepEqual(seenA, ['live'], 'unsubscribing stops delivery');
 }
 
+// ── the open editor's size: the host's two reports ─────────────────────────
+// The host reports the plugin's real view size, then acknowledges open_editor by
+// repeating the box the app asked for. The acknowledgement must not replace the
+// real size (it showed a 1240x723 plugin cut to the 600x400 opening box).
+{
+  useVstLiveStore.setState({ entries: {}, host: { available: null } });
+  const size = () => st().entries.ed?.editorSize ?? null;
+
+  st().setEditorRequest('ed', { w: 600, h: 400 });
+  st().setEditorOpen('ed', true, { w: 1240, h: 723 }); // the plugin's own size
+  st().setEditorOpen('ed', true, { w: 600, h: 400 }); // the acknowledgement
+  assert.deepEqual(size(), { w: 1240, h: 723 }, 'the acknowledgement does not replace the real size');
+
+  st().setEditorOpen('ed', true, { w: 600, h: 400 }); // the plugin now resizes itself to that size
+  assert.deepEqual(size(), { w: 600, h: 400 }, 'only ONE report is taken as the acknowledgement');
+
+  st().setEditorOpen('ed', true, { w: 0, h: 0 }); // a floating editor's report carries no box
+  assert.deepEqual(size(), { w: 600, h: 400 }, 'a report with no size keeps the last one');
+  assert.equal(st().entries.ed?.editorOpen, true);
+
+  st().setEditorOpen('ed', false);
+  assert.equal(size(), null, 'a closed editor has no size');
+
+  // A plugin whose real size IS the requested box: both reports are equal, and
+  // the size still lands.
+  st().setEditorRequest('ed', { w: 600, h: 400 });
+  st().setEditorOpen('ed', true, { w: 600, h: 400 });
+  st().setEditorOpen('ed', true, { w: 600, h: 400 });
+  assert.deepEqual(size(), { w: 600, h: 400 });
+
+  // A new request forgets the editor before it; a host that reports the real
+  // size in both messages is read the same way.
+  st().setEditorRequest('ed', { w: 600, h: 400 });
+  assert.equal(size(), null, 'a new request starts with no size');
+  st().setEditorOpen('ed', true, { w: 900, h: 520 });
+  st().setEditorOpen('ed', true, { w: 900, h: 520 });
+  assert.deepEqual(size(), { w: 900, h: 520 });
+}
+
 console.log('vstLiveStore: ok');

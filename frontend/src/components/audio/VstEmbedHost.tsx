@@ -60,7 +60,11 @@ export const VstEmbedHost: React.FC<{
   /** Reports the plugin's natural editor size (CSS px) whenever it changes, so
    *  a hosting popup can size itself to the plugin instead of a fixed box. */
   onNaturalSize?: (w: number, h: number) => void;
-}> = ({ pluginPath, pluginName, error, onClose, onNaturalSize }) => {
+  /** The box takes the plugin editor's own size and the parent wraps it (EDIT's
+   *  effect window). It shrinks and scrolls when the parent is smaller. Without
+   *  this the box fills its parent (MIX's Effect Stage, the roll's host). */
+  fit?: boolean;
+}> = ({ pluginPath, pluginName, error, onClose, onNaturalSize, fit }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   // Plugin's natural size in LOCAL px for the scrollable inner spacer (the
@@ -176,7 +180,10 @@ export const VstEmbedHost: React.FC<{
               onNaturalSizeRef.current?.(w, h);
             }
           }
-          if (alive) window.setTimeout(poll, 1000);
+          // Until the first size lands the window is at its opening box, so
+          // ask again soon; after that a slow poll follows a plugin that
+          // resizes its own view.
+          if (alive) window.setTimeout(poll, last ? 1000 : 250);
         })
         .catch(() => { if (alive) window.setTimeout(poll, 1500); });
     };
@@ -221,13 +228,28 @@ export const VstEmbedHost: React.FC<{
     </button>
   );
 
+  // The fitted box: the plugin's size plus the box's own 1px border, centred
+  // when the window is larger and shrinking (then scrolling) when it is
+  // smaller. Before the size is known it is the box the editor opens at.
+  const fitBox: React.CSSProperties | undefined =
+    fit && !expanded
+      ? natural
+        ? { flex: '0 1 auto', width: natural.w + 2, height: natural.h + 2, maxWidth: '100%', margin: 'auto' }
+        : { flex: '0 1 auto', width: 480, height: 320, maxWidth: '100%', margin: 'auto' }
+      : undefined;
+
   const body = (
     <div
       className={
         expanded
           ? 'fixed inset-6 z-100 bg-[#0c0a14] border border-teal-500/40 rounded-lg shadow-2xl flex flex-col min-h-0 overflow-hidden p-2 gap-2'
-          : 'h-full w-full flex flex-col min-h-0 overflow-hidden p-2 gap-2'
+          : fit
+            ? 'flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden p-2 gap-2'
+            : 'h-full w-full flex flex-col min-h-0 overflow-hidden p-2 gap-2'
       }
+      // The expanded overlay is portaled out of the window that opened it, and
+      // is still part of EDIT's FX popups (lib/fxPopupDismiss.ts).
+      data-fx-popup={expanded ? '' : undefined}
     >
       <div className="flex items-center gap-2 shrink-0">
         <span className={sectionTitle}>{shownName}</span>
@@ -285,7 +307,11 @@ export const VstEmbedHost: React.FC<{
           </div>
         </div>
       ) : (
-        <div ref={ref} className="flex-1 min-h-0 overflow-auto rounded border border-teal-500/30 bg-black/60 relative">
+        <div
+          ref={ref}
+          className={`${fitBox ? '' : 'flex-1 min-h-0 '}overflow-auto rounded border border-teal-500/30 bg-black/60 relative`}
+          style={fitBox}
+        >
           {/* Spacer sized to the plugin so the area scrolls; the native window is
               positioned over the visible viewport by the backend watcher. */}
           <div style={natural ? { width: natural.w, height: natural.h } : { width: '100%', height: '100%' }} />

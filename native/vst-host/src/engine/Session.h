@@ -207,6 +207,10 @@ private:
     ULONGLONG lastActivityMs_ = 0;
     ULONGLONG lastXrunReportMs_ = 0;
     bool editorOpen_ = false;
+    // The size the plugin's view last reported (physical px), 0 until it has. The reply to
+    // open_editor carries it, so the client is never told the box it asked for as the size.
+    int editorWidth_ = 0;
+    int editorHeight_ = 0;
     bool stopped_ = false;  // message thread only; makes stop() idempotent
 
     // Work that needed the audio thread parked but could not get it (the park timed out).

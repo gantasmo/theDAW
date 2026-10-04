@@ -35,6 +35,7 @@ import { FxRack } from './FxRack';
 import { EffectControls } from './effects/EffectControls';
 import { schemaForRackEffect } from './effects/effectSchema';
 import { VstEmbedHost } from './VstEmbedHost';
+import { FX_POPUP_ATTR, resizedWindowSize, type ResizeEdges } from '../../lib/fxPopupDismiss';
 import { GanPluginStage } from './GanPluginStage';
 import { useEditorStore } from '../../state/editorStore';
 import { sidechainsInto, wouldCycle, type RoutingRefusal } from '../../state/routingGraph';
@@ -110,6 +111,10 @@ interface EffectWindowRec {
    *  opened from elsewhere, and it then opens at the right edge. */
   ox: number | null;
   oy: number | null;
+  /** Viewport px the window was dragged to from a resize grip; null until
+   *  then, and the window takes the size of what it shows. */
+  w: number | null;
+  h: number | null;
 }
 
 /** The viewport point an effect window opens at until it is dragged. */
@@ -126,8 +131,12 @@ interface EffectWindowState {
   aresOwnerScope: FxScope | null;
   open: (scope: FxScope, entryId: string, origin?: EffectWindowOrigin) => void;
   close: (entryId: string) => void;
+  /** Close every window, each the way `close` does (a press outside them). */
+  closeAll: () => void;
   bringToFront: (entryId: string) => void;
   move: (entryId: string, x: number, y: number) => void;
+  /** Give a window a size of its own, or null to fit what it shows again. */
+  resize: (entryId: string, w: number | null, h: number | null) => void;
   setAresOwner: (scope: FxScope | null, entryId: string | null) => void;
 }
 
@@ -145,7 +154,7 @@ export const useEffectWindowStore = create<EffectWindowState>((set, get) => ({
     set({
       windows: [
         ...s.windows,
-        { entryId, scope, z: s.topZ + 1, x: null, y: null, ox: origin?.x ?? null, oy: origin?.y ?? null },
+        { entryId, scope, z: s.topZ + 1, x: null, y: null, ox: origin?.x ?? null, oy: origin?.y ?? null, w: null, h: null },
       ],
       topZ: s.topZ + 1,
     });
@@ -162,6 +171,9 @@ export const useEffectWindowStore = create<EffectWindowState>((set, get) => ({
     }
     set({ windows: get().windows.filter((w) => w.entryId !== entryId) });
   },
+  closeAll: () => {
+    for (const w of get().windows) get().close(w.entryId);
+  },
   bringToFront: (entryId) => {
     const s = get();
     const win = s.windows.find((w) => w.entryId === entryId);
@@ -173,6 +185,8 @@ export const useEffectWindowStore = create<EffectWindowState>((set, get) => ({
   },
   move: (entryId, x, y) =>
     set({ windows: get().windows.map((w) => (w.entryId === entryId ? { ...w, x, y } : w)) }),
+  resize: (entryId, w, h) =>
+    set({ windows: get().windows.map((rec) => (rec.entryId === entryId ? { ...rec, w, h } : rec)) }),
   setAresOwner: (scope, entryId) => set({ aresOwnerScope: scope, aresOwnerEntryId: entryId }),
 }));
 
@@ -367,6 +381,7 @@ const EffectWindowCard: React.FC<{
   const close = useEffectWindowStore((s) => s.close);
   const bringToFront = useEffectWindowStore((s) => s.bringToFront);
   const move = useEffectWindowStore((s) => s.move);
+  const resize = useEffectWindowStore((s) => s.resize);
   const aresOwnerEntryId = useEffectWindowStore((s) => s.aresOwnerEntryId);
 
   const vstSessionEntryId = useVstEditorStore((s) => s.entryId);
@@ -398,19 +413,30 @@ const EffectWindowCard: React.FC<{
   const vstOwnsSession = !!entry.vst && vstSessionEntryId === entry.id && vstSessionOwnerTab === 'edit' && !!vstSessionPath;
   const aresOwnsSession = kind === 'gan' && aresOwnerEntryId === entry.id && !!ganActiveUrl;
 
-  // Sizing per kind (viewport px; the card is portaled outside the zoom).
-  const size: React.CSSProperties =
-    kind === 'vst'
+  // Sizing per kind (viewport px; the card is portaled outside the zoom). A
+  // window dragged from a grip keeps that size. A plugin's window otherwise
+  // takes the size of the plugin's own editor: the host box inside it is as
+  // large as the editor and the card wraps it, so no fixed frame clips a large
+  // editor or leaves a small one in a corner. `size` is then only the estimate
+  // the opening position is clamped with.
+  const userSized = win.w != null && win.h != null;
+  const vstFits = kind === 'vst' && vstOwnsSession && !userSized;
+  const size: React.CSSProperties = userSized
+    ? { width: `${win.w}px`, height: `${win.h}px` }
+    : kind === 'vst'
       ? vstOwnsSession && vstNatural
-        ? { width: `min(${vstNatural.w + 20}px, 92vw)`, height: `min(${vstNatural.h + 74}px, 85vh)` }
+        ? { width: `min(${vstNatural.w + 36}px, calc(100vw - 16px))`, height: `min(${vstNatural.h + 96}px, calc(100vh - 16px))` }
         : vstOwnsSession
-          ? { width: 'min(640px, 92vw)', height: 'min(480px, 72vh)' }
+          ? { width: 'min(500px, 92vw)', height: 'min(400px, 85vh)' }
           : { width: 'min(360px, 92vw)' }
       : kind === 'gan'
         ? aresOwnsSession
           ? { width: 'min(720px, 92vw)', height: 'min(520px, 72vh)' }
           : { width: 'min(540px, 92vw)', maxHeight: '78vh' }
         : { width: 'min(500px, 92vw)', maxHeight: '78vh' };
+  const applied: React.CSSProperties = vstFits
+    ? { minWidth: 'min(360px, 92vw)', maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)' }
+    : size;
 
   // An undragged window opens beside the FX list it came from, or at the right
   // edge when it opened from elsewhere, clear of the track headers either way.
@@ -456,6 +482,39 @@ const EffectWindowCard: React.FC<{
     window.addEventListener('pointercancel', onUp);
   };
 
+  // A grip on the right edge, the bottom edge or the corner sizes the window.
+  // The pointer is captured, so the drag keeps arriving while it crosses a
+  // plugin's native window. The window is pinned where it stands first: an
+  // undragged window is placed from its width, and would slide as it resized.
+  const startResize = (edges: ResizeEdges) => (e: React.PointerEvent) => {
+    const el = rootRef.current;
+    if (!el || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = el.getBoundingClientRect();
+    const start = { w: rect.width, h: rect.height, left: rect.left, top: rect.top };
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    move(win.entryId, rect.left, rect.top);
+    resize(win.entryId, Math.round(rect.width), Math.round(rect.height));
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      const next = resizedWindowSize(start, ev.clientX - x0, ev.clientY - y0, edges, {
+        w: window.innerWidth,
+        h: window.innerHeight,
+      });
+      resize(win.entryId, next.w, next.h);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
   const paramScope = win.scope;
 
   return createPortal(
@@ -464,8 +523,9 @@ const EffectWindowCard: React.FC<{
       role="dialog"
       aria-label={`${label} controls`}
       className={`fixed hardware-card bg-black/95 border ${tint.border} rounded-lg shadow-2xl flex flex-col overflow-hidden`}
-      style={{ ...position, zIndex: win.z, ...size }}
+      style={{ ...position, zIndex: win.z, ...applied }}
       onMouseDown={() => bringToFront(win.entryId)}
+      {...{ [FX_POPUP_ATTR]: '' }}
     >
       {/* Title bar — the drag handle. Same chrome for every effect kind. */}
       <div
@@ -499,13 +559,14 @@ const EffectWindowCard: React.FC<{
       {/* Body — exactly what MIX's Effect Stage renders for this kind. */}
       {kind === 'vst' ? (
         vstOwnsSession ? (
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col">
             <VstEmbedHost
               pluginPath={vstSessionPath!}
               pluginName={vstSessionName ?? label}
               error={vstSessionError ?? undefined}
               onClose={() => useVstEditorStore.getState().close()}
               onNaturalSize={onVstNaturalSize}
+              fit
             />
           </div>
         ) : (
@@ -602,6 +663,31 @@ const EffectWindowCard: React.FC<{
           />
         </div>
       )}
+
+      {/* Resize grips: the right edge, the bottom edge and the corner. They sit
+          in the card's own border and padding, clear of a plugin's window.
+          Pointer-only, like the title bar's drag. */}
+      <div
+        aria-hidden="true"
+        onPointerDown={startResize({ right: true, bottom: false })}
+        className="absolute top-9 bottom-3.5 right-0 w-1.5 cursor-ew-resize touch-none"
+      />
+      <div
+        aria-hidden="true"
+        onPointerDown={startResize({ right: false, bottom: true })}
+        className="absolute bottom-0 left-0 right-3.5 h-1.5 cursor-ns-resize touch-none"
+      />
+      <div
+        aria-hidden="true"
+        title="Drag to resize. Double-click to fit."
+        onPointerDown={startResize({ right: true, bottom: true })}
+        onDoubleClick={() => resize(win.entryId, null, null)}
+        className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-nwse-resize touch-none text-zinc-500 hover:text-white"
+      >
+        <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M12 6 6 12M12 10l-2 2" />
+        </svg>
+      </div>
     </div>,
     document.body,
   );
@@ -716,7 +802,7 @@ export const FxChainList: React.FC<FxChainListProps> = ({
   };
 
   return (
-    <div ref={listRef} className={`flex flex-col gap-1.5 ${scrollRows ? 'min-h-0' : ''}`}>
+    <div ref={listRef} className={`flex flex-col gap-1.5 ${scrollRows ? 'min-h-0' : ''}`} {...{ [FX_POPUP_ATTR]: '' }}>
       {chain.length === 0 ? (
         <p className="font-sans text-xs font-bold text-zinc-500">{emptyHint}</p>
       ) : (

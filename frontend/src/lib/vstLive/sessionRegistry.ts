@@ -599,7 +599,7 @@ export function createVstSessionRegistry(deps: VstSessionRegistryDeps = {}): Vst
         onParamGesture: (index, begin) => session.gestureSink?.(index, begin),
         onLatency: (samples) => store().setLatency(entry.id, samples),
         onXrun: (late) => store().addXruns(entry.id, late),
-        onEditor: (e) => store().setEditorOpen(entry.id, e.open),
+        onEditor: (e) => store().setEditorOpen(entry.id, e.open, { w: e.w, h: e.h }),
       },
     });
     slot.session = session;

@@ -6,7 +6,7 @@ import {
   Trash2, Move, Plus, Volume2, Upload, Save, Piano, Paintbrush, X, Wand2, Layers,
   SlidersHorizontal, Undo2, Redo2, Gauge, Repeat, Flag, Circle, Copy, Music,
   Plug, Snowflake, Loader2, ChevronUp, ChevronDown, RefreshCw, Blocks,
-  Maximize2, Rows3, Keyboard, Eye, AudioLines, Spline, FolderOpen, Check,
+  Maximize2, Rows3, Keyboard, Eye, Wrench, AudioLines, Spline, FolderOpen, Check,
   Settings2, ScanSearch, BoxSelect, Ellipsis, AudioWaveform, Bot, Drum, ListTree,
 } from 'lucide-react';
 import { addSectionMarkersToClip } from '../../lib/songSectionActions';
@@ -171,9 +171,10 @@ import { StemsRunModal, type StemsRunOptions } from '../library/StemsRunModal';
 import { ExportDialog } from './ExportDialog';
 import type { ExportRenderItem, ExportRenderPlan, MidiExportItem } from '../../lib/render/exportDialogModel';
 import { exportArrangementMidi } from '../../lib/arrangementMidiApp';
-import { EffectWindowsHost, FxChainList, chainInState, effectEntryLabel, openEffectWindow, openVstEditorForScope, type EffectWindowOrigin, type FxScope } from './EffectWindows';
+import { EffectWindowsHost, FxChainList, chainInState, effectEntryLabel, openEffectWindow, openVstEditorForScope, useEffectWindowStore, type EffectWindowOrigin, type FxScope } from './EffectWindows';
 import { VstAutomationPicker } from './VstAutomationPicker';
 import { PopoverPortal } from './PopoverPortal';
+import { pressClosesFxPopups } from '../../lib/fxPopupDismiss';
 import { useTrackFxRackStore, type TrackFxRackAnchor } from '../../state/trackFxRackStore';
 import { ensureStems, listStems, type StemRef } from '../../lib/djStems';
 import { clipEditKind, isMidiClip } from '../../lib/clipEditTarget';
@@ -2644,6 +2645,19 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
   const openFxRack = useTrackFxRackStore((s) => s.open);
   const toggleFxRack = useTrackFxRackStore((s) => s.toggle);
   const closeFxRack = useTrackFxRackStore((s) => s.close);
+  // A press outside the FX popups closes them: the track rack, the master FX
+  // panel and every effect window (lib/fxPopupDismiss.ts has the rule). Capture
+  // phase, so a surface that stops its own pointerdown still counts.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (!pressClosesFxPopups(e.target)) return;
+      useTrackFxRackStore.getState().close();
+      setShowMasterFx(false);
+      useEffectWindowStore.getState().closeAll();
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, []);
   // Leaving EDIT closes the rack.
   useEffect(() => () => useTrackFxRackStore.getState().close(), []);
   /** The rack's anchor for a click at (x, y), for a caller with no element of
@@ -6581,6 +6595,7 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             }}
             aria-pressed={showMasterFx}
             aria-label="Master FX"
+            data-fx-opener=""
             className={`flex items-center gap-1.5 p-1 px-1.5 rounded border transition-colors font-display text-xs font-bold uppercase tracking-wider
               ${showMasterFx || masterFxChain.length + masterVstChain.length > 0 ? 'bg-purple-600/20 border-purple-500/40 text-purple-300' : 'border-white/5 text-zinc-500 hover:text-white hover:bg-white/5'}`}
             title="Master FX — built-in effects, VST3s and control surfaces in one chain; click an entry to open its control window"
@@ -6600,11 +6615,11 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             aria-haspopup="menu"
             aria-expanded={!!toolsMenu}
             aria-label="Generative tools"
-            title="Generative tools — Magenta RT2, Metamorph"
-            className={`flex items-center gap-1.5 p-1 px-1.5 rounded border transition-colors font-display text-xs font-bold uppercase tracking-wider
+            title="Tools — Magenta RT2, Metamorph"
+            className={`flex items-center p-1 px-1.5 rounded border transition-colors
               ${magentaTool || showMetamorph ? 'bg-cyan-600/20 border-cyan-500/40 text-cyan-300' : 'border-white/5 text-zinc-500 hover:text-white hover:bg-white/5'}`}
           >
-            <Wand2 className="w-3 h-3" /> TOOLS <ChevronDown className="w-2.5 h-2.5" />
+            <Wrench className="w-3.5 h-3.5" />
           </button>
 
           {/* View options — zoom to selection or clips, lane height, keyboard
@@ -6620,10 +6635,10 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             aria-expanded={!!viewMenu}
             aria-label="View options"
             title="View — zoom to selection or clips, lane height, keyboard shortcuts, timeline preferences"
-            className={`flex items-center gap-1.5 p-1 px-1.5 rounded border transition-colors font-display text-xs font-bold uppercase tracking-wider
+            className={`flex items-center p-1 px-1.5 rounded border transition-colors
               ${viewMenu ? 'bg-purple-600/20 border-purple-500/40 text-purple-300' : 'border-white/5 text-zinc-500 hover:text-white hover:bg-white/5'}`}
           >
-            <Eye className="w-3 h-3" /> VIEW <ChevronDown className="w-2.5 h-2.5" />
+            <Eye className="w-3.5 h-3.5" />
           </button>
 
           {/* Mode cluster, grouped like the tool/undo clusters: the record-mode
@@ -6780,7 +6795,7 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
           className="fixed z-50 flex items-start gap-3 max-w-[calc(100%-2rem)]"
         >
           {showMasterFx && (
-            <section aria-label="Master FX" className="w-90 max-h-[70vh] overflow-y-auto hardware-card bg-black/90 border border-purple-500/30 rounded-lg shadow-2xl shadow-purple-900/40 p-3 flex flex-col gap-2">
+            <section aria-label="Master FX" data-fx-popup="" className="w-90 max-h-[70vh] overflow-y-auto hardware-card bg-black/90 border border-purple-500/30 rounded-lg shadow-2xl shadow-purple-900/40 p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
                 <span className="font-display text-xs font-bold uppercase tracking-wider text-purple-300">Master FX</span>
                 <button
@@ -6955,6 +6970,7 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
             y={fxPanel.y}
             anchorClassName="right-4 top-28"
             maxHeight="70vh"
+            fxPopup
             className="fixed z-50 w-90 overflow-y-auto hardware-card bg-black/90 border border-purple-500/30 rounded-lg shadow-2xl shadow-purple-900/40 p-3 flex flex-col gap-2"
           >
             {/* Title and add controls stay put; the rows between them scroll. */}
@@ -7628,6 +7644,7 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
                       onClick={(e) => toggleFxRack(fxRackUnder(t.id, e.currentTarget))}
                       aria-label={`Track ${t.name} insert FX`}
                       aria-pressed={fxPanel?.trackId === t.id}
+                      data-fx-opener=""
                       title="Track insert FX rack"
                       // Rack open: a solid fill. Inserts on the lane with the rack
                       // closed: a light tint, so a lane restored with its effects by
@@ -8069,6 +8086,7 @@ export const WaveformEditor: React.FC<{ onSwitchTab?: (tab: string) => void }> =
                               openFxRack(fxRackUnder(clip.trackId, e.currentTarget));
                             }}
                             aria-label={`Open track FX for clip ${clip.label}`}
+                            data-fx-opener=""
                             className="px-1 h-3.5 rounded-sm font-display text-xs font-bold leading-none flex items-center bg-black/40 text-zinc-300 border border-white/10 hover:text-purple-300 hover:border-purple-500/50"
                           >FX</button>
                           <button

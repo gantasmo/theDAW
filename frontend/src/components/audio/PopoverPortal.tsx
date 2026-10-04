@@ -24,8 +24,11 @@ export const PopoverPortal: React.FC<{
   maxHeight?: string;
   /** Optional external ref (outside-click dismissal needs the panel node). */
   innerRef?: React.RefObject<HTMLDivElement | null>;
+  /** The panel is one of EDIT's FX popups: a press outside the family closes
+   *  it (lib/fxPopupDismiss.ts). */
+  fxPopup?: boolean;
   children: React.ReactNode;
-}> = ({ x, y, anchorClassName = '', className, maxHeight, innerRef, children }) => {
+}> = ({ x, y, anchorClassName = '', className, maxHeight, innerRef, fxPopup, children }) => {
   const localRef = useRef<HTMLDivElement | null>(null);
   const ref = innerRef ?? localRef;
   const hasCoords = x != null && y != null;
@@ -51,6 +54,7 @@ export const PopoverPortal: React.FC<{
     <div
       ref={ref}
       className={`${className}${shown ? '' : ` ${anchorClassName}`}`}
+      data-fx-popup={fxPopup ? '' : undefined}
       style={{
         maxHeight: popoverMaxHeight(hasCoords ? layout?.maxHeight ?? null : null, maxHeight),
         overflowY: 'auto',

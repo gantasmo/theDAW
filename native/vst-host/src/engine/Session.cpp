@@ -646,7 +646,10 @@ void Session::handleOp(const json::Value& message, const std::string& op) {
             return;
         }
         editorOpen_ = true;
-        sendEditorState(true, w, h);
+        // The view reported its real size while it opened (onEditorResized). Repeating the
+        // requested box here told the client the plugin was as large as the box it asked for.
+        sendEditorState(true, editorWidth_ > 0 ? editorWidth_ : w,
+                        editorHeight_ > 0 ? editorHeight_ : h);
         return;
     }
 
@@ -662,6 +665,8 @@ void Session::handleOp(const json::Value& message, const std::string& op) {
     if (op == "close_editor") {
         util::guarded([instance] { instance->closeEditor(); });
         editorOpen_ = false;
+        editorWidth_ = 0;
+        editorHeight_ = 0;
         sendEditorState(false, 0, 0);
         return;
     }
@@ -1010,11 +1015,15 @@ void Session::onParamGesture(int32_t index, bool begin) {
 }
 
 void Session::onEditorResized(int32_t width, int32_t height) {
+    editorWidth_ = static_cast<int>(width);
+    editorHeight_ = static_cast<int>(height);
     sendEditorState(true, width, height);
 }
 
 void Session::onEditorClosed() {
     editorOpen_ = false;
+    editorWidth_ = 0;
+    editorHeight_ = 0;
     sendEditorState(false, 0, 0);
 }
 
