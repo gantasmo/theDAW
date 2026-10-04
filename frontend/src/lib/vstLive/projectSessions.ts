@@ -27,6 +27,8 @@ import type { VstSessionRegistry } from './sessionRegistry';
 export const PROJECT_HOLDER = 'project';
 /** The holder name the piano roll claims its parts' instruments under (state/rollInstruments). */
 export const ROLL_HOLDER = 'roll';
+/** The holder name the SWAY cockpit claims the plugins on its tracks under (lib/swayHostVst). */
+export const SWAY_HOLDER = 'sway';
 
 export interface ProjectSessionsDeps {
   registry: Pick<VstSessionRegistry, 'hold' | 'forget' | 'hostAvailable'>;

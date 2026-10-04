@@ -2,7 +2,7 @@
   "format": "sway",
   "format_version": 1,
   "app_version": "",
-  "audio_mode": "external",
+  "audio_mode": "linked",
   "created_at": null,
   "modified_at": null,
   "project": {
@@ -47,7 +47,16 @@
       "preset": "Init",
       "patch": null
     },
-    "media": [],
+    "media": [
+      {
+        "id": "miracle-mile",
+        "name": "5 - Miracle Mile.wav",
+        "path": "C:\\Users\\dtruj\\Music\\UNCANNY\\5 - Miracle Mile.wav",
+        "sha256": "414cf21d11d0785561542ece0735e9c81c1dc9c4922c0b9ac10fa3e56b963954",
+        "bytes": 99754890,
+        "duration": 377
+      }
+    ],
     "sampler": {
       "kit": {
         "version": 1,
@@ -91,7 +100,19 @@
           "name": "Audio",
           "gain": 1,
           "muted": false,
-          "clips": []
+          "clips": [
+            {
+              "id": "a-miracle-mile",
+              "name": "Miracle Mile",
+              "media": "miracle-mile",
+              "start": 0,
+              "end": 377,
+              "offset": 0,
+              "gain": 1,
+              "fadeIn": 0,
+              "fadeOut": 2
+            }
+          ]
         },
         {
           "id": "visual-1",

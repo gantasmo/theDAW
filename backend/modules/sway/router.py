@@ -6,7 +6,8 @@ what is missing. Mounted at /api/sway by backend/modules/loader.py.
 
 This module also owns two glue duties the embedded cockpit needs:
 
-* Template media consent. A staged template (``templates/*.sway``) names its
+* Template media consent. A staged template (``templates/*.sway``), and a
+  scene the asset catalog installs (``examples/scenes/*.sway``), names its
   audio by absolute path, and the cockpit fetches that audio through
   ``/api/project/clip-audio`` -- which 403s anything outside the allowed media
   roots. Shipping a template in the bundle IS consent for the files it names
@@ -39,6 +40,7 @@ import logging
 import math
 import os
 import re
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -68,6 +70,10 @@ router = APIRouter()
 
 _PROJECTS_DIR = paths.data_path("sway-projects")
 
+#: A shipped song read out of its example project (``examples/projects/*.tasmo``)
+#: for an install that has no ``examples/audio`` folder, which is kept out of git.
+_SONG_CACHE_DIR = paths.data_path("sway-songs")
+
 _template_media_registered = False
 
 
@@ -90,14 +96,50 @@ def _collect_media_paths(node: object, out: list[str]) -> None:
 
 def _shipped_song(template: Path) -> Path | None:
     """The copy of a template's song that theDAW ships, matched by name: the
-    template ``will-i-dream.sway`` pairs with ``examples/audio/will i dream.*``."""
+    template ``will-i-dream.sway`` pairs with ``examples/audio/will i dream.*``,
+    else with the one song inside ``examples/projects/will i dream.tasmo``."""
     want = template.stem.replace("-", " ").replace("_", " ").casefold()
     try:
         for f in sorted((catalog.EXAMPLES_DIR / "audio").iterdir()):
             if f.is_file() and f.stem.casefold() == want:
                 return f
     except OSError:
+        pass
+    return _song_from_example_project(want)
+
+
+def _song_from_example_project(want: str) -> Path | None:
+    """The one song embedded in the example project named ``want``, read out
+    once into data/sway-songs; None when there is no such project, it holds no
+    song or several, or it cannot be read."""
+    try:
+        projects = sorted((catalog.EXAMPLES_DIR / "projects").glob("*.tasmo"))
+    except OSError:
         return None
+    for project in projects:
+        if project.stem.casefold() != want:
+            continue
+        try:
+            with zipfile.ZipFile(project) as zf:
+                songs = [
+                    n
+                    for n in zf.namelist()
+                    if n.startswith("audio/") and not n.endswith("/")
+                ]
+                if len(songs) != 1:
+                    return None
+                # The bare file name: a member name never picks the folder.
+                target = _SONG_CACHE_DIR / Path(songs[0]).name
+                size = zf.getinfo(songs[0]).file_size
+                if target.is_file() and target.stat().st_size == size:
+                    return target
+                data = zf.read(songs[0])
+            atomic_write(target, data)
+            log.info("sway: read %s out of %s", target.name, project.name)
+            return target
+        except (OSError, zipfile.BadZipFile, KeyError) as e:
+            log.warning("sway: no song from %s: %s", project.name, e)
+            return None
     return None
 
 
@@ -140,7 +182,23 @@ def _register_template_media() -> None:
             _stand_in_missing_song(f, doc)
     except OSError:
         return
-    # Only the STAGED templates above are trusted here. Saved projects under
+    # The scenes theDAW's own catalog installs are shipped the same way, and an
+    # installed copy in data/sway-projects names the same paths, so the cockpit
+    # plays their songs too. Only files in the install's examples folder: a
+    # catalog a user dropped into data/assets grants nothing.
+    examples = catalog.EXAMPLES_DIR.resolve()
+    for entry in catalog.load_entries():
+        if entry.format != ".sway":
+            continue
+        try:
+            if not entry.file.resolve().is_relative_to(examples):
+                continue
+            doc = json.loads(entry.file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        _collect_media_paths(doc, paths)
+        _stand_in_missing_song(entry.file, doc)
+    # Only the STAGED templates and the catalog's scenes are trusted here. Saved projects under
     # _PROJECTS_DIR are written from a /project-save request body, so reading
     # them back to widen the allowlist would let a request grant itself access
     # to any folder — and would re-grant it on every /status after a restart.

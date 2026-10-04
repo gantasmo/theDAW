@@ -428,6 +428,29 @@ def test_changing_only_the_plugin_name_also_respawns_the_host(
     assert len([s for s in manager.list() if s.alive]) == 1
 
 
+def test_a_name_the_plugin_does_not_have_starts_its_own_effect(
+    manager, plugin_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chain names its plugin after the file ("FreeGain"); the plugin calls
+    itself "Free Gain". The host finds no class by the file's name, and the
+    file's own effect starts instead of the row failing."""
+    monkeypatch.setenv("FAKE_VST_HOST_CLASS_NAMES", "Free Gain")
+    first = make(manager, plugin_file, chain_entry_id="slot-1", plugin_name="FreeGain")
+    assert first.alive
+    assert "--plugin-name" not in first.argv
+    # Every rebuild asks again under the same name: still the same plugin.
+    again = make(manager, plugin_file, chain_entry_id="slot-1", plugin_name="FreeGain")
+    assert again.session_id == first.session_id
+
+
+def test_a_name_the_plugin_has_is_passed_through(
+    manager, plugin_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_VST_HOST_CLASS_NAMES", "Maximizer,Imager")
+    session = make(manager, plugin_file, chain_entry_id="slot-1", plugin_name="imager")
+    assert session.argv[session.argv.index("--plugin-name") + 1] == "imager"
+
+
 def test_the_same_plugin_and_name_stay_idempotent(manager, plugin_file: Path) -> None:
     """The play/stop/seek rebuild path must still not respawn anything."""
     first = make(manager, plugin_file, chain_entry_id="slot-1", plugin_name="Maximizer")

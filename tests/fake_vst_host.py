@@ -338,6 +338,22 @@ def main(argv: list[str] | None = None) -> int:
         _emit({"ev": "selftest", "ok": True})
         return 0
 
+    # The class names the plugin file holds: a --plugin-name outside them
+    # fails the way the real host does.
+    classes = [
+        c for c in os.environ.get("FAKE_VST_HOST_CLASS_NAMES", "").split(",") if c
+    ]
+    if (
+        classes
+        and args.plugin_name
+        and args.plugin_name.casefold() not in {c.casefold() for c in classes}
+    ):
+        _log(
+            f"startup failed (exit 4): no plugin named '{args.plugin_name}' in "
+            f"{args.plugin} (it contains: {', '.join(classes)})"
+        )
+        return 4
+
     forced_exit = _int_env("FAKE_VST_HOST_EXIT_CODE")
     if forced_exit:
         message = os.environ.get("FAKE_VST_HOST_EXIT_MESSAGE", "")

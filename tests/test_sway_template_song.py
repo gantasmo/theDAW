@@ -138,3 +138,79 @@ def test_a_request_cannot_register_a_stand_in(env) -> None:
     env["client"].get("/api/sway/url")
     invented = env["author"].parent / "private" / "secret.wav"
     assert _clip(env["client"], invented).status_code == 403
+
+
+def _catalog_scene(env, stem: str, media_path: str) -> Path:
+    """A scene the asset catalog installs, and the copy it installed."""
+    examples = env["examples"]
+    doc = {
+        "format": "sway",
+        "project": {"media": [{"id": "song", "name": "song", "path": media_path}]},
+    }
+    scene = examples / "scenes" / f"{stem}.sway"
+    scene.parent.mkdir(parents=True, exist_ok=True)
+    scene.write_text(json.dumps(doc), encoding="utf-8")
+    (examples / "catalog.json").write_text(
+        json.dumps(
+            {
+                "assets": [
+                    {
+                        "id": f"scene-{stem}",
+                        "name": stem,
+                        "kind": "scene",
+                        "format": ".sway",
+                        "file": f"scenes/{stem}.sway",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return scene
+
+
+@pytest.fixture()
+def catalog_env(env, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    examples = catalog.EXAMPLES_DIR
+    monkeypatch.setattr(catalog, "BUNDLED_CATALOG", examples / "catalog.json")
+    monkeypatch.setattr(catalog, "user_catalog_dir", lambda: tmp_path / "no-assets")
+    monkeypatch.setattr(sway_api, "_SONG_CACHE_DIR", tmp_path / "sway-songs")
+    return {**env, "examples": examples}
+
+
+def test_a_catalog_scene_plays_its_song(catalog_env) -> None:
+    """The Miracle Mile scene the asset browser installs names the master by
+    its path on the author's machine; the installed copy names the same path,
+    and the cockpit hears theDAW's copy of the song."""
+    missing = catalog_env["author"] / "UNCANNY" / "5 - Miracle Mile.wav"
+    song = catalog_env["examples"] / "audio" / "Miracle Mile.opus"
+    song.write_bytes(b"OggS miracle mile")
+    _catalog_scene(catalog_env, "miracle-mile", str(missing))
+
+    assert _clip(catalog_env["client"], missing).status_code == 403
+    catalog_env["client"].get("/api/sway/url")
+    resp = _clip(catalog_env["client"], missing)
+    assert resp.status_code == 200
+    assert resp.content == b"OggS miracle mile"
+
+
+def test_the_song_comes_out_of_the_example_project_without_examples_audio(
+    catalog_env, tmp_path: Path
+) -> None:
+    """examples/audio is kept out of git; a fresh install has only the example
+    project, whose one embedded song is read out once and served."""
+    import zipfile
+
+    missing = catalog_env["author"] / "UNCANNY" / "5 - Miracle Mile.wav"
+    _catalog_scene(catalog_env, "miracle-mile", str(missing))
+    projects = catalog_env["examples"] / "projects"
+    projects.mkdir(parents=True)
+    with zipfile.ZipFile(projects / "Miracle Mile.tasmo", "w") as zf:
+        zf.writestr("manifest.json", "{}")
+        zf.writestr("audio/Miracle Mile.opus", b"OggS from the project")
+
+    catalog_env["client"].get("/api/sway/url")
+    resp = _clip(catalog_env["client"], missing)
+    assert resp.status_code == 200
+    assert resp.content == b"OggS from the project"
+    assert (tmp_path / "sway-songs" / "Miracle Mile.opus").is_file()

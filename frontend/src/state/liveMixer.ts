@@ -117,7 +117,7 @@ import {
 } from '../lib/rackEffects';
 import { broadcastVstTransport } from '../lib/vstLive/vstLiveNode';
 import { hookVstSessionUnload, vstSessions } from '../lib/vstLive/sessionRegistry';
-import { ROLL_HOLDER, createProjectSessions } from '../lib/vstLive/projectSessions';
+import { ROLL_HOLDER, SWAY_HOLDER, createProjectSessions } from '../lib/vstLive/projectSessions';
 import { InstrumentLivePass, planInstrumentTracks, type InstrumentLiveTrack } from '../lib/vstLive/instrumentLive';
 import { entryLatencySamples, useVstLiveStore, type VstLiveEntryState } from './vstLiveStore';
 import { sliceChunks, type AudioChunk } from '../lib/audioAnalysis';
@@ -4329,8 +4329,9 @@ export function dispose(): void {
   // 10 s grace timer meant for a rebuild; nothing is coming back here.
   if (unsubProjectSessions) { unsubProjectSessions(); unsubProjectSessions = null; }
   projectSessions.reset(); // closeAll takes the sessions; the next attach() holds them afresh
-  // The piano roll's part instruments are not EDIT's: the MIDI tab keeps playing them.
-  vstSessions.closeAll({ keepHeldBy: ROLL_HOLDER });
+  // The piano roll's part instruments and the SWAY cockpit's plugins are not
+  // EDIT's: the MIDI tab and the SWAY tab keep playing them.
+  vstSessions.closeAll({ keepHeldBy: [ROLL_HOLDER, SWAY_HOLDER] });
   broadcastVstTransport({ playing: false, positionSamples: 0, tempoBpm: 0, discontinuity: true });
   // Cleared, not re-seeded: the next start() builds a fresh graph and calls
   // resetRoutingSigs itself, and a stale signature here would let the first

@@ -99,7 +99,7 @@
       "author": "GANTASMO",
       "version": "1.0",
       "summary": "The SwayCommand cockpit scene built for this song.",
-      "description": "Installs into the cockpit's project list, where the SWAY tab opens it. Set the SWAY tab's Audio source to theDAW master and play the song: the scene reacts to what theDAW is putting out, so it needs no audio file of its own.",
+      "description": "Installs into the cockpit's project list, where the SWAY tab opens it with Miracle Mile on its audio track. Press play and the scene follows the song.",
       "tags": ["uncanny", "sway", "cockpit", "scene", "visuals"],
       "tabs": ["SWAY"]
     },

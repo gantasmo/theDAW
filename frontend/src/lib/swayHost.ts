@@ -46,8 +46,25 @@ export type CockpitAction =
  *  giving up on a host that never answers. */
 export const HOST_CAP_PLUGIN_FILE = 'plugin-file';
 
+/** This host put its rack-effect API on the cockpit's window (lib/swayHostFx):
+ *  every cockpit track's FX chain can list and play theDAW's rack effects. */
+export const HOST_CAP_RACK_FX = 'rack-fx';
+
+/** The same API object also carries `vst` (lib/swayHostVst): every cockpit
+ *  track's VST3 plugins run live in theDAW's plugin host. */
+export const HOST_CAP_VST_LIVE = 'vst-live';
+
 /** What this host can do for the cockpit, sent in sway/host-ready. */
-export const HOST_CAPS: readonly string[] = [HOST_CAP_PLUGIN_FILE];
+export const HOST_CAPS: readonly string[] = [HOST_CAP_PLUGIN_FILE, HOST_CAP_RACK_FX, HOST_CAP_VST_LIVE];
+
+/** The caps one sway/host-ready lists. `rackFxHanded` is whether the host API
+ *  reached the cockpit's window; a cockpit told 'rack-fx' reads it from there.
+ *  `vstLive` is whether this machine can run plugins live; it needs the API too. */
+export function hostCapsFor(rackFxHanded: boolean, vstLive = false): string[] {
+  return HOST_CAPS.filter(
+    (c) => (c !== HOST_CAP_RACK_FX || rackFxHanded) && (c !== HOST_CAP_VST_LIVE || (rackFxHanded && vstLive)),
+  );
+}
 
 /** The sway/plugin-file frame that answers a sway/choose-plugin-file. */
 export interface PluginFileFrame {

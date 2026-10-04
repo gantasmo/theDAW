@@ -1309,6 +1309,14 @@ The SWAY tab hosts the **SwayCommand cockpit** — the Audima Labs Sway's own pe
 
 Saving inside the cockpit is durable: a save writes a `.sway` file into `data/sway-projects/` through theDAW's backend (`POST /api/sway/project-save`) and its media paths are allowlisted at the same time, so the project reopens intact.
 
+**Track effects.** Click a track's name on the cockpit's timeline to open its panel. **EFFECTS** lists the cockpit's own effects and, under THEDAW, every effect of theDAW's rack; each one plays live on the track, and every parameter can be bound to a pad, a knob or a gesture.
+
+**VST3 plugins.** The track panel's **VST3** list holds every plugin theDAW has scanned. A plugin added there runs live in theDAW's plugin host as the track plays: its row shows a dot and one word (STARTING, then LIVE with its latency in the tooltip), **PARAMS** lists the plugin's own parameters, and **EDIT** opens the plugin's window over the SWAY tab. What is set in the window or the panel is kept with the project. The track's dry signal waits as long as its plugin chain, and every track waits for the slowest chain, so the stems stay together. **LIVE** on the VST3 header switches a track to rendered files instead: **RENDER** writes each clip through the plugins once.
+
+**Kit and synth.** **EFFECTS** in the KIT and SYNTH drawers, or the KIT and SYNTH buttons in the empty panel, opens the instrument's own panel: an effect chain and a live VST3 chain that everything the kit or the synth plays goes through.
+
+**Scenes with songs.** The Miracle Mile scene, from the cockpit's templates or the asset browser, opens with the song on its audio track. On a machine without the master file it plays theDAW's own copy of the song.
+
 theDAW holds the only `requestMIDIAccess()` and relays MIDI to the cockpit, so a plugged-in Sway is visible to both at once.
 
 The Sway's six expressive-motion dimensions (`strike`, `sway`, `pulse`, `glide`, `press`, `sculpt`) are published on a shared bus that the VJ engine consumes for motion-driven visuals (§10.9) and the Perform tab consumes as a modulation source (§35.3). Playing a set from the hardware is covered end to end in [guides/sway-perform-live.md](guides/sway-perform-live.md).

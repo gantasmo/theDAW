@@ -81,6 +81,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import json
 import logging
 import os
@@ -196,6 +197,10 @@ def _idle_timeout_sec() -> int:
         if 0 <= value <= 86400:
             return value
     return 120
+
+
+#: What the host writes when no class in the plugin file has the requested name.
+NO_CLASS_NAMED = "no plugin named '"
 
 
 class LiveHostError(RuntimeError):
@@ -792,16 +797,35 @@ class LiveSessionManager:
                     f"Too many live VST plugins: {alive} of {self.max_sessions} "
                     f"allowed. Close one, or raise {MAX_SESSIONS_ENV_VAR}.",
                 )
-            return self._spawn_locked(
+            spawn = functools.partial(
+                self._spawn_locked,
                 host=host,
                 chain_entry_id=entry_id,
                 plugin=plugin,
-                plugin_name=plugin_name,
                 sample_rate=sample_rate,
                 block_size=block_size,
                 channels=channels,
                 state_bytes=state_bytes,
             )
+            try:
+                return spawn(plugin_name=plugin_name)
+            except LiveHostError as exc:
+                # A chain names its plugin after the file it came from
+                # ("FreeGain"), which need not be the name the plugin gives
+                # itself ("Free Gain"). When the file holds no class by that
+                # name, the file's own effect is the one that was picked.
+                if not plugin_name or NO_CLASS_NAMED not in exc.detail:
+                    raise
+                log.info(
+                    "vst.live: %s has no class named %r; starting its own effect",
+                    Path(plugin).name,
+                    plugin_name,
+                )
+                session = spawn(plugin_name=None)
+            # Asked for under that name: the next create for this entry with
+            # the same name is the same plugin, not a swap.
+            session.plugin_name = plugin_name
+            return session
 
     def _spawn_locked(
         self,
