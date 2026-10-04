@@ -34,6 +34,12 @@ data/clip_audio_roots.json
 data/media_roots.json
 # Cockpit-saved Sway projects (contain absolute paths to the user's media)
 data/sway-projects/
+# Sound banks the app downloaded (backend/modules/modeldl/soundbanks.py) and
+# sound fonts it installed, with their registry (backend/modules/soundfonts/store.py)
+data/soundbanks/
+data/soundfonts/
+# The live VST host's per-session folders and logs (backend/modules/vst/live_host.py)
+data/vst_live/
 data/local_checkpoints.json
 data/library.db
 data/library.db-*
