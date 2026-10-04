@@ -37,6 +37,14 @@ const CONCURRENCY = 4
  */
 const SUITE_TIMEOUT_MS = Number(process.env.FRONTEND_TEST_TIMEOUT_MS) || 300_000
 
+/**
+ * How long a suite's output pipes may stay open after its process exited.
+ * A process the suite started (tsx's esbuild service, a worker) can hold the
+ * pipes past the exit, and then 'close' never fires: the suite printed its
+ * result and called process.exit, yet the run waited out the whole timeout.
+ */
+const EXIT_GRACE_MS = 2_000
+
 /** Directories that never hold app tests. */
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.vite'])
 
@@ -104,6 +112,15 @@ function runOne(file) {
     })
     child.on('error', (err) => done({ file, code: 1, out: `${out}\n${err.message}` }))
     child.on('close', (code) => done({ file, code: code ?? 1, out }))
+    // The exit code is the result. Output still in the pipes gets a moment to
+    // arrive, then whatever the suite left running is ended (see EXIT_GRACE_MS).
+    child.on('exit', (code) => {
+      setTimeout(() => {
+        if (settled) return
+        killTree(child)
+        done({ file, code: code ?? 1, out })
+      }, EXIT_GRACE_MS)
+    })
   })
 }
 

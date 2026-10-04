@@ -8,6 +8,8 @@
 # origin is the Windows repository, so it sees commits and nothing else.
 #
 # What it does:
+#   0. ffmpeg, ffprobe, node and npm on a Linux PATH (scripts/ci_linux_tools.sh
+#      installs any that are missing under ~/.local, with no sudo).
 #   1. ~/theDAW-ci: fetch <branch> from origin and check it out as ci-mirror.
 #   2. Sync ~/.venvs/thedaw-ci with the workflow's own install command, only
 #      when uv.lock changed since the last sync (its hash is kept beside the
@@ -31,7 +33,12 @@ fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mirror="${THEDAW_CI_MIRROR:-$HOME/theDAW-ci}"
 venv="${THEDAW_CI_VENV:-$HOME/.venvs/thedaw-ci}"
+# Linux tools only: WSL appends the Windows PATH (/mnt/c/...), and a Windows
+# node.exe or ffmpeg.exe found there fails the tests that start them.
+PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd: -)"
 export PATH="$HOME/.local/bin:$PATH"
+# ffmpeg and Node, which the runner has; installed under ~/.local when missing.
+bash "$here/ci_linux_tools.sh" || exit 2
 
 cd "$mirror" || { echo "ci_linux: no mirror clone at $mirror" >&2; exit 2; }
 git fetch -q origin "$branch" || { echo "ci_linux: origin has no branch $branch (commit it first)" >&2; exit 2; }
