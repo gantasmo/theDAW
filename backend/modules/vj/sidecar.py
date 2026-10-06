@@ -111,6 +111,23 @@ NPM_INSTALL_TIMEOUT_SEC = 600.0
 SIDECAR_LOG_PATH = paths.data_path("logs", "vj-sidecar.log")
 
 
+def _npm_install_env() -> dict[str, str]:
+    """The environment ``npm install`` runs in for the VJ checkout.
+
+    sharp, a VJ-9000 dependency, skips its prebuilt binary and builds from
+    source whenever pkg-config finds a system libvips, which a Linux desktop
+    often has. That build stops at a missing node-addon-api and fails the whole
+    install (gantasmo/theDAW-Pinokio#5). SHARP_IGNORE_GLOBAL_LIBVIPS makes
+    sharp skip the search and take the prebuilt binary; the Pinokio launcher
+    sets it for its own VJ install. Someone who set SHARP_FORCE_GLOBAL_LIBVIPS
+    asked for the system library, and sharp reads IGNORE first, so nothing is
+    added then."""
+    env = child_env()
+    if not env.get("SHARP_FORCE_GLOBAL_LIBVIPS"):
+        env.setdefault("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
+    return env
+
+
 @contextmanager
 def _sidecar_log_handle() -> Iterator[IO[bytes] | int]:
     """Yield a child-stdout target: the sidecar log file, or DEVNULL when the
@@ -757,7 +774,7 @@ def ensure_running(*, wait_for_ready: bool = True) -> str:
                             stderr=subprocess.STDOUT,
                             shell=False,
                             timeout=NPM_INSTALL_TIMEOUT_SEC,
-                            env=child_env(),
+                            env=_npm_install_env(),
                         )
                 except FileNotFoundError as e:
                     raise RuntimeError(
