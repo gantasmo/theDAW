@@ -121,6 +121,13 @@ jobs:
           THEDAW_VST3_PROBE: native/vst-host/bin/vst3_probe.exe
         run: uv run pytest tests/test_vst_host_native.py tests/test_vst3_probe.py -q
 
+      # build.ps1 is what theDAW.bat, install\setup.ps1 and the Pinokio launcher
+      # run on a user's machine, and the steps above never call it: they
+      # configure with cmake directly. Its tests ran nowhere, so the script lost
+      # this image's Visual Studio 2026 without a check going red.
+      - name: build.ps1 tests (the script a user's machine runs)
+        run: uv run pytest tests/test_vst_host_build.py -q
+
       - name: Generate SHA256SUMS
         run: |
           $files = Get-ChildItem -Path native/vst-host/bin -Filter '*.exe'
