@@ -155,11 +155,44 @@ jobs:
           ref: ${{ env.SWAY_REF }}
           token: ${{ secrets.SWAY_REPO_TOKEN || github.token }}
           path: SwayCommand
+      # The live VST3 host is a native Windows program that is never committed.
+      # electron-builder.yml ships build-resources/vst-host as resources/vst-host
+      # and the shell points the backend at it, but nothing built or staged the
+      # host here, so every installer up to v0.2.0 went out without live VST3.
+      # The steps mirror build-vst-host.yml; `npm run stage:vst-host` in the
+      # dist:win chains copies native/vst-host/bin into build-resources.
+      - name: Build the live VST3 host
+        run: |
+          cmake -S native/vst-host -B build/vst-host -A x64 -DTHEDAW_VST3=ON -DTHEDAW_WERROR=ON -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure (host) failed with exit code $LASTEXITCODE" }
+          cmake --build build/vst-host --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "cmake build (host) failed with exit code $LASTEXITCODE" }
+          cmake -S native/vst-host/src/vst3 -B build/vst-host-vst3-probe -A x64 -DTHEDAW_WERROR=ON -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure (vst3_probe) failed with exit code $LASTEXITCODE" }
+          cmake --build build/vst-host-vst3-probe --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "cmake build (vst3_probe) failed with exit code $LASTEXITCODE" }
+          New-Item -ItemType Directory -Force -Path native/vst-host/bin | Out-Null
+          $hostExe = @('build/vst-host/Release/thedaw-vst-host.exe', 'build/vst-host/thedaw-vst-host.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $hostExe) { throw 'thedaw-vst-host.exe was not found under build/vst-host' }
+          Copy-Item -Force $hostExe native/vst-host/bin/thedaw-vst-host.exe
+          $probeExe = Get-ChildItem -Path build -Filter 'vst3_probe.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($probeExe) { Copy-Item -Force $probeExe.FullName native/vst-host/bin/vst3_probe.exe }
+          & native/vst-host/bin/thedaw-vst-host.exe --selftest
+          if ($LASTEXITCODE -ne 0) { throw "thedaw-vst-host.exe --selftest failed with exit code $LASTEXITCODE" }
       - name: Build the Windows installer
         env:
           SWAY_PROJECT: ${{ github.workspace }}/SwayCommand
         run: npm run dist:win:ci
         working-directory: electron-ui
+      # The installer is only worth uploading with the host inside it: the
+      # staging step leaves a README and exits 0 when the host is missing, so a
+      # broken host build would otherwise ship a release without live VST3.
+      - name: Check the installer carries the live VST3 host
+        run: |
+          $exe = 'electron-ui/release/win-unpacked/resources/vst-host/thedaw-vst-host.exe'
+          if (-not (Test-Path $exe)) { throw "$exe is missing: the packaged app would have no live VST3." }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "the packaged host exited $LASTEXITCODE" }
       - uses: actions/upload-artifact@v7
         with:
           name: theDAW-Setup-${{ env.VERSION }}-exe

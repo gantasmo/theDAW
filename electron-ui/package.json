@@ -14,10 +14,11 @@
     "fetch:foundry": "node scripts/fetch-foundry-build.mjs",
     "fetch:sway": "node scripts/fetch-sway-build.mjs",
     "fetch:notation": "node scripts/fetch-notation-renderer.mjs",
+    "stage:vst-host": "node scripts/stage-vst-host.mjs",
     "package": "electron-vite build && electron-builder",
-    "dist:win": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && electron-vite build && electron-builder --win",
+    "dist:win": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && npm run stage:vst-host && electron-vite build && electron-builder --win",
     "dist:mac": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && electron-vite build && electron-builder --mac",
-    "dist:win:ci": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && electron-vite build && electron-builder --win --publish never",
+    "dist:win:ci": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && npm run stage:vst-host && electron-vite build && electron-builder --win --publish never",
     "dist:mac:ci": "npm run fetch:tools && npm run fetch:vj && npm run fetch:foundry && npm run fetch:sway && npm run fetch:notation && electron-vite build && electron-builder --mac --publish never"
   },
   "allowScripts": {
