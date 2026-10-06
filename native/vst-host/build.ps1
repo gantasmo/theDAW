@@ -116,7 +116,11 @@ function Resolve-Generator($cmake, $cached) {
         return @{ Name = $cached; Instance = $null }
     }
     $known = (& $cmake --help) | Out-String
-    $installed = Find-VisualStudio
+    # @(): a function that returns one instance hands back the bare object, and
+    # Windows PowerShell 5.1 gives a PSCustomObject no Count, so the check below
+    # read $null on a machine with a single Visual Studio and the script said
+    # none was installed.
+    $installed = @(Find-VisualStudio)
     foreach ($vs in $installed) {
         $major = ([version]$vs.installationVersion).Major
         # The name is read out of this cmake's own generator list. Building it
