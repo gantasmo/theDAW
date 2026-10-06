@@ -32,6 +32,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.modules.library import db as library_db_module
 from backend.modules.library import router as library_router_module
 from backend.modules.library.db import (
     FTS_BACKFILL_ROWID_KEY,
@@ -263,33 +264,63 @@ LONG_PROMPT = (
 )
 
 
-def test_search_finds_everything_main_found(client: TestClient, tmp_path: Path):
+#: An ``analyzed_at`` none of the queries below can be found in. The analysis
+#: timestamp is one of the values the search reads, like the BPM and the key,
+#: so on the wall clock some runs stamped it with "185" or "123" inside and a
+#: track nobody asked for answered: one CI run in a few hundred failed on
+#: ``assert {'Harbor Nights', 'Sunshine Avenue'} == {'Sunshine Avenue'}``.
+_QUIET_ANALYZED_AT = 1700000000.0
+
+#: Where the second case starts the library's clock: every stamp it hands out
+#: carries the digits of three of the queries ("185", "123" and "88.5").
+_LOUD_CLOCK_START = 1851230088.5185
+
+
+@pytest.mark.parametrize(
+    "loud_clock", [False, True], ids=["wall clock", "clock full of queried digits"]
+)
+def test_search_finds_everything_main_found(
+    client: TestClient, tmp_path: Path, monkeypatch, loud_clock: bool
+):
     """The paged search and main's client matcher agree, field by field, on a
     library carrying analysis and embedded tags: BPM, key, artist, album, the
-    duration, fragments inside words, and short words inside long values."""
+    duration, fragments inside words, and short words inside long values.
+
+    The answer must not depend on when the test runs, so it is asked twice:
+    on the wall clock, and on a clock whose every stamp is full of the digits
+    the numeric queries look for."""
     assert len(LONG_PROMPT) > SEARCH_SHORT_VALUE_MAX
+    if loud_clock:
+        ticks = iter(range(1_000_000))
+        monkeypatch.setattr(
+            library_db_module,
+            "_clock",
+            lambda: _LOUD_CLOCK_START + next(ticks) * 1e-4,
+        )
     _seed_varied(tmp_path)
     store = library_router_module.get_store()
     # Discover the entries first, so the analysis rows have an entry to name.
     records = client.get("/api/library/entries").json()["entries"]
     by_title = {r["title"]: r["id"] for r in records}
-    store.db.upsert_analysis(
-        by_title["Untitled 7"],
-        {
-            "bpm": 123.0,
-            # Every listing carries the tempo detector's confidence, so the
-            # client matcher reads it like any other analysis value.
-            "bpm_confidence": 0.231,
-            "key": "F#",
-            "scale": "minor",
-            "genre": "ambient",
-            "embedded_tags": {
-                "artist": "Aphex Twin",
-                "album": "Selected Ambient Works",
+    with monkeypatch.context() as pinned:
+        pinned.setattr(library_db_module, "_now", lambda: _QUIET_ANALYZED_AT)
+        store.db.upsert_analysis(
+            by_title["Untitled 7"],
+            {
+                "bpm": 123.0,
+                # Every listing carries the tempo detector's confidence, so the
+                # client matcher reads it like any other analysis value.
+                "bpm_confidence": 0.231,
+                "key": "F#",
+                "scale": "minor",
+                "genre": "ambient",
+                "embedded_tags": {
+                    "artist": "Aphex Twin",
+                    "album": "Selected Ambient Works",
+                },
             },
-        },
-    )
-    store.db.upsert_analysis(by_title["Harbor Nights"], {"bpm": 88.5, "key": "Bb"})
+        )
+        store.db.upsert_analysis(by_title["Harbor Nights"], {"bpm": 88.5, "key": "Bb"})
     records = client.get("/api/library/entries").json()["entries"]
 
     queries = {
