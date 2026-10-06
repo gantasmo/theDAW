@@ -119,9 +119,13 @@ function Resolve-Generator($cmake, $cached) {
     $installed = Find-VisualStudio
     foreach ($vs in $installed) {
         $major = ([version]$vs.installationVersion).Major
-        $name = "Visual Studio $major $($vs.catalog.productLineVersion)"
-        if ($known.Contains($name)) {
-            return @{ Name = $name; Instance = $vs.installationPath }
+        # The name is read out of this cmake's own generator list. Building it
+        # from catalog.productLineVersion worked while that was the year: for
+        # Visual Studio 2026 it is "18", "Visual Studio 18 18" is a generator
+        # no cmake has, and the newest install was passed over for an older one.
+        $hit = [regex]::Match($known, "Visual Studio $major \d{4}")
+        if ($hit.Success) {
+            return @{ Name = $hit.Value; Instance = $vs.installationPath }
         }
     }
     if ($installed.Count -gt 0) {

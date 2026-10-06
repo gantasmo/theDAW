@@ -23,7 +23,9 @@ host target inside the same temporary tree.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -137,6 +139,72 @@ def test_build_ps1_configures_and_the_host_compiles_clean_after_a_ninja_failure(
     assert built.returncode == 0, log[-4000:]
     assert "C5105" not in log
     assert (build / "Release" / "thedaw-vst-host.exe").is_file()
+
+
+def _newest_visual_studio_cmake_knows() -> str:
+    """The generator build.ps1 has to pick: the newest Visual Studio with the
+    C++ toolset whose generator this cmake lists."""
+    listed = subprocess.run(
+        [
+            str(VSWHERE),
+            "-utf8",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    versions = sorted(
+        (
+            tuple(int(part) for part in vs["installationVersion"].split("."))
+            for vs in json.loads(listed.stdout)
+        ),
+        reverse=True,
+    )
+    known = subprocess.run(["cmake", "--help"], capture_output=True, text=True).stdout
+    for version in versions:
+        hit = re.search(rf"Visual Studio {version[0]} \d{{4}}", known)
+        if hit:
+            return hit.group(0)
+    pytest.skip("this cmake has no generator for any installed Visual Studio")
+
+
+def test_build_ps1_names_the_newest_visual_studio_the_way_cmake_spells_it(
+    tmp_path: Path,
+):
+    """vswhere reports Visual Studio 2026 with productLineVersion "18", where
+    2019 and 2022 report the year. A generator name built from that field,
+    "Visual Studio 18 18", is one no cmake has: the 2026 install was passed over
+    for an older one, and a machine with no other stopped at "cmake is too old".
+
+    Only the generator line is read. The script prints it before it configures,
+    so this holds on a machine whose compiler cannot configure the tree."""
+    expected = _newest_visual_studio_cmake_knows()
+    done = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(HOST / "build.ps1"),
+            "-ConfigureOnly",
+            "-Vst3",
+            "OFF",
+            "-BuildDir",
+            str(tmp_path / "b"),
+        ],
+        capture_output=True,
+        text=True,
+        env=_env_without_generator(),
+        timeout=300,
+    )
+    assert f"generator: {expected}\n" in done.stdout, done.stdout + done.stderr
 
 
 def test_the_host_keeps_the_conforming_preprocessor_and_warnings_as_errors():
