@@ -1846,6 +1846,11 @@ async def _stream_openai_compat(req: ChatRequest, request: Request, provider_id:
 
     is_local = cfg["base_url"].startswith("http://localhost")
     model = req.model or cfg["default_model"]
+    # Legacy UI/stored-preference alias, not a Google model ID. Resolve at
+    # the provider boundary so old clients and the no-tools retry both work.
+    # Google's rolling alias: https://ai.google.dev/gemini-api/docs/models
+    if provider_id == "gemini" and model == "gemini-flash-recent":
+        model = "gemini-flash-latest"
     if not model:
         yield _sse_frame(
             {"type": "error", "error": f"No model specified for {provider_id}"}
